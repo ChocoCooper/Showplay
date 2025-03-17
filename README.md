@@ -1,7 +1,7 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/ChocoCooper/Streamzy/refs/heads/main/Assets/Streamzy.png" alt="Logo" width="400"/>
+  <img src="https://raw.githubusercontent.com/ChocoCooper/Streamzy/refs/heads/main/Assets/Streamzy.png" alt="Logo" width="200"/>
 </p>
 
-<h2 align="center">
-  <strong>Streamzy</strong>
-</h2>
+<p align="center">
+  <span style="font-size:36px;"><strong>Streamzy</strong></span>
+</p>
