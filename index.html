@@ -6,7 +6,8 @@
     <title>Streamzy</title>
     <!-- Google Fonts -->
     <link href="https://fonts.cdnfonts.com/css/electroharmonix" rel="stylesheet"/>
-    <link href="https://fonts.cdnfonts.com/css/sevarothz" rel="stylesheet">
+    <!-- Preload Fonts -->
+    <link rel="preload" href="https://fonts.cdnfonts.com/css/sevarothz" as="font" crossorigin="anonymous">
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" media="print" onload="this.media='all'">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
@@ -799,6 +800,71 @@
     </footer>
 
     <script>
+
+   // JavaScript for URL Routing and Dynamic Rendering
+const routes = {
+    '/': renderHomePage,
+    '/search/:query': renderSearchResults,
+    '/:mediaType/:id': renderVideoPage,
+};
+
+function renderHomePage() {
+    // Render the home page with trending content
+    fetchTrending('movie');
+}
+
+function renderSearchResults(query) {
+    // Render search results based on the query
+    searchQueryInput.value = query;
+    search();
+}
+
+function renderVideoPage(mediaType, id) {
+    // Render the video page based on the media type and ID
+    handleSeriesClick(id, mediaType);
+}
+
+function handleRoute() {
+    const path = window.location.pathname;
+    const route = Object.keys(routes).find((route) => {
+        const routeParts = route.split('/');
+        const pathParts = path.split('/');
+        if (routeParts.length !== pathParts.length) return false;
+        return routeParts.every((part, index) => part === pathParts[index] || part.startsWith(':'));
+    });
+
+    if (route) {
+        const routeParts = route.split('/');
+        const pathParts = path.split('/');
+        const params = routeParts.map((part, index) => part.startsWith(':') ? pathParts[index] : null).filter(Boolean);
+        routes[route](...params);
+    } else {
+        // Default to home page
+        renderHomePage();
+    }
+}
+
+// Add event listener for URL changes
+window.addEventListener('popstate', handleRoute);
+
+// Initial route handling
+handleRoute();
+
+// Modify search function to update URL
+function search() {
+    const query = searchQueryInput.value.trim();
+    if (query) {
+        history.pushState(null, '', `/search/${encodeURIComponent(query)}`);
+        renderSearchResults(query);
+    }
+}
+
+// Modify handleSeriesClick to update URL
+function handleSeriesClick(mediaId, mediaType) {
+    history.pushState(null, '', `/${mediaType}/${mediaId}`);
+    renderVideoPage(mediaType, mediaId);
+}
+
         const resultsContainer = document.getElementById('resultsContainer');
         const videoFrame = document.getElementById('videoFrame');
         const videoContainer = document.getElementById('videoContainer');
