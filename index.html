@@ -711,7 +711,7 @@
     </div>
 
     <!-- Toggle Switch -->
-    <div class="mydict">
+    <div class="mydict" id="toggleContainer">
         <div>
             <label>
                 <input type="radio" name="radio" checked="" id="moviesToggle" />
@@ -821,7 +821,7 @@
         const seasonSelect = document.getElementById('season-select');
         const episodeSelect = document.getElementById('episode-select');
         const serverSelect = document.getElementById('server-select');
-        const toggleContainer = document.querySelector('.mydict');
+        const toggleContainer = document.getElementById('toggleContainer');
         const loadingSpinner = document.getElementById('loadingSpinner');
         const paginationContainer = document.getElementById('paginationContainer');
         const prevPageButton = document.getElementById('prevPage');
@@ -1172,12 +1172,10 @@
                             <p class="release-date">(${new Date(item.release_date || item.first_air_date).getFullYear()})</p>
                         `;
                         itemDiv.onclick = () => {
-                            const mediaType = mediaType || 'movie';
                             navigateToMedia(item.id, mediaType);
                         };
                         itemDiv.addEventListener('keydown', (event) => {
                             if (event.key === 'Enter') {
-                                const mediaType = mediaType || 'movie';
                                 navigateToMedia(item.id, mediaType);
                             }
                         });
@@ -1197,6 +1195,7 @@
 
             videoContainer.style.display = 'none';
             hideSelectors();
+            hideToggle();
 
             if (!query) {
                 imageContainer.style.display = 'flex';
