@@ -69,6 +69,13 @@
             width: 100%;
             line-height: 1;
             font-weight: normal;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        h1:hover {
+            transform: scale(1.05);
+            text-shadow: 0 0 10px rgba(42, 245, 152, 0.5);
         }
 
         footer {
@@ -664,7 +671,7 @@
     <div class="title-container">
         <!-- Main Title -->
         <div class="title-wrapper">
-            <h1>Streamzy</h1>
+            <h1 id="mainTitle">Streamzy</h1>
         </div>
     </div>
 
@@ -829,6 +836,7 @@
         const pageInfo = document.getElementById('pageInfo');
         const homeButton = document.getElementById('homeButton');
         const noResultsMessage = document.getElementById('noResultsMessage');
+        const mainTitle = document.getElementById('mainTitle');
 
         let currentMediaType = 'movie';
         let currentMediaId = null;
@@ -995,6 +1003,11 @@
             resetDropdowns();
             homeButton.style.display = 'none';
             paginationContainer.style.display = 'none';
+        });
+
+        // Add event listener for main title
+        mainTitle.addEventListener('click', () => {
+            window.location.href = 'https://streamzy1.netlify.app';
         });
 
         // Add event listener for Enter key
