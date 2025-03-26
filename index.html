@@ -7,8 +7,7 @@
     <!-- Google Fonts -->
     <link rel="preload" href="https://fonts.cdnfonts.com/css/electroharmonix" as="style" onload="this.rel='stylesheet'">
     <noscript><link href="https://fonts.cdnfonts.com/css/electroharmonix" rel="stylesheet"></noscript>
-    <link rel="preload" href="https://fonts.cdnfonts.com/css/sevarothz" as="style" onload="this.rel='stylesheet'">
-    <noscript><link href="https://fonts.cdnfonts.com/css/sevarothz" rel="stylesheet"></noscript>
+    <link rel="preload" href="https://cdn.jsdelivr.net/gh/ChocoCooper/Streamzy@main/Sevarothz.woff2" as="font" type="font/woff2" crossorigin="anonymous">
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" media="print" onload="this.media='all'">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
@@ -16,6 +15,13 @@
     <link rel="apple-touch-icon" sizes="180x180" href="https://raw.githubusercontent.com/ChocoCooper/Streamzy/refs/heads/main/apple-touch-icon.png">
     <link rel="manifest" href="https://raw.githubusercontent.com/ChocoCooper/Streamzy/refs/heads/main/manifest.json">
     <style>
+        @font-face {
+           font-family: 'Sevarothz';
+           src: url('https://cdn.jsdelivr.net/gh/ChocoCooper/Streamzy@main/Sevarothz.woff2') format('woff2');
+           font-weight: normal;
+           font-style: normal;
+           font-display: swap;
+        }
         /* General Styles */
         :root {
             --primary-color: #2AF598; /* Accent color */
@@ -70,12 +76,6 @@
             line-height: 1;
             font-weight: normal;
             cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        h1:hover {
-            transform: scale(1.05);
-            text-shadow: 0 0 10px rgba(42, 245, 152, 0.5);
         }
 
         footer {
@@ -270,9 +270,9 @@
 
         /* Video Container and Results */
         .video-container {
-            margin-top: 80px;
+            margin-top: 20px;
             width: 100%;
-            max-width: 800px;
+            max-width: 100%;
             background: #1c1c1c;
             border-radius: 10px;
             overflow: hidden;
@@ -283,8 +283,9 @@
 
         .video-wrapper {
             position: relative;
-            width: 100%;
-            padding-top: 56.25%;
+            padding-bottom: 56.25%; /* 16:9 aspect ratio */
+            height: 0;
+            overflow: hidden;
         }
 
         iframe {
@@ -602,7 +603,7 @@
             border-radius: 4px;
             border: 1px solid #444;
             background-color: #1e1e1e;
-            color: var(--text-color);
+            color: var(--primary-color);
             cursor: pointer;
             transition: background-color 0.3s ease, color 0.3s ease;
         }
@@ -683,7 +684,7 @@
                 <svg xmlns="http://www.w3.org/2000/svg" width="29" height="29" viewBox="0 0 29 29" fill="none">
                     <g clip-path="url(#clip0_2_17)">
                         <g filter="url(#filter0_d_2_17)">
-                            <path d="M23.7953 23.9182L19.0585 19.1814M19.0585 19.1814C19.8188 18.4211 20.4219 17.5185 20.8333 16.5251C21.2448 15.5318 21.4566 14.4671 21.4566 13.3919C21.4566 12.3167 21.2448 11.252 20.8333 10.2587C20.4219 9.2653 19.8188 8.36271 19.0585 7.60242C18.2982 6.84214 17.3956 6.23905 16.4022 5.82759C15.4089 5.41612 14.3442 5.20435 13.269 5.20435C12.1938 5.20435 11.1291 5.41612 10.1358 5.82759C9.1424 6.23905 8.23981 6.84214 7.47953 7.60242C5.94407 9.13789 5.08145 11.2204 5.08145 13.3919C5.08145 15.5634 5.94407 17.6459 7.47953 19.1814C9.01499 20.7168 11.0975 21.5794 13.269 21.5794C15.4405 21.5794 17.523 20.7168 19.0585 19.1814Z" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" shape-rendering="crispEdges"></path>
+                            <path d="M23.7953 23.9182L19.0585 19.1814M19.0585 19.1814C19.8188 18.4211 20.4219 17.5185 20.8333 16.5251C21.2448 15.5318 21.4566 14.4671 21.4566 13.3919C21.4566 11.3167 21.2448 10.252 20.8333 9.2587C20.4219 8.2653 19.8188 7.36271 19.0585 6.60242C18.2982 6.84214 17.3956 6.23905 16.4022 5.82759C15.4089 5.41612 14.3442 5.20435 13.269 5.20435C12.1938 5.20435 11.1291 5.41612 10.1358 5.82759C9.1424 6.23905 8.23981 6.84214 7.47953 7.60242C5.94407 9.13789 5.08145 11.2204 5.08145 13.3919C5.08145 15.5634 5.94407 17.6459 7.47953 19.1814C9.01499 20.7168 11.0975 21.5794 13.269 21.5794C15.4405 21.5794 17.523 20.7168 19.0585 19.1814Z" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" shape-rendering="crispEdges"></path>
                         </g>
                     </g>
                     <defs>
@@ -914,12 +915,8 @@
         // Navigate to media item page
         function navigateToMedia(tmdbId, mediaType) {
             window.history.pushState({}, '', `/${tmdbId}`);
-            
-            if (mediaType === 'movie') {
-                handleSeriesClick(tmdbId, 'movie');
-            } else {
-                handleSeriesClick(tmdbId, mediaType);
-            }
+            handleSeriesClick(tmdbId, mediaType);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
         // Show the image gallery initially
@@ -1003,6 +1000,7 @@
             resetDropdowns();
             homeButton.style.display = 'none';
             paginationContainer.style.display = 'none';
+            window.scrollTo({ top: 0, behavior: 'smooth' });
         });
 
         // Add event listener for main title
@@ -1035,6 +1033,7 @@
             resetDropdowns();
             homeButton.style.display = 'none';
             paginationContainer.style.display = 'none';
+            window.scrollTo({ top: 0, behavior: 'smooth' });
         });
 
         // Add event listeners for toggle switches
@@ -1159,7 +1158,7 @@
             } else if (mediaType === 'anime') {
                 url = `https://api.themoviedb.org/3/discover/tv?api_key=${apiKey}&with_genres=16&sort_by=popularity.desc&with_original_language=ja`;
             } else if (mediaType === 'drama') {
-                url = `https://api.themoviedb.org/3/discover/tv?api_key=${apiKey}&with_genres=18&sort_by=popularity.desc&with_original_language=ko|zh`;
+                url = `https://api.themoviedb.org/3/discover/tv?api_key=${apiKey}&with_genres=18&sort_by=popularity.desc&with_original_language=ko`;
             } else if (mediaType === 'shows') {
                 url = `https://api.themoviedb.org/3/discover/tv?api_key=${apiKey}&with_genres=10764&sort_by=popularity.desc&with_original_language=en`;
             }
@@ -1199,18 +1198,22 @@
                 console.error('Error fetching trending content:', error);
             }
         }
-
-        // Function to handle search
+        // Function to handle search with exact match prioritization
         async function search() {
             const query = searchQueryInput.value.trim();
             resultsContainer.innerHTML = '';
             noResultsMessage.style.display = 'none';
 
+            // Show loading, hide gallery and video container
+            loadingSpinner.style.display = 'block';
+            imageContainer.style.display = 'none';
             videoContainer.style.display = 'none';
+            paginationContainer.style.display = 'none';
             hideSelectors();
             hideToggle();
 
             if (!query) {
+                loadingSpinner.style.display = 'none';
                 imageContainer.style.display = 'flex';
                 showToggle();
                 return;
@@ -1219,10 +1222,8 @@
             const apiKey = 'ea118e768e75a1fe3b53dc99c9e4de09';
             const selectedFilter = dropdownMenu.querySelector('.dropdown-item.active')?.getAttribute('data-value') || 'all';
 
-            // Update URL with search query
-            window.history.pushState({}, '', `/?s=${encodeURIComponent(query)}`);
-
-            loadingSpinner.style.display = 'block';
+            // Update URL with search query and page number
+            window.history.pushState({}, '', `/?s=${encodeURIComponent(query)}&page=${currentPage}`);
 
             let movieUrl, seriesUrl, animeUrl, dramaUrl, showsUrl;
             if (selectedFilter === 'all') {
@@ -1246,13 +1247,14 @@
                     showsUrl ? fetch(showsUrl) : Promise.resolve(null),
                 ]);
 
-                const movieData = movieResponse ? await movieResponse.json() : { results: [] };
-                const seriesData = seriesResponse ? await seriesResponse.json() : { results: [] };
-                const animeData = animeResponse ? await animeResponse.json() : { results: [] };
-                const dramaData = dramaResponse ? await dramaResponse.json() : { results: [] };
-                const showsData = showsResponse ? await showsResponse.json() : { results: [] };
+                const movieData = movieResponse ? await movieResponse.json() : { results: [], total_pages: 0 };
+                const seriesData = seriesResponse ? await seriesResponse.json() : { results: [], total_pages: 0 };
+                const animeData = animeResponse ? await animeResponse.json() : { results: [], total_pages: 0 };
+                const dramaData = dramaResponse ? await dramaResponse.json() : { results: [], total_pages: 0 };
+                const showsData = showsResponse ? await showsResponse.json() : { results: [], total_pages: 0 };
 
-                const combinedResults = [
+                // Combine all results
+                let combinedResults = [
                     ...movieData.results.map(result => ({ ...result, mediaType: 'movie' })),
                     ...seriesData.results.map(result => ({ ...result, mediaType: 'tv' })),
                     ...animeData.results.map(result => ({ ...result, mediaType: 'anime' })),
@@ -1260,6 +1262,7 @@
                     ...showsData.results.map(result => ({ ...result, mediaType: 'shows' })),
                 ];
 
+                // Remove duplicates
                 const uniqueResults = [];
                 const seenIds = new Set();
 
@@ -1270,6 +1273,7 @@
                     }
                 });
 
+                // Filter out invalid results
                 const filteredResults = uniqueResults.filter(result => {
                     const hasTitle = result.title || result.name;
                     const hasPoster = result.poster_path;
@@ -1281,40 +1285,55 @@
                     resultsContainer.innerHTML = '';
                     imageContainer.style.display = 'none';
                     noResultsMessage.style.display = 'block';
+                    loadingSpinner.style.display = 'none';
                     return;
                 }
 
+                // Sort results to prioritize exact matches
+                const lowerQuery = query.toLowerCase();
+                filteredResults.sort((a, b) => {
+                    const aTitle = (a.title || a.name || '').toLowerCase();
+                    const bTitle = (b.title || b.name || '').toLowerCase();
+                    
+                    // Exact match gets highest priority
+                    if (aTitle === lowerQuery && bTitle !== lowerQuery) return -1;
+                    if (bTitle === lowerQuery && aTitle !== lowerQuery) return 1;
+                    
+                    // Starts with query gets next priority
+                    if (aTitle.startsWith(lowerQuery) && !bTitle.startsWith(lowerQuery)) return -1;
+                    if (bTitle.startsWith(lowerQuery) && !aTitle.startsWith(lowerQuery)) return 1;
+                    
+                    // Contains query gets next priority
+                    if (aTitle.includes(lowerQuery) && !bTitle.includes(lowerQuery)) return -1;
+                    if (bTitle.includes(lowerQuery) && !aTitle.includes(lowerQuery)) return 1;
+                    
+                    // Finally sort by popularity
+                    return (b.popularity || 0) - (a.popularity || 0);
+                });
+
                 imageContainer.style.display = 'none';
 
-                totalPages = Math.ceil(filteredResults.length / resultsPerPage);
+                // Calculate total pages based on the API response with the most results
+                totalPages = Math.max(
+                    movieData.total_pages || 0,
+                    seriesData.total_pages || 0,
+                    animeData.total_pages || 0,
+                    dramaData.total_pages || 0,
+                    showsData.total_pages || 0
+                );
 
+                // Ensure currentPage doesn't exceed totalPages
                 if (currentPage > totalPages) {
                     currentPage = totalPages;
+                    // If we're beyond the last page, search again with the corrected page number
+                    if (currentPage > 0) {
+                        search();
+                        return;
+                    }
                 }
 
-                const startIndex = (currentPage - 1) * resultsPerPage;
-                const endIndex = startIndex + resultsPerPage;
-                let paginatedResults = filteredResults.slice(startIndex, endIndex);
-
-                if (paginatedResults.length < resultsPerPage && currentPage < totalPages) {
-                    const nextPage = currentPage + 1;
-                    const nextPageUrl = `https://api.themoviedb.org/3/search/multi?api_key=${apiKey}&query=${encodeURIComponent(query)}&page=${nextPage}`;
-                    const nextPageResponse = await fetch(nextPageUrl);
-                    const nextPageData = await nextPageResponse.json();
-
-                    const additionalResults = nextPageData.results
-                        .filter(result => {
-                            const hasTitle = result.title || result.name;
-                            const hasPoster = result.poster_path;
-                            const year = new Date(result.release_date || result.first_air_date).getFullYear();
-                            return hasTitle && hasPoster && !isNaN(year);
-                        })
-                        .slice(0, resultsPerPage - paginatedResults.length);
-
-                    paginatedResults = [...paginatedResults, ...additionalResults];
-                }
-
-                paginatedResults.forEach(result => {
+                // Display the current page's results
+                filteredResults.forEach(result => {
                     const item = document.createElement('div');
                     item.className = 'gallery-item';
                     item.tabIndex = 0;
@@ -1329,14 +1348,12 @@
                             clearSearchText();
                             navigateToMedia(result.id, result.mediaType);
                             resultsContainer.innerHTML = '';
-                            videoContainer.scrollIntoView({ behavior: 'smooth' });
                         };
                         item.addEventListener('keydown', (event) => {
                             if (event.key === 'Enter') {
                                 clearSearchText();
                                 navigateToMedia(result.id, result.mediaType);
                                 resultsContainer.innerHTML = '';
-                                videoContainer.scrollIntoView({ behavior: 'smooth' });
                             }
                         });
                         resultsContainer.appendChild(item);
@@ -1344,21 +1361,29 @@
                 });
 
                 updatePagination();
-                paginationContainer.style.display = 'flex';
+                loadingSpinner.style.display = 'none';
+                
+                // Always show pagination if there are multiple pages
+                if (totalPages > 1) {
+                    paginationContainer.style.display = 'flex';
+                }
             } catch (error) {
                 console.error('Error fetching data:', error);
                 resultsContainer.innerHTML = '';
-            } finally {
                 loadingSpinner.style.display = 'none';
+                noResultsMessage.style.display = 'block';
             }
         }
 
         // Function to update pagination buttons
         function updatePagination() {
-            paginationContainer.style.display = totalPages > 1 ? 'flex' : 'none';
-            pageInfo.textContent = `Page ${currentPage}`;
+            pageInfo.textContent = `Page ${currentPage} of ${totalPages}`;
             prevPageButton.disabled = currentPage === 1;
             nextPageButton.disabled = currentPage === totalPages;
+            
+            // Show both buttons even on last page
+            prevPageButton.style.display = 'block';
+            nextPageButton.style.display = 'block';
         }
 
         // Function to embed video
@@ -1438,6 +1463,7 @@
             videoFrame.src = embedUrl;
             videoContainer.style.display = 'block';
             resultsContainer.innerHTML = '';
+            window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
         async function fetchSeasons(mediaId) {
