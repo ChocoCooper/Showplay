@@ -124,6 +124,15 @@
         .video-page.active { 
             display: block; 
         }
+        .video-header { 
+            display: flex; 
+            align-items: center; 
+            padding: 10px 5px; 
+            background: rgba(0, 0, 0, 0.9); 
+            position: relative; 
+            z-index: 20; 
+            width: 100%; 
+        }
         .video-wrapper { 
             position: relative; 
             padding-bottom: 56.25%; 
@@ -207,6 +216,10 @@
     </div>
 
     <div class="video-page" id="videoPage">
+        <div class="video-header">
+            <i class="fas fa-arrow-left back-arrow" id="videoBackArrow"></i>
+            <p class="media-title" id="videoMediaTitle"></p>
+        </div>
         <div class="video-wrapper">
             <iframe id="videoFrame" src="" allow="fullscreen" allowfullscreen aria-label="Video Player"></iframe>
         </div>
@@ -304,6 +317,8 @@
             const videoPage = $('#videoPage');
             const videoFrame = $('#videoFrame');
             const closeButton = $('#closeButton');
+            const videoBackArrow = $('#videoBackArrow');
+            const videoMediaTitle = $('#videoMediaTitle');
             const selectorContainer = $('#selectorContainer');
             const seasonSelector = $('#seasonSelector');
             const episodeSelector = $('#episodeSelector');
@@ -378,6 +393,8 @@
                 } else if (path.startsWith('/tv/')) {
                     const tmdbId = path.split('/tv/')[1];
                     if (tmdbId) handleSeriesClick(tmdbId, 'tv');
+                } else {
+                    loadHomepage(); // Fallback to homepage for invalid paths
                 }
             }
 
@@ -464,7 +481,7 @@
                 lastSelectedEpisode = null;
             }
 
-            function handleSeriesClick(mediaId, mediaType, title = null, poster = null, year = null) {
+            async function handleSeriesClick(mediaId, mediaType, title = null, poster = null, year = null) {
                 console.log('Handling series click:', mediaId, mediaType);
                 currentMediaId = mediaId;
                 currentMediaType = mediaType;
@@ -474,35 +491,54 @@
                 homepage.hide();
                 mainTitle.hide();
                 searchIcon.hide();
-                backArrow.show();
-                mediaTitle.show();
+                backArrow.hide();
+                mediaTitle.hide();
+                videoBackArrow.show();
+                videoMediaTitle.show();
                 footer.hide();
 
                 if (title && year) {
                     const yearOnly = year.split('-')[0];
-                    mediaTitle.text(`${title}\n(${yearOnly})`);
+                    videoMediaTitle.text(`${title}\n(${yearOnly})`);
                 } else {
-                    mediaTitle.text('Loading...');
+                    videoMediaTitle.text('Loading...');
                 }
 
-                if (mediaType === 'movie') {
-                    embedVideo(mediaId, 'movie');
-                    fetchMediaDetails(mediaId, 'movie');
-                } else {
-                    fetchSeasons(mediaId);
-                    fetchMediaDetails(mediaId, 'tv');
-                    if (title && poster && year) {
-                        videoPage.data('title', title);
-                        videoPage.data('poster', poster);
-                        videoPage.data('year', year);
+                try {
+                    if (mediaType === 'movie') {
+                        embedVideo(mediaId, 'movie');
+                        await fetchMediaDetails(mediaId, 'movie');
+                    } else {
+                        await fetchSeasons(mediaId);
+                        await fetchMediaDetails(mediaId, 'tv');
+                        if (title && poster && year) {
+                            videoPage.data('title', title);
+                            videoPage.data('poster', poster);
+                            videoPage.data('year', year);
+                        }
                     }
+                    showSelectors();
+                    loadingOverlay.fadeOut(300, function() {
+                        $(this).remove();
+                    });
+                } catch (error) {
+                    console.error('Error loading media:', error);
+                    videoMediaTitle.text('Error Loading Media');
+                    loadingOverlay.html('<div class="error-message">Failed to load media. Please try again later.</div>');
                 }
 
-                showSelectors();
                 $('body').css('overflow-y', 'auto');
             }
 
             closeButton.on('click', function() {
+                navigateToHomepage();
+            });
+
+            videoBackArrow.on('click', function() {
+                navigateToHomepage();
+            });
+
+            function navigateToHomepage() {
                 window.history.pushState({}, '', '/');
                 videoPage.removeClass('active').hide();
                 videoFrame.attr('src', '');
@@ -512,11 +548,13 @@
                 searchIcon.show();
                 backArrow.hide();
                 mediaTitle.hide();
+                videoBackArrow.hide();
+                videoMediaTitle.hide();
                 previewSection.show();
                 footer.show();
                 startPreviewSlideshow();
                 window.scrollTo({ top: 0, behavior: 'smooth' });
-            });
+            }
 
             function setupBackArrow() {
                 backArrow.on('click', function() {
@@ -537,6 +575,8 @@
                         searchIcon.show();
                         backArrow.hide();
                         mediaTitle.hide();
+                        videoBackArrow.hide();
+                        videoMediaTitle.hide();
                         previewSection.show();
                         footer.show();
                         startPreviewSlideshow();
@@ -626,12 +666,15 @@
                     mediaDetailsTitle.text(title);
                     mediaYearGenre.text(`${year} | ${genres}`);
                     mediaPlot.text(plot);
+                    videoMediaTitle.text(`${title}\n(${year})`);
                 } catch (error) {
                     console.error('Error fetching media details:', error);
                     mediaPoster.attr('src', fallbackPoster);
                     mediaDetailsTitle.text('Error Loading Details');
                     mediaYearGenre.text('N/A');
                     mediaPlot.text('Unable to load media details.');
+                    videoMediaTitle.text('Error Loading Media');
+                    throw error;
                 }
             }
 
@@ -645,7 +688,7 @@
                     const year = videoPage.data('year');
                     if (title && year) {
                         const yearOnly = year.split('-')[0];
-                        mediaTitle.text(`${title}\n(${yearOnly})`);
+                        videoMediaTitle.text(`${title}\n(${yearOnly})`);
                     }
                     switch (selectedServer) {
                         case 'https://vidfast.pro': embedUrl = `${selectedServer}/movie/${mediaId}`; break;
@@ -679,7 +722,7 @@
 
                 try {
                     const response = await fetch(url);
-                    if (!response.ok) return;
+                    if (!response.ok) throw new Error('Failed to fetch seasons');
                     const data = await response.json();
                     seasonsData = data.seasons.filter(season => season.season_number > 0);
 
@@ -688,7 +731,7 @@
                     videoPage.data('year', data.first_air_date || '');
 
                     const yearOnly = data.first_air_date ? data.first_air_date.split('-')[0] : '';
-                    mediaTitle.text(`${data.name}\n(${yearOnly})`);
+                    videoMediaTitle.text(`${data.name}\n(${yearOnly})`);
 
                     seasonGrid.empty();
                     seasonsData.forEach(season => {
@@ -714,6 +757,7 @@
                 } catch (error) {
                     console.error('Error fetching seasons:', error);
                     seasonGrid.empty();
+                    throw error;
                 }
             }
 
@@ -722,7 +766,7 @@
 
                 try {
                     const response = await fetch(url);
-                    if (!response.ok) return;
+                    if (!response.ok) throw new Error('Failed to fetch episodes');
                     const data = await response.json();
                     episodesData = data.episodes;
 
@@ -746,6 +790,7 @@
                 } catch (error) {
                     console.error('Error fetching episodes:', error);
                     episodeGrid.empty();
+                    throw error;
                 }
             }
 
@@ -902,7 +947,7 @@
             function startPreviewSlideshow() {
                 previewInterval = setInterval(() => {
                     currentPreviewIndex = (currentPreviewIndex + 1) % trendingMovies.length;
-                    updatePreviewContent(current県PreviewIndex);
+                    updatePreviewContent(currentPreviewIndex);
                 }, 6000);
             }
 
