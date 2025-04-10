@@ -4,14 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>Streamzy</title>
-    <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
-    <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;700&display=swap" rel="stylesheet">
     <link rel="preload" href="https://cdn.jsdelivr.net/gh/ChocoCooper/Streamzy@main/Sevarothz.woff2" as="font" type="font/woff2" crossorigin="anonymous">
-    <!-- Favicon -->
     <link rel="icon" type="image/x-icon" href="https://raw.githubusercontent.com/ChocoCooper/Streamzy/refs/heads/main/favicon.ico">
     <link rel="apple-touch-icon" sizes="180x180" href="https://raw.githubusercontent.com/ChocoCooper/Streamzy/refs/heads/main/apple-touch-icon.png">
     <link rel="manifest" href="https://raw.githubusercontent.com/ChocoCooper/Streamzy/refs/heads/main/manifest.json">
@@ -51,7 +47,7 @@
             padding-bottom: 40px;
             overflow-x: hidden;
             background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAAXNSR0IArs4c6QAAACJJREFUKFNjZICC/////6f/nyH8//8/AwgYGBgYGBj8P/8/AJ0BCwU8y8MAAAAASUVORK5CYII=');
-            visibility: hidden; /* Hidden until loaded */
+            visibility: hidden;
         }
 
         body.loaded {
@@ -85,16 +81,15 @@
             100% { transform: rotate(360deg); }
         }
 
-        /* Rest of your existing CSS remains unchanged */
         .container { max-width: 100%; padding: 0; margin: 0; }
-        .header { display: flex; align-items: center; padding: 10px 5px; background: rgba(0, 0, 0, 0.9); position: relative; z-index: 20; width: 100%; }
+        .header { display: flex; align-items: center; padding: 10px 5px; background: rgba(0, 0, 0, 0.9); position: fixed; top: 0; left: 0; right: 0; z-index: 20; width: 100%; }
         .header-content { display: flex; align-items: center; flex: 1; overflow: hidden; }
         h1 { font-family: 'Sevarothz', sans-serif; color: var(--primary-color); font-weight: normal; font-size: 1.75rem; margin-top: 14px; margin-left: 18px; }
         .search-icon { margin-left: auto; color: var(--primary-color); font-size: 1.5rem; cursor: pointer; margin-right: 15px; transition: transform 0.3s ease; }
         .back-arrow { color: var(--primary-color); font-size: 1.25rem; cursor: pointer; margin-left: 15px; margin-right: 20px; margin-top: 2px; transition: transform 0.3s ease; order: 0; }
         .back-arrow:hover { transform: scale(1.1); }
         .media-title { font-family: 'Lexend', sans-serif; color: var(--text-color); font-size: 1rem; margin: 0; margin-left: 5px; margin-top: 1.5px; white-space: pre-wrap; overflow: hidden; text-overflow: ellipsis; max-width: calc(100% - 60px); }
-        .search-container { width: 100%; background: rgba(0, 0, 0, 0.95); padding: 2px 20px; display: none; z-index: 19; }
+        .search-container { width: 100%; background: rgba(0, 0, 0, 0.95); padding: 2px 20px; display: none; z-index: 19; position: fixed; top: 60px; left: 0; }
         .search-container.active { display: block; }
         .search-box { width: 100%; max-width: 300px; padding: 4px 12px; font-size: 1rem; border: 1px solid var(--primary-color); border-radius: 5px; background: #222; color: var(--text-color); outline: none; margin: 0 auto; display: block; }
         .search-results { margin-top: 10px; max-height: 300px; overflow-y: auto; width: 100%; max-width: 500px; margin-left: auto; margin-right: auto; }
@@ -104,7 +99,7 @@
         .search-result-info { flex: 1; }
         .search-result-title { font-size: 0.9rem; color: var(--text-color); }
         .search-result-year { font-size: 0.8rem; color: #aaa; }
-        .preview-section { position: relative; width: 100vw; padding-bottom: 56.25%; height: auto; overflow: hidden; margin-bottom: 30px; left: 50%; right: 50%; margin-left: -50vw; margin-right: -50vw; background: #000; box-shadow: inset 0 -30px 30px -20px rgba(0, 0, 0, 0.8); transition: top 0.3s ease; }
+        .preview-section { position: relative; width: 100vw; padding-bottom: 56.25%; height: auto; overflow: hidden; margin-bottom: 30px; left: 50%; right: 50%; margin-left: -50vw; margin-right: -50vw; background: #000; box-shadow: inset 0 -30px 30px -20px rgba(0, 0, 0, 0.8); }
         .preview-background { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; transition: opacity 1s ease; z-index: 1; opacity: 0; }
         .preview-background.active { opacity: 1; }
         .preview-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(to top, rgba(0, 0, 0,0.9) 0%, rgba(0, 0, 0, 0) 50%); z-index: 2; }
@@ -113,13 +108,63 @@
         .preview-genres { font-size: 0.7rem; color: rgba(255, 255, 255, 0.8); margin: 5px 0; opacity: 0; animation: fadeIn 1s forwards 0.7s; }
         .preview-buttons { display: flex; gap: 10px; z-index: 3; }
         .preview-btn { padding: 6px 15px; margin-bottom: -30px; border-radius: 8px; background-color: var(--primary-color); color: black; border: none; font-size: 0.85rem; font-weight: 700; cursor: pointer; transition: all 0.3s ease; }
-        .video-container { position: fixed; top: 0; left: 0; right: 0; width: 100%; background: #000; z-index: 15; transform: translateY(-100%); visibility: hidden; }
-        .video-container.active { transform: translateY(0); visibility: visible; }
-        .video-wrapper { position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; background: #000; }
-        iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; background: #000; }
-        .close-button { position: absolute; top: 8px; right: 8px; background: rgba(0, 0, 0, 0.7); color: #fff; border: none; border-radius: 50%; width: 30px; height: 30px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 16px; z-index: 10; }
-        .selector-container { position: fixed; top: -100%; left: 0; right: 0; width: 100%; background: transparent; padding: 5px; z-index: 14; display: none; }
-        .selector-container.active { display: block; }
+        
+        /* Updated video container styles */
+        .video-container { 
+            position: relative;
+            width: 100%;
+            background: #000;
+            z-index: 15;
+            transition: all 0.3s ease;
+        }
+        .video-container.active {
+            margin-top: 60px; /* Space for fixed header */
+        }
+        .video-wrapper { 
+            position: relative; 
+            padding-bottom: 56.25%; 
+            height: 0; 
+            overflow: hidden; 
+            background: #000; 
+        }
+        iframe { 
+            position: absolute; 
+            top: 0; 
+            left: 0; 
+            width: 100%; 
+            height: 100%; 
+            border: none; 
+            background: #000; 
+        }
+        .close-button { 
+            position: absolute; 
+            top: 8px; 
+            right: 8px; 
+            background: rgba(0, 0, 0, 0.7); 
+            color: #fff; 
+            border: none; 
+            border-radius: 50%; 
+            width: 30px; 
+            height: 30px; 
+            cursor: pointer; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            font-size: 16px; 
+            z-index: 10; 
+        }
+        .selector-container { 
+            position: relative; 
+            width: 100%; 
+            background: transparent; 
+            padding: 5px; 
+            z-index: 14; 
+            display: none; 
+        }
+        .selector-container.active { 
+            display: block; 
+        }
+        
         .selector-title { color: var(--primary-color); font-size: 1rem; margin-left: 10px; margin-bottom: 8px; font-weight: 700; }
         .server-buttons { display: flex; flex-wrap: wrap; justify-content: center; margin-top: 8px; margin-bottom: 25px; gap: 6px; }
         .season-buttons { display: flex; flex-wrap: wrap; margin-left: 11px; margin-bottom: 25px; gap: 6px; max-height: 66px; overflow-y: auto; }
@@ -155,12 +200,10 @@
     </style>
 </head>
 <body>
-    <!-- Loading Overlay -->
     <div class="loading-overlay" id="loadingOverlay">
         <div class="loading-spinner"></div>
     </div>
 
-    <!-- Rest of your HTML remains largely unchanged -->
     <div class="video-container" id="videoContainer">
         <div class="video-wrapper">
             <iframe id="videoFrame" src="" allow="fullscreen" allowfullscreen aria-label="Video Player"></iframe>
@@ -253,9 +296,7 @@
         </footer>
     </div>
 
-    <!-- Bootstrap Bundle with Popper -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-    <!-- jQuery -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script>
         $(document).ready(function() {
@@ -302,8 +343,6 @@
             let trendingMovies = [];
             let currentPreviewIndex = 0;
             let previewInterval;
-            let lastScrollPosition = 0;
-            let videoHeightOffset = 0;
 
             const serverOptions = [
                 { name: "Server 1", url: "https://vidfast.pro" },
@@ -319,7 +358,6 @@
             function init() {
                 initializeServerSelector();
                 checkRouteAndLoad();
-                adjustVideoPosition();
                 setupSearch();
                 setupBackArrow();
                 setupRouteHandling();
@@ -357,52 +395,6 @@
                     console.error('Error loading homepage:', error);
                     loadingOverlay.html('<div class="error-message">Failed to load content</div>');
                 }
-            }
-
-            function adjustVideoPosition() {
-                const headerHeight = $('.header').outerHeight();
-                videoHeightOffset = headerHeight;
-                videoContainer.css('top', `${headerHeight}px`);
-                selectorContainer.data('offset', headerHeight + videoContainer.find('.video-wrapper').outerHeight());
-
-                document.addEventListener('fullscreenchange', () => {
-                    const isFullscreen = !!document.fullscreenElement;
-                    const videoWasActive = videoContainer.hasClass('active');
-
-                    if (!isFullscreen && videoWasActive) {
-                        videoContainer.addClass('active').css({
-                            'transform': 'translateY(0)',
-                            'visibility': 'visible'
-                        });
-                        showSelectors();
-                        $('.media-slider-section').hide();
-                        mainTitle.hide();
-                        searchIcon.hide();
-                        backArrow.show();
-                        mediaTitle.show();
-                        previewSection.hide();
-                        window.scrollTo(0, lastScrollPosition);
-                    } else if (isFullscreen) {
-                        lastScrollPosition = window.scrollY || window.pageYOffset;
-                        videoContainer.css('z-index', 1000);
-                    } else {
-                        videoContainer.removeClass('active').css({
-                            'transform': `translateY(-100%)`,
-                            'visibility': 'hidden',
-                            'z-index': 15
-                        });
-                        videoFrame.attr('src', '');
-                        hideSelectors();
-                        $('.media-slider-section').show();
-                        mainTitle.show();
-                        searchIcon.show();
-                        backArrow.hide();
-                        mediaTitle.hide();
-                        previewSection.show();
-                        startPreviewSlideshow();
-                        window.scrollTo(0, lastScrollPosition);
-                    }
-                });
             }
 
             function initializeServerSelector() {
@@ -444,14 +436,10 @@
 
             function hideSelectors() {
                 selectorContainer.removeClass('active').hide();
-                seasonSelector.hide();
-                episodeSelector.hide();
-                mediaDetails.removeClass('active').hide();
             }
 
             function showSelectors() {
-                const videoHeight = videoContainer.find('.video-wrapper').outerHeight();
-                selectorContainer.addClass('active').css('top', `${videoHeightOffset + videoHeight}px`).show();
+                selectorContainer.addClass('active').show();
                 if (currentMediaType === 'tv') {
                     seasonSelector.show();
                     episodeSelector.show();
@@ -473,10 +461,7 @@
                 currentMediaType = mediaType;
                 resetSelectors();
                 videoFrame.attr('src', '');
-                videoContainer.addClass('active').css({
-                    'transform': 'translateY(0)',
-                    'visibility': 'visible'
-                });
+                videoContainer.addClass('active');
                 $('.media-slider-section').hide();
                 mainTitle.hide();
                 searchIcon.hide();
@@ -504,14 +489,12 @@
                 }
 
                 showSelectors();
+                $('body').css('overflow-y', 'auto'); // Ensure scrolling is enabled
             }
 
             closeButton.on('click', function() {
                 window.history.pushState({}, '', '/');
-                videoContainer.removeClass('active').css({
-                    'transform': `translateY(-100%)`,
-                    'visibility': 'hidden'
-                });
+                videoContainer.removeClass('active');
                 videoFrame.attr('src', '');
                 hideSelectors();
                 $('.media-slider-section').show();
@@ -534,10 +517,7 @@
                 window.onpopstate = function(event) {
                     const path = window.location.pathname;
                     if (path === '/' || path === '') {
-                        videoContainer.removeClass('active').css({
-                            'transform': `translateY(-100%)`,
-                            'visibility': 'hidden'
-                        });
+                        videoContainer.removeClass('active');
                         videoFrame.attr('src', '');
                         hideSelectors();
                         $('.media-slider-section').show();
@@ -670,18 +650,12 @@
                     }
                 } else {
                     videoFrame.attr('src', '');
-                    videoContainer.addClass('active').css({
-                        'transform': 'translateY(0)',
-                        'visibility': 'visible'
-                    });
+                    videoContainer.addClass('active');
                     return;
                 }
 
                 videoFrame.attr('src', embedUrl);
-                videoContainer.addClass('active').css({
-                    'transform': 'translateY(0)',
-                    'visibility': 'visible'
-                });
+                videoContainer.addClass('active');
                 showSelectors();
                 window.scrollTo({ top: 0, behavior: 'smooth' });
             }
@@ -987,8 +961,6 @@
                     }
                 }, 300));
             }
-
-            $(window).on('resize', adjustVideoPosition);
 
             init();
         });
