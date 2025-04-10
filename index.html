@@ -402,6 +402,28 @@
                 console.log('Loading homepage...');
                 homepage.show();
                 videoPage.hide();
+                mainTitle.show();
+                searchIcon.show();
+                backArrow.hide();
+                mediaTitle.hide();
+                videoBackArrow.hide();
+                videoMediaTitle.hide();
+                previewSection.show();
+                footer.show();
+
+                // Clear existing content to avoid duplication
+                moviesSlider.empty();
+                tvSlider.empty();
+                animeSlider.empty();
+                kdramaSlider.empty();
+                previewSection.find('.preview-background').remove();
+
+                // Show loading overlay if not already present
+                if (!document.querySelector('.loading-overlay')) {
+                    $('body').append('<div class="loading-overlay" id="loadingOverlay"><div class="loading-spinner"></div></div>');
+                }
+                const loadingOverlay = $('#loadingOverlay');
+
                 try {
                     const fetchPromises = [
                         fetchTrending('movie', 'moviesSliderContainer'),
@@ -415,7 +437,6 @@
                     loadingOverlay.fadeOut(300, function() {
                         $(this).remove();
                     });
-                    footer.show();
                 } catch (error) {
                     console.error('Error loading homepage:', error);
                     loadingOverlay.html('<div class="error-message">Failed to load content. Please try again later.</div>');
@@ -504,6 +525,13 @@
                     videoMediaTitle.text('Loading...');
                 }
 
+                // Show loading overlay
+                if (!document.querySelector('.loading-overlay')) {
+                    $('body').append('<div class="loading-overlay" id="loadingOverlay"><div class="loading-spinner"></div></div>');
+                }
+                const loadingOverlay = $('#loadingOverlay');
+                loadingOverlay.show();
+
                 try {
                     if (mediaType === 'movie') {
                         embedVideo(mediaId, 'movie');
@@ -543,17 +571,7 @@
                 videoPage.removeClass('active').hide();
                 videoFrame.attr('src', '');
                 hideSelectors();
-                homepage.show();
-                mainTitle.show();
-                searchIcon.show();
-                backArrow.hide();
-                mediaTitle.hide();
-                videoBackArrow.hide();
-                videoMediaTitle.hide();
-                previewSection.show();
-                footer.show();
-                startPreviewSlideshow();
-                window.scrollTo({ top: 0, behavior: 'smooth' });
+                loadHomepage(); // Re-fetch homepage data
             }
 
             function setupBackArrow() {
@@ -570,17 +588,7 @@
                         videoPage.removeClass('active').hide();
                         videoFrame.attr('src', '');
                         hideSelectors();
-                        homepage.show();
-                        mainTitle.show();
-                        searchIcon.show();
-                        backArrow.hide();
-                        mediaTitle.hide();
-                        videoBackArrow.hide();
-                        videoMediaTitle.hide();
-                        previewSection.show();
-                        footer.show();
-                        startPreviewSlideshow();
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                        loadHomepage(); // Re-fetch homepage data
                     } else if (path.startsWith('/movie/')) {
                         const tmdbId = path.split('/movie/')[1];
                         if (tmdbId) handleSeriesClick(tmdbId, 'movie');
