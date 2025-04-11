@@ -737,7 +737,7 @@
                 } else if (mediaType === 'tv') {
                     url = `https://api.themoviedb.org/3/trending/tv/week?api_key=${apiKey}`;
                 } else if (mediaType === 'anime') {
-                    url = `https://api.themoviedb.org/3/discover/tv?api_key=${apiKey}&with_genres=16&sort_by=popularity.desc&with_original_language=ja&vote_average.gte=8&vote_count.gte=200&first_air_date.gte=2020-01-01`;
+                    url = `https://api.themoviedb.org/3/discover/tv?api_key=${apiKey}&with_genres=16&sort_by=popularity.desc&with_original_language=ja&vote_average.gte=8&vote_count.gte=1000&first_air_date.gte=1990-01-01`;
                 } else if (mediaType === 'kdrama') {
                     url = `https://api.themoviedb.org/3/discover/tv?api_key=${apiKey}&with_original_language=ko&sort_by=first_air_date.desc&vote_average.gte=8&vote_count.gte=100&first_air_date.gte=2022-01-01`;
                 }
