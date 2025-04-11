@@ -122,9 +122,9 @@
         }
         .preview-background { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; transition: opacity 1s ease; z-index: 1; opacity: 0; }
         .preview-background.active { opacity: 1; }
-        .preview-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(to top, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0) 50%); z-index: 2; }
+        .preview-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(to top, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0.3) 50%, transparent 100%); z-index: 2; }
         .preview-content { position: absolute; bottom: 30px; left: 0; width: 100%; padding: 0 15px; z-index: 3; max-width: none; }
-        .preview-title img { max-height: 60px; max-width: 50%; width: auto; opacity: 0; animation: fadeIn 1s forwards; }
+        .preview-title img { max-height: 60px; max-width: 50%; width: auto; opacity: 0; animation: fadeIn 0.8s ease forwards; }
         .preview-genres { font-size: 0.7rem; color: rgba(255, 255, 255, 0.8); margin: 5px 0; opacity: 0; animation: fadeIn 1s forwards 0.7s; }
         .preview-buttons { display: flex; gap: 10px; z-index: 3; }
         .preview-btn { padding: 6px 12px; margin-bottom: -30px; border-radius: 8px; background-color: var(--primary-color); color: black; border: none; font-size: 0.85rem; font-weight: 700; cursor: pointer; transition: all 0.3s ease; }
@@ -240,7 +240,7 @@
             .media-details .title { font-size: 1.2rem; }
             .media-details .year-genre, .media-details .plot { font-size: 0.85rem; }
         }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px);} to { opacity: 1; transform: translateY(0);} }
     </style>
 </head>
 <body>
@@ -739,7 +739,7 @@
                 } else if (mediaType === 'anime') {
                     url = `https://api.themoviedb.org/3/discover/tv?api_key=${apiKey}&with_genres=16&sort_by=popularity.desc&with_original_language=ja&vote_average.gte=8&vote_count.gte=1000&first_air_date.gte=1990-01-01`;
                 } else if (mediaType === 'kdrama') {
-                    url = `https://api.themoviedb.org/3/discover/tv?api_key=${apiKey}&with_original_language=ko&sort_by=first_air_date.desc&vote_average.gte=8&vote_count.gte=100&first_air_date.gte=2022-01-01`;
+                    url = `https://api.themoviedb.org/3/discover/tv?api_key=${apiKey}&with_original_language=ko&sort_by=popularity.desc&sort_by=first_air_date.desc&vote_average.gte=7&vote_count.gte=100&first_air_date.gte=2020-01-01`;
                 }
 
                 try {
