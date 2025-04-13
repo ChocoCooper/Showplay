@@ -543,7 +543,7 @@
             function addToRecentlyWatched(tmdbId, mediaType, title, poster, year, season = null, episode = null) {
                 if (mediaType === 'tv' && (!season || !episode)) return;
 
-                const uniqueKey = mediaType === 'tv' ? tmdbId : tmdbId; // Use tmdbId as key for TV to avoid duplicates
+                const uniqueKey = mediaType === 'tv' ? tmdbId : tmdbId;
                 const existingIndex = recentlyWatched.findIndex(item => 
                     item.id === tmdbId && item.type === mediaType
                 );
@@ -560,7 +560,7 @@
                 };
 
                 if (existingIndex !== -1) {
-                    recentlyWatched[existingIndex] = newItem; // Update existing entry
+                    recentlyWatched[existingIndex] = newItem;
                 } else {
                     recentlyWatched.unshift(newItem);
                     recentlyWatched = recentlyWatched.slice(0, 10);
@@ -894,7 +894,26 @@
                     return;
                 }
 
-                videoFrame.attr('src', embedUrl);
+                // Apply sandbox to restrict redirects and pop-ups
+                videoFrame.attr({
+                    'src': embedUrl,
+                    'sandbox': 'allow-scripts allow-same-origin allow-forms',
+                    'allow': 'fullscreen',
+                    'allowfullscreen': true,
+                    'aria-label': 'Video Player'
+                });
+
+                // Handle iframe loading errors (e.g., server blocking sandbox)
+                videoFrame.off('error').on('error', function() {
+                    videoFrame.attr('src', ''); // Clear the iframe
+                    videoPage.find('.video-wrapper').html(
+                        `<div class="error-message">
+                            This server may block playback due to security restrictions.  Try another server or install an ad blocker like <a href="https://ublockorigin.com" target="_blank">uBlock Origin</a> for a better experience.
+                        </div>`
+                    );
+                    console.error('Iframe loading failed for URL:', embedUrl);
+                });
+
                 videoPage.addClass('active');
                 showSelectors(mediaType);
                 window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -964,7 +983,7 @@
                     return;
                 }
 
-                const url = `https://api.themoviedb.org/3/tv/${mediaId}/season/${seasonNumber}?api_key=${apiKey}`;
+                const url = `https://api.themoivedb.org/3/tv/${mediaId}/season/${seasonNumber}?api_key=${apiKey}`;
                 try {
                     const response = await fetch(url);
                     if (!response.ok) throw new Error(`Failed to fetch episodes: ${response.status}`);
