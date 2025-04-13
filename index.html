@@ -390,6 +390,9 @@
             let currentEpisode = null;
             let seasonsData = [];
             let episodesData = [];
+            let cachedMediaDetails = {};
+            let cachedSeasons = {};
+            let cachedEpisodes = {};
             let trendingMovies = [];
             let currentPreviewIndex = parseInt(localStorage.getItem('previewIndex')) || 0;
             let previewInterval = null;
@@ -414,7 +417,6 @@
                 setupSearch();
                 setupBackArrow();
                 setupRouteHandling();
-                setupEpisodeTracking();
 
                 setTimeout(() => {
                     console.warn('Initialization timeout reached');
@@ -540,10 +542,9 @@
             function addToRecentlyWatched(tmdbId, mediaType, title, poster, year, season = null, episode = null) {
                 if (mediaType === 'tv' && (!season || !episode)) return;
 
-                const uniqueKey = mediaType === 'tv' ? `${tmdbId}-${season}-${episode}` : tmdbId;
+                const uniqueKey = mediaType === 'tv' ? tmdbId : tmdbId; // Use tmdbId as key for TV to avoid duplicates
                 const existingIndex = recentlyWatched.findIndex(item => 
-                    item.id === tmdbId && item.type === mediaType && 
-                    (mediaType === 'movie' || (item.season === season && item.episode === episode))
+                    item.id === tmdbId && item.type === mediaType
                 );
                 const newItem = {
                     id: tmdbId,
@@ -558,7 +559,7 @@
                 };
 
                 if (existingIndex !== -1) {
-                    recentlyWatched[existingIndex] = newItem;
+                    recentlyWatched[existingIndex] = newItem; // Update existing entry
                 } else {
                     recentlyWatched.unshift(newItem);
                     recentlyWatched = recentlyWatched.slice(0, 10);
@@ -645,7 +646,6 @@
                 currentMediaType = mediaType;
                 currentSeason = season;
                 currentEpisode = episode;
-                resetSelectors();
                 videoFrame.attr('src', '');
                 videoPage.addClass('active').show();
                 homepage.hide();
@@ -674,12 +674,12 @@
                         embedVideo(mediaId, 'movie');
                         await fetchMediaDetails(mediaId, 'movie');
                     } else {
-                        await fetchSeasons(mediaId);
+                        await loadSeasons(mediaId);
                         await fetchMediaDetails(mediaId, 'tv');
                         if (season && episode) {
                             embedVideo(mediaId, 'tv', season, episode);
                             $(`.season-btn[data-value="${season}"]`).addClass('active');
-                            await fetchEpisodes(mediaId, season);
+                            await loadEpisodes(mediaId, season);
                             $(`.episode-btn[data-value="${episode}"]`).addClass('active');
                         }
                         if (title && poster && year) {
@@ -746,45 +746,6 @@
                         }
                     }
                 };
-            }
-
-            function setupEpisodeTracking() {
-                videoFrame.on('load', function() {
-                    const iframe = videoFrame[0];
-                    try {
-                        const iframeWindow = iframe.contentWindow;
-                        if (iframeWindow && currentMediaType === 'tv') {
-                            // Simulate next episode detection (since we can't directly access third-party iframe events)
-                            // In a real scenario, this would depend on the server's API or custom player events
-                            $(iframeWindow).on('message', function(event) {
-                                if (event.data && event.data.type === 'nextEpisode') {
-                                    const nextEpisode = currentEpisode + 1;
-                                    if (episodesData.some(ep => ep.episode_number === nextEpisode)) {
-                                        updateEpisodeSelection(nextEpisode);
-                                    }
-                                }
-                            });
-                        }
-                    } catch (e) {
-                        console.warn('Cannot access iframe content for episode tracking:', e);
-                    }
-                });
-            }
-
-            function updateEpisodeSelection(episodeNumber) {
-                currentEpisode = episodeNumber;
-                $('.episode-btn').removeClass('active');
-                $(`.episode-btn[data-value="${episodeNumber}"]`).addClass('active');
-                embedVideo(currentMediaId, 'tv', currentSeason, episodeNumber);
-                navigateToMedia(
-                    currentMediaId, 
-                    'tv', 
-                    videoPage.data('title'), 
-                    videoPage.data('poster'), 
-                    videoPage.data('year'), 
-                    currentSeason, 
-                    episodeNumber
-                );
             }
 
             async function fetchTrending(mediaType, sliderId) {
@@ -861,23 +822,19 @@
             }
 
             async function fetchMediaDetails(mediaId, mediaType) {
+                if (cachedMediaDetails[`${mediaType}-${mediaId}`]) {
+                    const data = cachedMediaDetails[`${mediaType}-${mediaId}`];
+                    applyMediaDetails(data);
+                    return;
+                }
+
                 const url = `https://api.themoviedb.org/3/${mediaType}/${mediaId}?api_key=${apiKey}`;
                 try {
                     const response = await fetch(url);
                     if (!response.ok) throw new Error(`Failed to fetch media details: ${response.status}`);
                     const data = await response.json();
-
-                    const posterUrl = data.poster_path ? `https://image.tmdb.org/t/p/w500${data.poster_path}` : fallbackPoster;
-                    const title = data.title || data.name || 'Unknown Title';
-                    const year = (data.release_date || data.first_air_date || '').split('-')[0];
-                    const genres = data.genres && data.genres.length > 0 ? data.genres.map(g => g.name).join(', ') : 'N/A';
-                    const plot = data.overview || 'No plot summary available.';
-
-                    mediaPoster.attr('src', posterUrl);
-                    mediaDetailsTitle.text(title);
-                    mediaYearGenre.text(`${year} | ${genres}`);
-                    mediaPlot.text(plot);
-                    videoMediaTitle.text(`${title}\n(${year})`);
+                    cachedMediaDetails[`${mediaType}-${mediaId}`] = data;
+                    applyMediaDetails(data);
                 } catch (error) {
                     console.error('Error fetching media details:', error);
                     mediaPoster.attr('src', fallbackPoster);
@@ -887,6 +844,20 @@
                     videoMediaTitle.text('Error Loading Media');
                     throw error;
                 }
+            }
+
+            function applyMediaDetails(data) {
+                const posterUrl = data.poster_path ? `https://image.tmdb.org/t/p/w500${data.poster_path}` : fallbackPoster;
+                const title = data.title || data.name || 'Unknown Title';
+                const year = (data.release_date || data.first_air_date || '').split('-')[0];
+                const genres = data.genres && data.genres.length > 0 ? data.genres.map(g => g.name).join(', ') : 'N/A';
+                const plot = data.overview || 'No plot summary available.';
+
+                mediaPoster.attr('src', posterUrl);
+                mediaDetailsTitle.text(title);
+                mediaYearGenre.text(`${year} | ${genres}`);
+                mediaPlot.text(plot);
+                videoMediaTitle.text(`${title}\n(${year})`);
             }
 
             function embedVideo(mediaId, mediaType, seasonNumber = null, episodeNumber = null) {
@@ -928,13 +899,20 @@
                 window.scrollTo({ top: 0, behavior: 'smooth' });
             }
 
-            async function fetchSeasons(mediaId) {
+            async function loadSeasons(mediaId) {
+                if (cachedSeasons[mediaId]) {
+                    seasonsData = cachedSeasons[mediaId];
+                    renderSeasons();
+                    return;
+                }
+
                 const url = `https://api.themoviedb.org/3/tv/${mediaId}?api_key=${apiKey}`;
                 try {
                     const response = await fetch(url);
                     if (!response.ok) throw new Error(`Failed to fetch seasons: ${response.status}`);
                     const data = await response.json();
                     seasonsData = data.seasons.filter(season => season.season_number > 0);
+                    cachedSeasons[mediaId] = seasonsData;
 
                     videoPage.data('title', data.name || '');
                     videoPage.data('poster', data.poster_path ? `https://image.tmdb.org/t/p/w500${data.poster_path}` : fallbackPoster);
@@ -943,29 +921,7 @@
                     const yearOnly = data.first_air_date ? data.first_air_date.split('-')[0] : '';
                     videoMediaTitle.text(`${data.name}\n(${yearOnly})`);
 
-                    seasonGrid.empty();
-                    seasonsData.forEach(season => {
-                        const seasonItem = $(`<button class="season-btn" data-value="${season.season_number}">Season ${season.season_number}</button>`);
-                        seasonItem.on('click', function() {
-                            $('.season-btn').removeClass('active');
-                            $(this).addClass('active');
-                            currentSeason = season.season_number;
-                            fetchEpisodes(mediaId, season.season_number);
-                        });
-                        seasonGrid.append(seasonItem);
-                    });
-
-                    if (currentSeason) {
-                        $(`.season-btn[data-value="${currentSeason}"]`).addClass('active');
-                        fetchEpisodes(mediaId, currentSeason);
-                    } else {
-                        const seasonOneBtn = $(`.season-btn[data-value="1"]`);
-                        if (seasonOneBtn.length) {
-                            seasonOneBtn.addClass('active').click();
-                        } else if (seasonsData.length > 0) {
-                            $(`.season-btn[data-value="${seasonsData[0].season_number}"]`).addClass('active').click();
-                        }
-                    }
+                    renderSeasons();
                 } catch (error) {
                     console.error('Error fetching seasons:', error);
                     seasonGrid.empty();
@@ -973,44 +929,81 @@
                 }
             }
 
-            async function fetchEpisodes(mediaId, seasonNumber) {
+            function renderSeasons() {
+                seasonGrid.empty();
+                seasonsData.forEach(season => {
+                    const seasonItem = $(`<button class="season-btn" data-value="${season.season_number}">Season ${season.season_number}</button>`);
+                    seasonItem.on('click', function() {
+                        $('.season-btn').removeClass('active');
+                        $(this).addClass('active');
+                        currentSeason = season.season_number;
+                        loadEpisodes(currentMediaId, season.season_number);
+                    });
+                    seasonGrid.append(seasonItem);
+                });
+
+                if (currentSeason) {
+                    $(`.season-btn[data-value="${currentSeason}"]`).addClass('active');
+                    loadEpisodes(currentMediaId, currentSeason);
+                } else {
+                    const seasonOneBtn = $(`.season-btn[data-value="1"]`);
+                    if (seasonOneBtn.length) {
+                        seasonOneBtn.addClass('active').click();
+                    } else if (seasonsData.length > 0) {
+                        $(`.season-btn[data-value="${seasonsData[0].season_number}"]`).addClass('active').click();
+                    }
+                }
+            }
+
+            async function loadEpisodes(mediaId, seasonNumber) {
+                const cacheKey = `${mediaId}-${seasonNumber}`;
+                if (cachedEpisodes[cacheKey]) {
+                    episodesData = cachedEpisodes[cacheKey];
+                    renderEpisodes(seasonNumber);
+                    return;
+                }
+
                 const url = `https://api.themoviedb.org/3/tv/${mediaId}/season/${seasonNumber}?api_key=${apiKey}`;
                 try {
                     const response = await fetch(url);
                     if (!response.ok) throw new Error(`Failed to fetch episodes: ${response.status}`);
                     const data = await response.json();
                     episodesData = data.episodes;
-
-                    episodeGrid.empty();
-                    episodesData.forEach(episode => {
-                        const episodeItem = $(`<button class="episode-btn" data-value="${episode.episode_number}" title="${episode.name || `Episode ${episode.episode_number}`}">${episode.episode_number}</button>`);
-                        episodeItem.on('click', function() {
-                            $('.episode-btn').removeClass('active');
-                            $(this).addClass('active');
-                            currentSeason = seasonNumber;
-                            currentEpisode = episode.episode_number;
-                            embedVideo(mediaId, 'tv', seasonNumber, episode.episode_number);
-                            navigateToMedia(
-                                mediaId, 
-                                'tv', 
-                                videoPage.data('title'), 
-                                videoPage.data('poster'), 
-                                videoPage.data('year'), 
-                                seasonNumber, 
-                                episode.episode_number
-                            );
-                        });
-                        if (seasonNumber === currentSeason && episode.episode_number === currentEpisode) {
-                            episodeItem.addClass('active');
-                            embedVideo(mediaId, 'tv', seasonNumber, episode.episode_number);
-                        }
-                        episodeGrid.append(episodeItem);
-                    });
+                    cachedEpisodes[cacheKey] = episodesData;
+                    renderEpisodes(seasonNumber);
                 } catch (error) {
                     console.error('Error fetching episodes:', error);
                     episodeGrid.empty();
                     throw error;
                 }
+            }
+
+            function renderEpisodes(seasonNumber) {
+                episodeGrid.empty();
+                episodesData.forEach(episode => {
+                    const episodeItem = $(`<button class="episode-btn" data-value="${episode.episode_number}" title="${episode.name || `Episode ${episode.episode_number}`}">${episode.episode_number}</button>`);
+                    episodeItem.on('click', function() {
+                        $('.episode-btn').removeClass('active');
+                        $(this).addClass('active');
+                        currentSeason = seasonNumber;
+                        currentEpisode = episode.episode_number;
+                        embedVideo(currentMediaId, 'tv', seasonNumber, episode.episode_number);
+                        navigateToMedia(
+                            currentMediaId, 
+                            'tv', 
+                            videoPage.data('title'), 
+                            videoPage.data('poster'), 
+                            videoPage.data('year'), 
+                            seasonNumber, 
+                            episode.episode_number
+                        );
+                    });
+                    if (seasonNumber === currentSeason && episode.episode_number === currentEpisode) {
+                        episodeItem.addClass('active');
+                        embedVideo(currentMediaId, 'tv', seasonNumber, episode.episode_number);
+                    }
+                    episodeGrid.append(episodeItem);
+                });
             }
 
             async function loadTrendingMoviesForPreview() {
