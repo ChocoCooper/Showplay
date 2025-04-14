@@ -1,5 +1,5 @@
 # Showflix
-<img src="https://github.com/ChocoCooper/Showflix/raw/refs/heads/main/Showflix.png" alt="Showflix" width="200"/>
+<img src="[Showflix](https://github.com/ChocoCooper/Showflix/raw/refs/heads/main/showflix.png)" alt="Showflix" width="200"/>
 Showflix is a web-based streaming service that fetches and displays movies and TV shows using The Movie Database (TMDB) API. It features a responsive UI, search functionality, video playback via external servers, and ad-blocking to filter unwanted content. The backend is powered by Netlify Functions to securely proxy TMDB API requests.
 
 **Site**: [*showflix.netlify.app*](https://showflix.netlify.app)
