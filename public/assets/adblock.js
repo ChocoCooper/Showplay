@@ -8,7 +8,7 @@
         '2embed.cc'
     ];
 
-    // Known ad/tracker/redirect domains to block
+    // Known ad/tracker/redirect domains to block (expanded list)
     const blockDomains = [
         'doubleclick.net',
         'adnxs.com',
@@ -17,6 +17,7 @@
         'pagead2.googlesyndication.com',
         'tpc.googlesyndication.com',
         'googletagservices.com',
+        'googletagmanager.com',
         'adsafeprotected.com',
         'servedby.flashtalking.com',
         'pixel.quantserve.com',
@@ -24,68 +25,112 @@
         'adroll.com',
         'outbrain.com',
         'taboola.com',
-        'criteo.com'
+        'criteo.com',
+        'rubiconproject.com',
+        'openx.net',
+        'yieldmo.com',
+        'sharethrough.com',
+        'media.net',
+        'revcontent.com',
+        'mgid.com',
+        'bidswitch.net',
+        'smartadserver.com'
     ];
 
-    // Ad and redirect-blocking selectors (inspired by EasyList)
+    // Ad and redirect-blocking selectors (expanded and refined)
     const blockSelectors = [
-        '[id*="ad-"]:not(.media-details)', // Avoid false positives on legitimate classes
-        '[class*="ad-"]:not(.media-details)',
+        '[id*="ad-"]:not(.media-details, .header, .preview-section, .video-page)', // Exclude Streamzy classes
+        '[class*="ad-"]:not(.media-details, .header, .preview-section, .video-page)',
+        '[id*="ads-"]:not(.media-details, .header, .preview-section, .video-page)',
+        '[class*="ads-"]:not(.media-details, .header, .preview-section, .video-page)',
         '.banner-ad',
         '.adsbygoogle',
-        '[id*="advert"]:not(.media-details)',
-        '[class*="advert"]:not(.media-details)',
+        '.ad-container',
+        '.ad-slot',
+        '.ad-unit',
+        '[id*="advert"]:not(.media-details, .header, .preview-section, .video-page)',
+        '[class*="advert"]:not(.media-details, .header, .preview-section, .video-page)',
         '.sponsored',
+        '.promoted',
         '[data-ad-slot]',
-        'iframe[src*="ads"]:not([src*="vidfast.pro"]):not([src*="111movies.com"]):not([src*="vidsrc.cc"]):not([src*="vidsrc.vip"]):not([src*="2embed.cc"])',
-        'script[src*="ads"]',
+        '[data-ad-client]',
+        '[data-ad-format]',
+        'ins.adsbygoogle',
+        'div[id*="div-gpt-ad"]',
+        'div[class*="ad_"]',
+        'iframe:not([id="videoFrame"]):not([src*="vidfast.pro"]):not([src*="111movies.com"]):not([src*="vidsrc.cc"]):not([src*="vidsrc.vip"]):not([src*="2embed.cc"])',
+        'script[src*="ads"]:not([src*="streamzy"])',
+        'script[src*="advert"]',
         '.doubleclick',
         '[id*="popunder"]',
         '[class*="popunder"]',
-        '[id*="redirect"]:not(.media-details)',
-        '[class*="redirect"]:not(.media-details)',
+        '[id*="popup"]',
+        '[class*="popup"]',
+        '[id*="redirect"]:not(.media-details, .header, .preview-section, .video-page)',
+        '[class*="redirect"]:not(.media-details, .header, .preview-section, .video-page)',
         'a[href*="doubleclick.net"]',
         'a[href*="adnxs.com"]',
-        'script[src*="popads"]'
+        'a[href*="popads.net"]',
+        'script[src*="popads"]',
+        'script[src*="ad"]',
+        '[style*="display: none"][style*="position: absolute"]', // Hidden ad layers
+        '.ad-overlay',
+        '.ad-frame'
     ];
 
     // Block ad and redirect elements
     function blockAds() {
-        const elements = document.querySelectorAll(blockSelectors.join(','));
-        elements.forEach((el) => {
-            try {
+        try {
+            const elements = document.querySelectorAll(blockSelectors.join(','));
+            elements.forEach((el) => {
                 el.style.display = 'none';
-                el.remove(); // Remove from DOM for efficiency
-            } catch (e) {
-                console.warn('Error removing element:', e);
-            }
-        });
+                el.remove(); // Remove from DOM
+                console.debug('Blocked element:', el.tagName, el.id || el.className);
+            });
+        } catch (e) {
+            console.warn('Error blocking elements:', e);
+        }
     }
 
-    // Block ad and redirect resources (scripts, iframes, images)
+    // Block ad and redirect resources (scripts, iframes, images, etc.)
     const originalCreateElement = document.createElement;
     document.createElement = function (tagName) {
         const element = originalCreateElement.call(document, tagName);
         const tagLower = tagName.toLowerCase();
-        if (tagLower === 'script' || tagLower === 'iframe' || tagLower === 'img') {
+        if (['script', 'iframe', 'img', 'link', 'object', 'embed'].includes(tagLower)) {
             const originalSetAttribute = element.setAttribute;
             element.setAttribute = function (name, value) {
                 if (name === 'src' && typeof value === 'string') {
-                    // Check if the resource is from an allowed domain
                     const isAllowed = allowDomains.some(domain => value.includes(domain));
-                    // Check if the resource matches blocked domains or patterns
                     const isBlocked = !isAllowed && (
                         blockDomains.some(domain => value.includes(domain)) ||
-                        /ads|advert|doubleclick|popunder|popads/i.test(value)
+                        /ads|advert|doubleclick|popunder|popup|popads|adframe|adserver|sponsor|banner/i.test(value)
                     );
                     if (isBlocked) {
-                        // Prevent loading of blocked resources
-                        console.log('Blocked resource:', value);
+                        console.debug('Blocked resource:', tagLower, value);
                         return;
                     }
                 }
                 originalSetAttribute.call(element, name, value);
             };
+
+            // Block dynamic src changes
+            Object.defineProperty(element, 'src', {
+                set(value) {
+                    if (typeof value === 'string') {
+                        const isAllowed = allowDomains.some(domain => value.includes(domain));
+                        const isBlocked = !isAllowed && (
+                            blockDomains.some(domain => value.includes(domain)) ||
+                            /ads|advert|doubleclick|popunder|popup|popads|adframe|adserver|sponsor|banner/i.test(value)
+                        );
+                        if (isBlocked) {
+                            console.debug('Blocked dynamic src:', tagLower, value);
+                            return;
+                        }
+                    }
+                    this.setAttribute('src', value);
+                }
+            });
         }
         return element;
     };
@@ -95,47 +140,104 @@
     window.open = function (url) {
         if (url && typeof url === 'string') {
             const isBlocked = blockDomains.some(domain => url.includes(domain)) ||
-                             /ads|advert|doubleclick|popunder|popads/i.test(url);
+                             /ads|advert|doubleclick|popunder|popup|popads|adframe|adserver|sponsor|banner/i.test(url);
             if (isBlocked) {
-                console.log('Blocked window.open:', url);
+                console.debug('Blocked window.open:', url);
                 return null;
             }
         }
         return originalOpen.apply(window, arguments);
     };
 
-    // Block click-based redirects
+    // Block click-based redirects and clickjacking
     function blockRedirects(e) {
-        const target = e.target.closest('a');
-        if (target && target.href) {
+        let target = e.target;
+        while (target && target.tagName !== 'A' && target !== document.body) {
+            target = target.parentElement;
+        }
+        if (target && target.tagName === 'A' && target.href) {
             const href = target.href;
             const isBlocked = blockDomains.some(domain => href.includes(domain)) ||
-                             /ads|advert|doubleclick|popunder|popads/i.test(href);
+                             /ads|advert|doubleclick|popunder|popup|popads|adframe|adserver|sponsor|banner/i.test(href);
             if (isBlocked) {
                 e.preventDefault();
                 e.stopPropagation();
-                console.log('Blocked redirect:', href);
+                console.debug('Blocked redirect:', href);
+                return;
             }
+        }
+
+        // Block clickjacking (hidden overlay clicks)
+        const computedStyle = window.getComputedStyle(e.target);
+        if (computedStyle.opacity === '0' || computedStyle.visibility === 'hidden') {
+            e.preventDefault();
+            e.stopPropagation();
+            console.debug('Blocked potential clickjacking on hidden element:', e.target);
         }
     }
 
     // Block inline scripts containing ad-related keywords
     function blockInlineScripts() {
-        const scripts = document.getElementsByTagName('script');
-        Array.from(scripts).forEach(script => {
-            if (!script.src && script.textContent) {
-                const content = script.textContent.toLowerCase();
-                if (/adsbygoogle|doubleclick|popads|adnxs/i.test(content)) {
-                    try {
+        try {
+            const scripts = document.getElementsByTagName('script');
+            Array.from(scripts).forEach(script => {
+                if (!script.src && script.textContent) {
+                    const content = script.textContent.toLowerCase();
+                    if (/adsbygoogle|doubleclick|popads|adnxs|googletag|adframe|adserver|sponsor|banner/i.test(content)) {
                         script.textContent = '';
                         script.remove();
-                        console.log('Blocked inline ad script');
-                    } catch (e) {
-                        console.warn('Error removing inline script:', e);
+                        console.debug('Blocked inline ad script');
                     }
                 }
+            });
+        } catch (e) {
+            console.warn('Error blocking inline scripts:', e);
+        }
+    }
+
+    // Block XHR/fetch requests to ad domains
+    const originalFetch = window.fetch;
+    window.fetch = function (url, options) {
+        if (url && typeof url === 'string') {
+            const isBlocked = blockDomains.some(domain => url.includes(domain)) ||
+                             /ads|advert|doubleclick|popunder|popup|popads|adframe|adserver|sponsor|banner/i.test(url);
+            if (isBlocked) {
+                console.debug('Blocked fetch:', url);
+                return Promise.reject(new Error('Blocked ad request'));
             }
-        });
+        }
+        return originalFetch.apply(window, arguments);
+    };
+
+    const originalXhrOpen = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function (method, url) {
+        if (url && typeof url === 'string') {
+            const isBlocked = blockDomains.some(domain => url.includes(domain)) ||
+                             /ads|advert|doubleclick|popunder|popup|popads|adframe|adserver|sponsor|banner/i.test(url);
+            if (isBlocked) {
+                console.debug('Blocked XHR:', url);
+                return;
+            }
+        }
+        return originalXhrOpen.apply(this, arguments);
+    };
+
+    // Block CSS-based ads (e.g., background images)
+    function blockCssAds() {
+        try {
+            const elements = document.querySelectorAll('[style*="url("]');
+            elements.forEach(el => {
+                const style = el.getAttribute('style').toLowerCase();
+                if (blockDomains.some(domain => style.includes(domain)) ||
+                    /ads|advert|doubleclick|popunder|popup|popads|adframe|adserver|sponsor|banner/i.test(style)) {
+                    el.style.display = 'none';
+                    el.remove();
+                    console.debug('Blocked CSS ad:', el);
+                }
+            });
+        } catch (e) {
+            console.warn('Error blocking CSS ads:', e);
+        }
     }
 
     // Throttled MutationObserver to monitor DOM changes
@@ -145,7 +247,8 @@
         mutationTimeout = setTimeout(() => {
             blockAds();
             blockInlineScripts();
-        }, 100);
+            blockCssAds();
+        }, 50); // Reduced to 50ms for faster response
     }
 
     // Initialize blocking
@@ -153,25 +256,34 @@
         // Run initial blocking
         blockAds();
         blockInlineScripts();
+        blockCssAds();
 
-        // Add event listener for click-based redirects
-        document.addEventListener('click', blockRedirects, true);
+        // Add event listeners
+        document.addEventListener('click', blockRedirects, { capture: true });
+        document.addEventListener('auxclick', blockRedirects, { capture: true }); // Middle-click
+        document.addEventListener('contextmenu', blockRedirects, { capture: true }); // Right-click
 
         // Observe DOM changes
         const observer = new MutationObserver(observeDOM);
         observer.observe(document.documentElement, {
             childList: true,
-            subtree: true
+            subtree: true,
+            attributes: true,
+            attributeFilter: ['src', 'href', 'style']
         });
 
         // Clean up on unload
         window.addEventListener('unload', () => {
             observer.disconnect();
-            document.removeEventListener('click', blockRedirects, true);
+            document.removeEventListener('click', blockRedirects, { capture: true });
+            document.removeEventListener('auxclick', blockRedirects, { capture: true });
+            document.removeEventListener('contextmenu', blockRedirects, { capture: true });
         });
+
+        console.debug('Adblock initialized');
     }
 
-    // Run initialization after DOM is loaded
+    // Run initialization
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);
     } else {
