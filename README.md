@@ -1,5 +1,5 @@
 # Streamzy
-<img src="https://github.com/ChocoCooper/Streamzy/raw/refs/heads/main/streamzy.png" alt="Streamzy" width="300"/>
+<img src="https://github.com/ChocoCooper/Streamzy/raw/refs/heads/main/streamzy.png" alt="Streamzy" width="200"/>
 Streamzy is a web-based streaming service that fetches and displays movies and TV shows using The Movie Database (TMDB) API. It features a responsive UI, search functionality, video playback via external servers, and ad-blocking to filter unwanted content. The backend is powered by Netlify Functions to securely proxy TMDB API requests.
 
 **Site**: [*STREAMZY1*](https://streamzy1.netlify.app)
