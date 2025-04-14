@@ -1,0 +1,8 @@
+# .gitignore
+node_modules/
+.netlify/
+dist/
+build/
+.env
+.DS_Store
+*.log
