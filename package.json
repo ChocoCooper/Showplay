@@ -1,0 +1,16 @@
+{
+  "name": "streamzy",
+  "version": "1.0.0",
+  "description": "Streamzy streaming platform",
+  "scripts": {
+    "start": "echo 'No start script configured'",
+    "build": "echo 'No build step required'"
+  },
+  "dependencies": {
+    "node-fetch": "^2.6.7"
+  },
+  "devDependencies": {},
+  "engines": {
+    "node": ">=14"
+  }
+}
