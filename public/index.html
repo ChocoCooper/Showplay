@@ -490,7 +490,7 @@
             <p class="media-title" id="videoMediaTitle"></p>
         </div>
         <div class="video-wrapper">
-            <iframe id="videoFrame" src="" allow="fullscreen" allowfullscreen sandbox="allow-scripts allow-same-origin allow-forms" aria-label="Video Player"></iframe>
+            <iframe id="videoFrame" src="" allow="fullscreen" allowfullscreen aria-label="Video Player"></iframe>
             <div class="server-error" id="serverError" style="display: none;"></div>
         </div>
         <div class="selector-container" id="selectorContainer">
@@ -675,8 +675,7 @@
                     serverError.hide();
                 });
 
-                // Monitor for potential redirect issues
-                $(videoFrame).on('error', function() {
+                videoFrame.on('error', function() {
                     handleIframeError('Failed to load video. Switching server...');
                 });
             }
@@ -924,6 +923,7 @@
                 currentEpisode = episode;
                 currentServerIndex = 0;
                 videoFrame.attr('src', '');
+                videoFrame.removeAttr('sandbox'); // Clear sandbox initially
                 serverError.hide();
                 videoPage.addClass('active').show();
                 homepage.hide();
@@ -988,6 +988,7 @@
                 window.history.pushState({}, '', '/');
                 videoPage.removeClass('active').hide();
                 videoFrame.attr('src', '');
+                videoFrame.removeAttr('sandbox');
                 serverError.hide();
                 hideSelectors();
                 loadHomepage();
@@ -1006,6 +1007,7 @@
                     if (path === '/' || path === '') {
                         videoPage.removeClass('active').hide();
                         videoFrame.attr('src', '');
+                        videoFrame.removeAttr('sandbox');
                         serverError.hide();
                         hideSelectors();
                         loadHomepage();
@@ -1187,11 +1189,20 @@
                     }
                 } else {
                     videoFrame.attr('src', '');
+                    videoFrame.removeAttr('sandbox');
                     videoPage.addClass('active');
                     return;
                 }
 
                 videoFrame.attr('src', embedUrl);
+
+                // Apply sandbox only for Servers 1-3
+                if (['https://vidfast.pro', 'https://111movies.com', 'https://vidsrc.cc/v2'].includes(selectedServer)) {
+                    videoFrame.attr('sandbox', 'allow-scripts allow-same-origin allow-forms');
+                } else {
+                    videoFrame.removeAttr('sandbox');
+                }
+
                 videoPage.addClass('active');
                 showSelectors(mediaType);
                 window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1355,7 +1366,6 @@
                         });
                     }
 
-                    // Lazy-load backdrop images when preview section is in view
                     const observer = new IntersectionObserver((entries, observer) => {
                         if (entries[0].isIntersecting) {
                             renderPreviewImages();
