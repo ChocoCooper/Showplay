@@ -11,8 +11,6 @@
     <link rel="icon" type="image/x-icon" href="https://raw.githubusercontent.com/ChocoCooper/Showplay/refs/heads/main/favicon.ico">
     <link rel="apple-touch-icon" sizes="180x180" href="https://raw.githubusercontent.com/ChocoCooper/Showplay/refs/heads/main/apple-touch-icon.png">
     <link rel="manifest" href="https://raw.githubusercontent.com/ChocoCooper/Showplay/refs/heads/main/manifest.json">
-    <link rel="preload" href="https://image.tmdb.org/t/p/w780" as="image">
-    <link rel="preload" href="https://image.tmdb.org/t/p/w500" as="image">
     <style>
         @font-face {
            font-family: 'Sevarothz';
@@ -434,7 +432,7 @@
                 if (isRecent) {
                     poster.find('.delete-badge').on('click', e => {
                         e.stopPropagation();
-                        state.recentlyWatched = state.recentlyWatched.filter(w => w.uniqueKey !== item.uniqueKey);
+                        state.recentlyWatched = state.recentlyWatched.filter(w => w.id !== item.id);
                         localStorage.setItem('recentlyWatched', JSON.stringify(state.recentlyWatched));
                         loadRecentlyWatched();
                     });
@@ -666,11 +664,14 @@
                 handleMediaClick(title, poster, year);
 
                 if (type === 'movie' || (type === 'tv' && season && episode)) {
-                    const uniqueKey = type === 'tv' ? id : id;
-                    const item = { id, uniqueKey, type, title, poster: poster || '', year, season, episode, timestamp: Date.now() };
-                    const index = state.recentlyWatched.findIndex(w => w.id === id && w.type === type);
-                    if (index !== -1) state.recentlyWatched[index] = item;
-                    else state.recentlyWatched.unshift(item);
+                    const item = { id, type, title, poster: poster || '', year, season, episode, timestamp: Date.now() };
+                    const index = state.recentlyWatched.findIndex(w => w.id === id);
+                    if (index !== -1) {
+                        state.recentlyWatched[index] = item;
+                        state.recentlyWatched.unshift(state.recentlyWatched.splice(index, 1)[0]);
+                    } else {
+                        state.recentlyWatched.unshift(item);
+                    }
                     state.recentlyWatched = state.recentlyWatched.slice(0, 10);
                     localStorage.setItem('recentlyWatched', JSON.stringify(state.recentlyWatched));
                 }
