@@ -160,7 +160,6 @@
         .media-details-container { display: flex; flex-wrap: wrap; align-items: flex-start; max-width: 1200px; margin: 0 auto; }
         .media-details-poster { flex: 0 0 150px; max-width: 150px; margin-right: 20px; }
         .media-details-poster img { width: 100%; height: auto; border-radius: 8px; display: block; }
-        .media-details-content { flex: 1; min-width: 0; }
         .media-details .title { font-size: 1.5rem; margin-bottom: 5px; word-wrap: break-word; }
         .media-details .year-genre { font-size: 0.9rem; color: #aaa; margin-bottom: 10px; word-wrap: break-word; }
         .media-details .plot { font-size: 0.9rem; line-height: 1.5; word-wrap: break-word; }
@@ -374,6 +373,8 @@
                 mediaId: null,
                 season: null,
                 episode: null,
+                selectedEpisodes: {}, // Tracks selected episode per season, e.g., { 1: 4, 2: null }
+                lastPlayedEpisode: { season: null, episode: null }, // Tracks last played episode
                 trendingMovies: [],
                 previewIndex: parseInt(localStorage.getItem('previewIndex')) || 0,
                 previewInterval: null,
@@ -407,7 +408,9 @@
                     btn.on('click', () => {
                         $('.server-btn').removeClass('active');
                         btn.addClass('active');
-                        if (state.mediaId) embedVideo();
+                        if (state.mediaId && (state.mediaType === 'movie' || (state.season && state.episode))) {
+                            embedVideo();
+                        }
                     });
                     selectors.serverGrid.append(btn);
                 });
@@ -658,9 +661,18 @@
                 state.mediaType = type;
                 state.season = season;
                 state.episode = episode;
+                state.selectedEpisodes = {}; // Reset episode selections on new media navigation
+                state.lastPlayedEpisode = { season: null, episode: null }; // Reset last played episode
+                if (type === 'tv' && season && episode) {
+                    state.selectedEpisodes[season] = episode;
+                    state.lastPlayedEpisode = { season, episode };
+                }
 
                 const path = type === 'movie' ? `/movie/${id}` : `/tv/${id}${season && episode ? `?season=${season}&episode=${episode}` : ''}`;
                 window.history.pushState({ id, type, title, poster, year, season, episode }, '', path);
+
+                selectors.videoPage.data({ title, poster, year });
+
                 handleMediaClick(title, poster, year);
 
                 if (type === 'movie' || (type === 'tv' && season && episode)) {
@@ -684,6 +696,8 @@
 
             const handleMediaClick = async (title, poster, year) => {
                 selectors.videoFrame.attr('src', '');
+                selectors.videoPage.data({ title, poster, year });
+
                 selectors.videoPage.addClass('active').show();
                 selectors.homepage.hide();
                 selectors.mainTitle.hide();
@@ -694,7 +708,8 @@
                 selectors.videoMediaTitle.show();
                 selectors.footer.hide();
 
-                selectors.videoMediaTitle.text(title && year ? `${title}\n(${year.split('-')[0]})` : 'Loading...');
+                selectors.videoMediaTitle.text(title && year ? `${title}\n(${year.split('-')[0]})` : title || 'Loading...');
+
                 selectors.seasonSelector.toggle(state.mediaType === 'tv');
                 selectors.episodeSelector.toggle(state.mediaType === 'tv');
 
@@ -769,7 +784,7 @@
                 } else if (state.season && state.episode) {
                     url = server === 'https://vidsrc.cc/v2' ? `${server}/embed/tv/${state.mediaId}/${state.season}/${state.episode}` : `${server}/tv/${state.mediaId}/${state.season}/${state.episode}`;
                 } else {
-                    selectors.videoFrame.attr('src', '');
+                    // Do not modify video frame if no new episode is selected
                     selectors.videoPage.addClass('active');
                     return;
                 }
@@ -812,10 +827,16 @@
                         selectors.seasonGrid.append(btn);
                     });
 
+                    // Select Season 1 by default if no season is specified, otherwise use state.season
                     const targetSeason = state.season || 1;
                     const seasonBtn = $(`.season-btn[data-value="${targetSeason}"]`);
-                    if (seasonBtn.length) seasonBtn.addClass('active').click();
-                    else if (seasons.length) $(`.season-btn[data-value="${seasons[0].season_number}"]`).addClass('active').click();
+                    if (seasonBtn.length) {
+                        seasonBtn.addClass('active');
+                        loadEpisodes(targetSeason);
+                    } else if (seasons.length) {
+                        $(`.season-btn[data-value="${seasons[0].season_number}"]`).addClass('active');
+                        loadEpisodes(seasons[0].season_number);
+                    }
                 } catch (error) {
                     handleError(error, 'Error fetching seasons', selectors.seasonGrid);
                     selectors.videoMediaTitle.text('Loading...');
@@ -836,6 +857,9 @@
                             btn.addClass('active');
                             state.season = season;
                             state.episode = e.episode_number;
+                            // Update selectedEpisodes and lastPlayedEpisode
+                            state.selectedEpisodes = { [season]: e.episode_number };
+                            state.lastPlayedEpisode = { season, episode: e.episode_number };
                             embedVideo();
                             navigateToMedia(
                                 state.mediaId, 'tv', 
@@ -845,9 +869,9 @@
                                 season, e.episode_number
                             );
                         });
-                        if (season === state.season && e.episode_number === state.episode) {
+                        // Highlight previously selected episode without triggering video reload
+                        if (state.selectedEpisodes[season] === e.episode_number) {
                             btn.addClass('active');
-                            embedVideo();
                         }
                         selectors.episodeGrid.append(btn);
                     });
@@ -869,6 +893,24 @@
                     }
                 });
 
+                // Levenshtein distance function for fuzzy matching
+                const levenshteinDistance = (a, b) => {
+                    const matrix = Array(b.length + 1).fill().map(() => Array(a.length + 1).fill(0));
+                    for (let i = 0; i <= a.length; i++) matrix[0][i] = i;
+                    for (let j = 0; j <= b.length; j++) matrix[j][0] = j;
+                    for (let j = 1; j <= b.length; j++) {
+                        for (let i = 1; i <= a.length; i++) {
+                            const indicator = a[i - 1] === b[j - 1] ? 0 : 1;
+                            matrix[j][i] = Math.min(
+                                matrix[j][i - 1] + 1, // deletion
+                                matrix[j - 1][i] + 1, // insertion
+                                matrix[j - 1][i - 1] + indicator // substitution
+                            );
+                        }
+                    }
+                    return matrix[b.length][a.length];
+                };
+
                 const debounce = (func, wait) => {
                     let timeout;
                     return (...args) => {
@@ -882,12 +924,36 @@
                     if (query.length < 2) return selectors.searchResults.empty();
 
                     try {
-                        const res = await fetch(`https://api.themoviedb.org/3/search/multi?api_key=${config.apiKey}&query=${encodeURIComponent(query)}&page=1`);
+                        const res = await fetch(`https://api.themoviedb.org/3/search/multi?api_key=${config.apiKey}&query=${encodeURIComponent(query)}&page=1&include_adult=false`);
                         if (!res.ok) throw new Error('Search fetch failed');
                         const data = await res.json();
-                        const results = data.results
-                            .filter(item => (item.media_type === 'movie' || item.media_type === 'tv') && item.id && (item.title || item.name) && item.poster_path)
-                            .slice(0, 10);
+                        let results = data.results
+                            .filter(item => 
+                                (item.media_type === 'movie' || item.media_type === 'tv') && 
+                                item.id && 
+                                (item.title || item.name) && 
+                                item.poster_path && 
+                                (item.release_date || item.first_air_date)
+                            )
+                            .slice(0, 20);
+
+                        const queryLower = query.toLowerCase();
+                        results.sort((a, b) => {
+                            const aTitle = (a.title || a.name || '').toLowerCase();
+                            const bTitle = (b.title || b.name || '').toLowerCase();
+
+                            if (aTitle === queryLower && bTitle !== queryLower) return -1;
+                            if (bTitle === queryLower && aTitle !== queryLower) return 1;
+
+                            if (aTitle.startsWith(queryLower) && !bTitle.startsWith(queryLower)) return -1;
+                            if (bTitle.startsWith(queryLower) && !aTitle.startsWith(queryLower)) return 1;
+
+                            const aDistance = levenshteinDistance(queryLower, aTitle);
+                            const bDistance = levenshteinDistance(queryLower, bTitle);
+                            return aDistance - bDistance;
+                        });
+
+                        results = results.slice(0, 10);
 
                         selectors.searchResults.empty();
                         if (!results.length) return selectors.searchResults.html('<div class="search-no-results">No results found</div>');
@@ -902,7 +968,7 @@
                                     <img src="${poster}" alt="${title}" class="search-result-poster" loading="lazy" />
                                     <div class="search-result-info">
                                         <div class="search-result-title">${title}</div>
-                                        <div class="search-result-year">${year || 'N/A'} | ${type}</div>
+                                        <div class="search-result-year">${year} | ${type}</div>
                                     </div>
                                 </div>
                             `);
