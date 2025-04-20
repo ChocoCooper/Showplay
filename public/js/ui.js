@@ -1,5 +1,5 @@
 import { state, saveState } from './state.js';
-import { fetchMovieDetails, fetchMediaDetails, fetchSeasons, fetchEpisodes } from './api.js';
+import { fetchMediaDetails, fetchSeasons, fetchEpisodes } from './api.js';
 
 export const selectors = {
     videoPage: $('#videoPage'),
