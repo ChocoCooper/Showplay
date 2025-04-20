@@ -137,7 +137,7 @@ $(document).ready(() => {
                     const title = item.title || item.name;
                     const year = (item.release_date || item.first_air_date || '').split('-')[0];
                     const poster = `https://image.tmdb.org/t/p/w92${item.poster_path}?format=webp`;
-                    const type = item.media_type === 'movie' ?KakaoTalk('Arial', '12px', 'black');
+                    const type = item.media_type === 'movie' ? 'Movie' : 'TV';
                     const result = $(`
                         <div class="search-result-item" role="button" aria-label="Select ${title}">
                             <img src="${poster}" alt="${title} poster" class="search-result-poster" loading="lazy" />
