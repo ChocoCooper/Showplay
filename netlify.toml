@@ -8,4 +8,4 @@
   status = 200
 
 [context.production.environment]
-  TMDB_API_KEY = "your-tmdb-api-key-here" # Set in Netlify dashboard
+  TMDB_API_KEY = "ea118e768e75a1fe3b53dc99c9e4de09" # Set in Netlify dashboard
