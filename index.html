@@ -101,7 +101,7 @@
         .preview-title img { max-height: 120px; max-width: 60%; width: auto; opacity: 0; animation: fadeIn 0.8s ease forwards; }
         .preview-genres { font-size: 0.7rem; color: rgba(255, 255, 255, 0.8); margin: 5px 0 10px 0; }
         .preview-buttons { z-index: 4; position: absolute; right: 20px; bottom: 10px; }
-        .preview-btn { padding: 5px 10px; border-radius: 10px; background-color: var(--primary-color); color: black; border: none; font-size: 0.85rem; font-weight: 700; cursor: pointer; transition: all 0.3s ease; }
+        .preview-btn { padding: 4px 14px; border-radius: 20px; background-color: transparent; color: var(--primary-color); border: 1px solid var(--primary-color); font-size: 0.85rem; font-weight: 700; cursor: pointer; }
         .video-page { 
             display: none; 
             width: 100%; 
@@ -157,7 +157,7 @@
         .server-btn.active, .season-btn.active, .episode-btn.active { background-color: var(--selector-active); color: #000; }
         .media-details { background: rgba(0, 0, 0, 0.9); padding: 20px; color: var(--text-color); display: none; width: 100%; overflow: hidden; }
         .media-details.active { display: block; }
-        .media-details-container { display: flex; flex-wrap: wrap; align-items: flex-start; max-width: 1200px; margin: 0 auto; }
+        .media-details-container { display: flex; flex-wrap: wrap; align-items: flex-start; max距离-width: 1200px; margin: 0 auto; }
         .media-details-poster { flex: 0 0 150px; max-width: 150px; margin-right: 20px; }
         .media-details-poster img { width: 100%; height: auto; border-radius: 8px; display: block; }
         .media-details-content { flex: 1; min-width: 0; }
@@ -374,13 +374,14 @@
                 mediaId: null,
                 season: null,
                 episode: null,
-                selectedEpisodes: {}, // Tracks selected episode per season, e.g., { 1: 4, 2: null }
-                lastPlayedEpisode: { season: null, episode: null }, // Tracks last played episode
+                selectedEpisodes: {},
+                lastPlayedEpisode: { season: null, episode: null },
                 trendingMovies: [],
                 previewIndex: parseInt(localStorage.getItem('previewIndex')) || 0,
                 previewInterval: null,
                 recentlyWatched: JSON.parse(localStorage.getItem('recentlyWatched')) || [],
-                cachedMedia: {}
+                cachedMedia: {},
+                cachedPosters: JSON.parse(localStorage.getItem('cachedPosters')) || {}
             };
 
             const config = {
@@ -402,6 +403,35 @@
                     m.id && m.title && m.backdrop_path && m.poster_path && m.genres && m.logo_path && m.original_language === 'en' && m.release_date
                 );
 
+            const cachePosterImages = async (item) => {
+                const posterPath = item.poster_path || item.poster;
+                if (!posterPath || state.cachedPosters[posterPath]) return;
+
+                try {
+                    const response = await fetch(`https://image.tmdb.org/t/p/w92${posterPath}`);
+                    if (!response.ok) throw new Error('Failed to fetch poster');
+                    const blob = await response.blob();
+                    const reader = new FileReader();
+                    reader.readAsDataURL(blob);
+                    reader.onloadend = () => {
+                        state.cachedPosters[posterPath] = reader.result;
+                        localStorage.setItem('cachedPosters', JSON.stringify(state.cachedPosters));
+                    };
+                } catch (error) {
+                    handleError(error, `Error caching poster ${posterPath}`);
+                }
+            };
+
+            const cleanPosterCache = () => {
+                const validPosters = state.recentlyWatched.map(item => item.poster_path || item.poster).filter(Boolean);
+                Object.keys(state.cachedPosters).forEach(key => {
+                    if (!validPosters.includes(key)) {
+                        delete state.cachedPosters[key];
+                    }
+                });
+                localStorage.setItem('cachedPosters', JSON.stringify(state.cachedPosters));
+            };
+
             const initializeServers = () => {
                 selectors.serverGrid.empty();
                 config.servers.forEach((server, i) => {
@@ -421,7 +451,10 @@
 
             const renderMediaItem = (item, mediaType, container, isRecent = false) => {
                 const title = item.title || item.name;
-                const imageUrl = `https://image.tmdb.org/t/p/w500${item.poster_path || item.poster}`;
+                const posterPath = item.poster_path || item.poster;
+                const imageUrl = isRecent && state.cachedPosters[posterPath] 
+                    ? state.cachedPosters[posterPath] 
+                    : `https://image.tmdb.org/t/p/${isRecent ? 'w92' : 'w500'}${posterPath}`;
                 const poster = $(`
                     <div class="poster-item">
                         <img src="${imageUrl}" alt="${title}" class="poster-img" loading="lazy" role="button" aria-label="Play ${title}" />
@@ -438,8 +471,10 @@
                         e.stopPropagation();
                         state.recentlyWatched = state.recentlyWatched.filter(w => w.id !== item.id);
                         localStorage.setItem('recentlyWatched', JSON.stringify(state.recentlyWatched));
+                        cleanPosterCache();
                         loadRecentlyWatched();
                     });
+                    cachePosterImages(item);
                 }
                 container.append(poster);
             };
@@ -450,7 +485,10 @@
                     selectors.recentlyWatchedSection.removeClass('active').hide();
                     return;
                 }
-                state.recentlyWatched.forEach(item => renderMediaItem(item, item.type, selectors.recentlyWatchedSlider, true));
+                state.recentlyWatched.forEach(item => {
+                    renderMediaItem(item, item.type, selectors.recentlyWatchedSlider, true);
+                });
+                cleanPosterCache();
                 selectors.recentlyWatchedSection.addClass('active').show();
             };
 
@@ -662,8 +700,8 @@
                 state.mediaType = type;
                 state.season = season;
                 state.episode = episode;
-                state.selectedEpisodes = {}; // Reset episode selections on new media navigation
-                state.lastPlayedEpisode = { season: null, episode: null }; // Reset last played episode
+                state.selectedEpisodes = {};
+                state.lastPlayedEpisode = { season: null, episode: null };
                 if (type === 'tv' && season && episode) {
                     state.selectedEpisodes[season] = episode;
                     state.lastPlayedEpisode = { season, episode };
@@ -672,7 +710,7 @@
                 const path = type === 'movie' ? `/movie/${id}` : `/tv/${id}${season && episode ? `?season=${season}&episode=${episode}` : ''}`;
                 window.history.pushState({ id, type, title, poster, year, season, episode }, '', path);
 
-                selectors.videoPage.data({ title, poster, year });
+                selectors.videoPage.data({ title, title, year });
 
                 handleMediaClick(title, poster, year);
 
@@ -687,6 +725,7 @@
                     }
                     state.recentlyWatched = state.recentlyWatched.slice(0, 10);
                     localStorage.setItem('recentlyWatched', JSON.stringify(state.recentlyWatched));
+                    cachePosterImages(item);
                 }
 
                 selectors.searchContainer.removeClass('active');
@@ -785,7 +824,6 @@
                 } else if (state.season && state.episode) {
                     url = server === 'https://vidsrc.cc/v2' ? `${server}/embed/tv/${state.mediaId}/${state.season}/${state.episode}` : `${server}/tv/${state.mediaId}/${state.season}/${state.episode}`;
                 } else {
-                    // Do not modify video frame if no new episode is selected
                     selectors.videoPage.addClass('active');
                     return;
                 }
@@ -828,7 +866,6 @@
                         selectors.seasonGrid.append(btn);
                     });
 
-                    // Select Season 1 by default if no season is specified, otherwise use state.season
                     const targetSeason = state.season || 1;
                     const seasonBtn = $(`.season-btn[data-value="${targetSeason}"]`);
                     if (seasonBtn.length) {
@@ -858,7 +895,6 @@
                             btn.addClass('active');
                             state.season = season;
                             state.episode = e.episode_number;
-                            // Update selectedEpisodes and lastPlayedEpisode
                             state.selectedEpisodes = { [season]: e.episode_number };
                             state.lastPlayedEpisode = { season, episode: e.episode_number };
                             embedVideo();
@@ -870,7 +906,6 @@
                                 season, e.episode_number
                             );
                         });
-                        // Highlight previously selected episode without triggering video reload
                         if (state.selectedEpisodes[season] === e.episode_number) {
                             btn.addClass('active');
                         }
@@ -894,7 +929,6 @@
                     }
                 });
 
-                // Levenshtein distance function for fuzzy matching
                 const levenshteinDistance = (a, b) => {
                     const matrix = Array(b.length + 1).fill().map(() => Array(a.length + 1).fill(0));
                     for (let i = 0; i <= a.length; i++) matrix[0][i] = i;
@@ -903,9 +937,9 @@
                         for (let i = 1; i <= a.length; i++) {
                             const indicator = a[i - 1] === b[j - 1] ? 0 : 1;
                             matrix[j][i] = Math.min(
-                                matrix[j][i - 1] + 1, // deletion
-                                matrix[j - 1][i] + 1, // insertion
-                                matrix[j - 1][i - 1] + indicator // substitution
+                                matrix[j][i - 1] + 1,
+                                matrix[j - 1][i] + 1,
+                                matrix[j - 1][i - 1] + indicator
                             );
                         }
                     }
@@ -1018,7 +1052,9 @@
                 loadHomepage();
             });
 
-            selectors.backArrow.on('click', () => window.history.back());
+            selectors.backArrow.on('click', () => {
+                window.history.back();
+            });
 
             window.onpopstate = event => {
                 const path = window.location.pathname;
