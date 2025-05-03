@@ -2,1093 +2,191 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
     <title>ShowPlay</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" integrity="sha512-z3gLpd7yknf1YoNbCzqRKc4qyor8gaKU1qmn+CShxbuBusANI9QpRohGBreCFkKxLhei6S9CQXFEbbKuqLg0DA==" crossorigin="anonymous">
     <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;700&display=swap" rel="stylesheet">
     <link rel="preload" href="https://cdn.jsdelivr.net/gh/ChocoCooper/Showplay@main/Sevarothz.woff2" as="font" type="font/woff2" crossorigin="anonymous">
     <link rel="icon" type="image/x-icon" href="https://raw.githubusercontent.com/ChocoCooper/Showplay/refs/heads/main/favicon.ico">
     <link rel="apple-touch-icon" sizes="180x180" href="https://raw.githubusercontent.com/ChocoCooper/Showplay/refs/heads/main/apple-touch-icon.png">
     <link rel="manifest" href="https://raw.githubusercontent.com/ChocoCooper/Showplay/refs/heads/main/manifest.json">
-    <style>
-        @font-face {
-           font-family: 'Sevarothz';
-           src: url('https://cdn.jsdelivr.net/gh/ChocoCooper/Showplay@main/Sevarothz.woff2') format('woff2');
-           font-weight: normal;
-           font-style: normal;
-           font-display: block;
-           size-adjust: 150%;
-        }
-
-        :root {
-            --primary-color: #2af598;
-            --secondary-color: #000000;
-            --text-color: #ffffff;
-            --card-bg: #1f1f1f;
-            --selector-bg: #333333;
-            --selector-active: #2af598;
-            --selector-text: #ffffff;
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            background-color: var(--secondary-color);
-            color: var(--text-color);
-            font-family: 'Lexend', sans-serif;
-            min-height: 100vh;
-            overflow-x: hidden;
-            background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAAXNSR0IArs4c6QAAACJJREFUKFNjZICC/////6f/nyH8//8/AwgYGBgYGBj8P/8/AJ0BCwU8y8MAAAAASUVORK5CYII=');
-        }
-
-        .container { max-width: 100%; padding: 0; margin: 0; }
-        .header { 
-            display: flex; 
-            align-items: center; 
-            padding: 10px 5px; 
-            background: rgba(0, 0, 0, 0.9); 
-            position: relative; 
-            z-index: 20; 
-            width: 100%; 
-        }
-        .header-content { display: flex; align-items: center; flex: 1; overflow: hidden; }
-        h1 { font-family: 'Sevarothz', sans-serif; color: var(--primary-color); font-weight: normal; font-size: 1.5rem; margin-top: 14px; margin-left: 18px; }
-        .search-icon { margin-left: auto; color: var(--primary-color); font-size: 1.5rem; cursor: pointer; margin-right: 15px; transition: transform 0.3s ease; }
-        .back-arrow { color: var(--primary-color); font-size: 1.25rem; cursor: pointer; margin-left: 15px; margin-right: 20px; margin-top: 0px; transition: transform 0.3s ease; order: 0; }
-        .back-arrow:hover { transform: scale(1.1); }
-        .media-title { font-family: 'Lexend', sans-serif; color: var(--text-color); font-size: 1rem; margin: 0; margin-left: 5px; margin-top: -2px; white-space: pre-wrap; overflow: hidden; text-overflow: ellipsis; max-width: calc(100% - 60px); }
-        .search-container { 
-            width: 100%; 
-            background: rgba(0, 0, 0, 0.95); 
-            padding: 2px 20px; 
-            display: none; 
-            z-index: 19; 
-            position: relative; 
-        }
-        .search-container.active { display: block; }
-        .search-box { width: 100%; max-width: 400px; padding: 4px 12px; font-size: 1rem; border: 1px solid var(--primary-color); border-radius: 5px; background: #222; color: var(--text-color); outline: none; margin: 0 auto; display: block; }
-        .search-results { margin-top: 10px; max-height: 300px; overflow-y: auto; width: 100%; max-width: 500px; margin-left: auto; margin-right: auto; }
-        .search-result-item { display: flex; align-items: center; padding: 8px; border-bottom: 1px solid #333; cursor: pointer; transition: background 0.3s ease; }
-        .search-result-item:hover { background: #2a2a2a; }
-        .search-result-poster { width: 50px; height: 75px; object-fit: cover; margin-right: 10px; border-radius: 3px; }
-        .search-result-info { flex: 1; }
-        .search-result-title { font-size: 0.9rem; color: var(--text-color); }
-        .search-result-year { font-size: 0.8rem; color: #aaa; }
-        .search-no-results { font-size: 0.9rem; color: #aaa; text-align: center; padding: 10px; }
-        .preview-section { 
-            position: relative; 
-            width: 100vw; 
-            padding-bottom: 75%; 
-            height: auto; 
-            overflow: hidden; 
-            margin-bottom: 30px; 
-            left: 50%; 
-            right: 50%; 
-            margin-left: -50vw; 
-            margin-right: -50vw; 
-            background: #000;
-        }
-        .preview-background { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; transition: opacity 1s ease; z-index: 1; opacity: 0; }
-        .preview-background.active { opacity: 1; }
-        .preview-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(to top, rgba(0, 0, 0, 1.0) 0%, rgba(0, 0, 0, 0.5) 25%, transparent 50%); z-index: 2; }
-        .preview-content { position: absolute; bottom: 0px; left: 0; width: 100%; padding: 0 15px; z-index: 3; max-width: none; display: flex; justify-content: space-between; align-items: flex-end; }
-        .preview-left { display: flex; flex-direction: column; align-items: flex-start; }
-        .preview-title img { max-height: 120px; max-width: 60%; width: auto; opacity: 0; animation: fadeIn 0.8s ease forwards; }
-        .preview-genres { font-size: 0.7rem; color: rgba(255, 255, 255, 0.8); margin: 5px 0 10px 0; }
-        .preview-buttons { z-index: 4; position: absolute; right: 20px; bottom: 10px; }
-        .preview-btn { padding: 4px 14px; border-radius: 20px; background-color: transparent; color: var(--primary-color); border: 1px solid var(--primary-color); font-size: 0.85rem; font-weight: 700; cursor: pointer; }
-        .video-page { 
-            display: none; 
-            width: 100%; 
-            background: #000; 
-            min-height: 100vh; 
-        }
-        .video-page.active { 
-            display: block; 
-        }
-        .video-header { 
-            display: flex; 
-            align-items: center; 
-            padding: 10px 5px; 
-            background: rgba(0, 0, 0, 0.9); 
-            position: relative; 
-            z-index: 20; 
-            width: 100%; 
-        }
-        .video-wrapper { 
-            position: relative; 
-            padding-bottom: 56.25%; 
-            height: 0; 
-            overflow: hidden; 
-            background: #000; 
-        }
-        iframe { 
-            position: absolute; 
-            top: 0; 
-            left: 0; 
-            width: 100%; 
-            height: 100%; 
-            border: none; 
-            background: #000; 
-        }
-        .selector-container { 
-            position: relative; 
-            width: 100%; 
-            background: transparent; 
-            padding: 5px; 
-            display: none; 
-        }
-        .selector-container.active { 
-            display: block; 
-        }
-        .selector-title { color: var(--primary-color); font-size: 1rem; margin-left: 10px; margin-bottom: 8px; font-weight: 700; }
-        .server-buttons { display: flex; flex-wrap: wrap; justify-content: center; margin-top: 8px; margin-bottom: 25px; gap: 6px; }
-        .season-buttons { display: flex; flex-wrap: wrap; margin-left: 11px; margin-bottom: 25px; gap: 6px; max-height: 66px; overflow-y: auto; }
-        .episode-buttons { display: flex; flex-wrap: wrap; margin-left: 11px; margin-bottom: 25px; gap: 6px; max-height: 118px; overflow-y: auto; }
-        .server-btn { background-color: var(--selector-bg); color: var(--selector-text); border: none; border-radius: 12px; padding: 4px 12px; font-size: 0.8rem; font-weight: normal; cursor: pointer; transition: all 0.3s ease; }
-        .season-btn { background-color: var(--selector-bg); color: var(--selector-text); border: none; border-radius: 5px; padding: 0; width: 76.5px; height: 30px; min-width: 76.5px; min-height: 30px; font-size: 0.85rem; cursor: pointer; transition: all 0.3s ease; display: flex; align-items: center; justify-content: center; white-space: nowrap; }
-        .episode-btn { background-color: var(--selector-bg); color: var(--selector-text); border: none; border-radius: 6px; width: 35px; height: 35px; font-size: 1rem; cursor: pointer; transition: all 0.3s ease; display: flex; align-items: center; justify-content: center; padding: 0; min-width: 35px; min-height: 35px; white-space: nowrap; }
-        .server-btn:hover, .season-btn:hover, .episode-btn:hover { background-color: var(--selector-active); color: #000; }
-        .server-btn.active, .season-btn.active, .episode-btn.active { background-color: var(--selector-active); color: #000; }
-        .media-details { background: rgba(0, 0, 0, 0.9); padding: 20px; color: var(--text-color); display: none; width: 100%; overflow: hidden; }
-        .media-details.active { display: block; }
-        .media-details-container { display: flex; flex-wrap: wrap; align-items: flex-start; max距离-width: 1200px; margin: 0 auto; }
-        .media-details-poster { flex: 0 0 150px; max-width: 150px; margin-right: 20px; }
-        .media-details-poster img { width: 100%; height: auto; border-radius: 8px; display: block; }
-        .media-details-content { flex: 1; min-width: 0; }
-        .media-details .title { font-size: 1.5rem; margin-bottom: 5px; word-wrap: break-word; }
-        .media-details .year-genre { font-size: 0.9rem; color: #aaa; margin-bottom: 10px; word-wrap: break-word; }
-        .media-details .plot { font-size: 0.9rem; line-height: 1.5; word-wrap: break-word; }
-        .recently-watched-section { 
-            position: relative; 
-            max-width: 100%; 
-            padding: 0 10px; 
-            margin-bottom: 25px; 
-            display: none; 
-        }
-        .recently-watched-section.active { display: block; }
-        .media-slider-section { position: relative; max-width: 100%; padding: 0 10px; margin-bottom: 25px; }
-        .slider-title { color: var(--primary-color); font-size: 1.2rem; margin: 0 10px; margin-bottom: 10px; font-weight: 700; font-family: 'Lexend', sans-serif; }
-        .poster-slider { display: flex; overflow-x: auto; scroll-behavior: smooth; scroll-snap-type: x mandatory; gap: 10px; margin: 0 10px; padding: 5px 0; scrollbar-width: none; -ms-overflow-style: none; }
-        .poster-slider::-webkit-scrollbar { display: none; }
-        .poster-item { 
-            flex: 0 0 auto; 
-            width: 120px; 
-            scroll-snap-align: start; 
-            border-radius: 6px; 
-            overflow: hidden; 
-            background: var(--card-bg); 
-            position: relative; 
-        }
-        .poster-img { width: 100%; height: 180px; object-fit: cover; border-radius: 6px; cursor: pointer; border: 1px solid transparent; }
-        .delete-badge { 
-            position: absolute; 
-            top: 5px; 
-            right: 5px; 
-            background: var(--secondary-color); 
-            color: var(--primary-color); 
-            width: 24px; 
-            height: 24px;
-            font-size: 0.9rem;
-            border-radius: 50%; 
-            display: flex; 
-            align-items: center; 
-            justify-content: center; 
-            cursor: pointer; 
-            z-index: 10; 
-        }
-        .episode-badge { 
-            position: absolute; 
-            bottom: 5px; 
-            left: 5px; 
-            background: var(--primary-color); 
-            color: black; 
-            padding: 2px 6px; 
-            border-radius: 3px; 
-            font-size: 0.7rem; 
-            font-weight: bold; 
-            opacity: 0.9; 
-            z-index: 10; 
-        }
-        footer { text-align: center; position: relative; width: 100%; color: #aaa; font-size: 0.6rem; margin-top: 20px; margin-bottom: 10px; }
-        @media (max-width: 767px) {
-            .media-details-poster { flex: 0 0 120px; max-width: 120px; margin-right: 15px; }
-            .media-details .title { font-size: 1.2rem; }
-            .media-details .year-genre, .media-details .plot { font-size: 0.85rem; }
-        }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px);} to { opacity: 1; transform: translateY(0);} }
-    </style>
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div class="video-page" id="videoPage">
-        <div class="video-header">
-            <i class="fas fa-arrow-left back-arrow" id="videoBackArrow" role="button" aria-label="Back to homepage"></i>
-            <p class="media-title" id="videoMediaTitle"></p>
-        </div>
-        <div class="video-wrapper">
-            <iframe id="videoFrame" src="" sandbox="allow-scripts allow-same-origin allow-forms allow-fullscreen" allow="fullscreen" allowfullscreen aria-label="Video Player"></iframe>
-        </div>
-        <div class="selector-container" id="selectorContainer">
-            <div class="server-selector">
-                <div class="server-buttons" id="serverGrid"></div>
-            </div>
-            <div class="season-selector" id="seasonSelector" style="display: none;">
-                <div class="selector-title">Select Season</div>
-                <div class="season-buttons" id="seasonGrid"></div>
-            </div>
-            <div class="episode-selector" id="episodeSelector" style="display: none;">
-                <div class="selector-title">Select Episode</div>
-                <div class="episode-buttons" id="episodeGrid"></div>
-            </div>
-            <div class="media-details" id="mediaDetails">
-                <div class="media-details-container">
-                    <div class="media-details-poster">
-                        <img src="" alt="Media Poster" id="mediaPoster" loading="lazy">
+    <div class="app-container">
+        <nav class="sidebar">
+            <ul class="sidebar-nav">
+                <li class="active" data-section="home"><i class="fas fa-home"></i><span>Home</span></li>
+                <li data-section="search"><i class="fas fa-search"></i><span>Search</span></li>
+                <li data-section="library"><i class="fas fa-bookmark"></i><span>Library</span></li>
+            </ul>
+        </nav>
+
+        <div class="main-content">
+            <div class="video-page" id="videoPage">
+                <div class="video-header">
+                    <button class="back-btn" aria-label="Go back"><i class="fas fa-arrow-left"></i></button>
+                    <p class="media-title" id="videoMediaTitle"></p>
+                </div>
+                <div class="video-wrapper">
+                    <iframe id="videoFrame" src="" sandbox="allow-scripts allow-same-origin allow-fullscreen" allow="fullscreen" allowfullscreen aria-label="Video Player"></iframe>
+                </div>
+                <div class="selector-container" id="selectorContainer">
+                    <div class="server-selector">
+                        <div class="server-buttons" id="serverGrid"></div>
+                        <div class="watchlist-btn-container">
+                            <button class="watchlist-btn" id="watchlistBtn" aria-label="Add to watchlist">Add to Watchlist <i class="fas fa-plus"></i></button>
+                            <a class="download-btn" id="downloadBtn" href="#" target="_blank" aria-label="Download media">Download <i class="fa-solid fa-download"></i></a>
+                        </div>
                     </div>
-                    <div class="media-details-content">
-                        <h3 id="mediaDetailsTitle" class="title"></h3>
-                        <p id="mediaYearGenre" class="year-genre"></p>
-                        <p id="mediaPlot" class="plot"></p>
+                    <div class="season-selector" id="seasonSelector" style="display: none;">
+                        <div class="selector-title">Select Season</div>
+                        <div class="season-buttons" id="seasonGrid"></div>
+                    </div>
+                    <div class="episode-selector" id="episodeSelector" style="display: none;">
+                        <div class="selector-title">Select Episode</div>
+                        <div class="episode-buttons" id="episodeGrid"></div>
+                    </div>
+                    <div class="media-details" id="mediaDetails">
+                        <div class="media-details-container">
+                            <div class="media-details-poster">
+                                <img src="" alt="Media Poster" id="mediaPoster">
+                                <span class="rating-badge" id="mediaRatingBadge"><i class="fas fa-star"></i><span class="rating-value"></span></span>
+                            </div>
+                            <div class="media-details-content">
+                                <h3 id="mediaDetailsTitle" class="title"></h3>
+                                <p id="mediaYearGenre" class="year-genre"></p>
+                                <p id="mediaPlot" class="plot"></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="container" id="homepage">
+                <h1 class="main-title">Showplay</h1>
+
+                <div class="search-section" id="searchSection">
+                    <div class="search-container">
+                        <div style="position: relative; flex: 1;">
+                            <input type="text" class="search-input" id="searchInput" placeholder="Search for Movies, Shows..." aria-label="Search for media">
+                            <i class="fas fa-search search-icon"></i>
+                        </div>
+                        <select class="search-filter" id="searchFilter" aria-label="Filter search results by type">
+                            <option value="movie" selected>Movie</option>
+                            <option value="tv">TV</option>
+                        </select>
+                    </div>
+                    <div class="search-results" id="searchResults"></div>
+                    <div class="search-trending" id="searchTrending"></div>
+                </div>
+
+                <div class="preview-section" id="previewSection">
+                    <div class="preview-placeholder"></div>
+                    <div class="preview-items-container" id="previewItemsContainer"></div>
+                </div>
+
+                <div class="media-slider-section" data-type="movie">
+                    <div class="slider-header">
+                        <h2 class="slider-title">Trending Movies</h2>
+                    </div>
+                    <div class="poster-slider" id="moviesSliderContainer">
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                    </div>
+                </div>
+
+                <div class="media-slider-section" data-type="tv">
+                    <div class="slider-header">
+                        <h2 class="slider-title">Trending Shows</h2>
+                    </div>
+                    <div class="poster-slider" id="tvSliderContainer">
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                    </div>
+                </div>
+
+                <div class="media-slider-section" data-type="anime">
+                    <div class="slider-header">
+                        <h2 class="slider-title">Popular Anime</h2>
+                    </div>
+                    <div class="poster-slider" id="animeSliderContainer">
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                    </div>
+                </div>
+
+                <div class="media-slider-section" data-type="kdrama">
+                    <div class="slider-header">
+                        <h2 class="slider-title">Popular K-Dramas</h2>
+                    </div>
+                    <div class="poster-slider" id="kdramaSliderContainer">
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
+                    </div>
+                </div>
+
+                <div class="library-section" id="librarySection">
+                    <div class="watchlist-section">
+                        <div class="slider-header">
+                            <h2 class="slider-title">Watchlist</h2>
+                        </div>
+                        <div class="poster-slider" id="watchlistSlider"></div>
+                    </div>
+                    <div class="history-section">
+                        <div class="slider-header">
+                            <h2 class="slider-title">History</h2>
+                        </div>
+                        <div class="poster-slider" id="historySlider"></div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="container" id="homepage">
-        <div class="header">
-            <div class="header-content">
-                <i class="fas fa-arrow-left back-arrow" id="backArrow" style="display: none;" role="button" aria-label="Back to previous page"></i>
-                <p class="media-title" id="mediaTitle" style="display: none;"></p>
-                <h1 id="mainTitle">Showplay</h1>
-            </div>
-            <i class="fas fa-search search-icon" id="searchIcon" role="button" aria-label="Toggle search"></i>
-        </div>
-
-        <div class="search-container" id="searchContainer">
-            <input type="text" class="search-box" id="searchBox" placeholder="Search Movies or Series..." aria-label="Search movies or TV shows" />
-            <div class="search-results" id="searchResults" aria-live="polite"></div>
-        </div>
-
-        <div class="preview-section" id="previewSection">
-            <div class="preview-overlay"></div>
-            <div class="preview-content">
-                <div class="preview-left">
-                    <h2 class="preview-title" id="previewTitle"></h2>
-                    <p class="preview-genres" id="previewGenres"></p>
-                </div>
-                <div class="preview-buttons">
-                    <button class="preview-btn" id="previewPlayBtn"><i class="fa-solid fa-play"></i> Play</button>
-                </div>
-            </div>
-        </div>
-
-        <div class="recently-watched-section" id="recentlyWatchedSection">
-            <div class="slider-header">
-                <h2 class="slider-title">Recently Watched</h2>
-            </div>
-            <div class="poster-slider" id="recentlyWatchedSlider"></div>
-        </div>
-
-        <div class="media-slider-section">
-            <div class="slider-header">
-                <h2 class="slider-title">Trending Movies</h2>
-            </div>
-            <div class="poster-slider" id="moviesSliderContainer"></div>
-        </div>
-
-        <div class="media-slider-section">
-            <div class="slider-header">
-                <h2 class="slider-title">Trending Series</h2>
-            </div>
-            <div class="poster-slider" id="tvSliderContainer"></div>
-        </div>
-
-        <div class="media-slider-section">
-            <div class="slider-header">
-                <h2 class="slider-title">Trending Anime</h2>
-            </div>
-            <div class="poster-slider" id="animeSliderContainer"></div>
-        </div>
-
-        <div class="media-slider-section">
-            <div class="slider-header">
-                <h2 class="slider-title">Trending K-Drama</h2>
-            </div>
-            <div class="poster-slider" id="kdramaSliderContainer"></div>
-        </div>
-
-        <footer id="footer">
-            © 2025 ShowPlay. All rights reserved.
-        </footer>
-    </div>
-
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script>
-        $(document).ready(() => {
-            const selectors = {
-                videoPage: $('#videoPage'),
-                videoFrame: $('#videoFrame'),
-                videoBackArrow: $('#videoBackArrow'),
-                videoMediaTitle: $('#videoMediaTitle'),
-                selectorContainer: $('#selectorContainer'),
-                seasonSelector: $('#seasonSelector'),
-                episodeSelector: $('#episodeSelector'),
-                seasonGrid: $('#seasonGrid'),
-                episodeGrid: $('#episodeGrid'),
-                serverGrid: $('#serverGrid'),
-                mediaDetails: $('#mediaDetails'),
-                mediaPoster: $('#mediaPoster'),
-                mediaDetailsTitle: $('#mediaDetailsTitle'),
-                mediaYearGenre: $('#mediaYearGenre'),
-                mediaPlot: $('#mediaPlot'),
-                homepage: $('#homepage'),
-                mainTitle: $('#mainTitle'),
-                searchIcon: $('#searchIcon'),
-                searchContainer: $('#searchContainer'),
-                searchBox: $('#searchBox'),
-                searchResults: $('#searchResults'),
-                backArrow: $('#backArrow'),
-                mediaTitle: $('#mediaTitle'),
-                previewSection: $('#previewSection'),
-                previewTitle: $('#previewTitle'),
-                previewGenres: $('#previewGenres'),
-                previewPlayBtn: $('#previewPlayBtn'),
-                footer: $('#footer'),
-                recentlyWatchedSection: $('#recentlyWatchedSection'),
-                recentlyWatchedSlider: $('#recentlyWatchedSlider'),
-                moviesSlider: $('#moviesSliderContainer'),
-                tvSlider: $('#tvSliderContainer'),
-                animeSlider: $('#animeSliderContainer'),
-                kdramaSlider: $('#kdramaSliderContainer')
-            };
-
-            const state = {
-                mediaType: 'movie',
-                mediaId: null,
-                season: null,
-                episode: null,
-                selectedEpisodes: {},
-                lastPlayedEpisode: { season: null, episode: null },
-                trendingMovies: [],
-                previewIndex: parseInt(localStorage.getItem('previewIndex')) || 0,
-                previewInterval: null,
-                recentlyWatched: JSON.parse(localStorage.getItem('recentlyWatched')) || [],
-                cachedMedia: {},
-                cachedPosters: JSON.parse(localStorage.getItem('cachedPosters')) || {}
-            };
-
-            const config = {
-                apiKey: 'ea118e768e75a1fe3b53dc99c9e4de09',
-                servers: [
-                    { name: 'Server 1', url: 'https://vidfast.pro' },
-                    { name: 'Server 2', url: 'https://111movies.com' },
-                    { name: 'Server 3', url: 'https://vidsrc.cc/v2' }
-                ]
-            };
-
-            const handleError = (error, message, element) => {
-                console.error(message, error);
-                if (element) element.empty();
-            };
-
-            const isValidMovieCache = movies => 
-                Array.isArray(movies) && movies.length === 10 && movies.every(m => 
-                    m.id && m.title && m.backdrop_path && m.poster_path && m.genres && m.logo_path && m.original_language === 'en' && m.release_date
-                );
-
-            const cachePosterImages = async (item) => {
-                const posterPath = item.poster_path || item.poster;
-                if (!posterPath || state.cachedPosters[posterPath]) return;
-
-                try {
-                    const response = await fetch(`https://image.tmdb.org/t/p/w92${posterPath}`);
-                    if (!response.ok) throw new Error('Failed to fetch poster');
-                    const blob = await response.blob();
-                    const reader = new FileReader();
-                    reader.readAsDataURL(blob);
-                    reader.onloadend = () => {
-                        state.cachedPosters[posterPath] = reader.result;
-                        localStorage.setItem('cachedPosters', JSON.stringify(state.cachedPosters));
-                    };
-                } catch (error) {
-                    handleError(error, `Error caching poster ${posterPath}`);
-                }
-            };
-
-            const cleanPosterCache = () => {
-                const validPosters = state.recentlyWatched.map(item => item.poster_path || item.poster).filter(Boolean);
-                Object.keys(state.cachedPosters).forEach(key => {
-                    if (!validPosters.includes(key)) {
-                        delete state.cachedPosters[key];
-                    }
-                });
-                localStorage.setItem('cachedPosters', JSON.stringify(state.cachedPosters));
-            };
-
-            const initializeServers = () => {
-                selectors.serverGrid.empty();
-                config.servers.forEach((server, i) => {
-                    const btn = $(`<button class="server-btn${i === 0 ? ' active' : ''}">${server.name}</button>`).data('url', server.url);
-                    btn.on('click', () => {
-                        $('.server-btn').removeClass('active');
-                        btn.addClass('active');
-                        if (state.mediaId && (state.mediaType === 'movie' || (state.season && state.episode))) {
-                            embedVideo();
-                        }
-                    });
-                    selectors.serverGrid.append(btn);
-                });
-            };
-
-            const getServerUrl = () => $('.server-btn.active').data('url') || config.servers[0].url;
-
-            const renderMediaItem = (item, mediaType, container, isRecent = false) => {
-                const title = item.title || item.name;
-                const posterPath = item.poster_path || item.poster;
-                const imageUrl = isRecent && state.cachedPosters[posterPath] 
-                    ? state.cachedPosters[posterPath] 
-                    : `https://image.tmdb.org/t/p/${isRecent ? 'w92' : 'w500'}${posterPath}`;
-                const poster = $(`
-                    <div class="poster-item">
-                        <img src="${imageUrl}" alt="${title}" class="poster-img" loading="lazy" role="button" aria-label="Play ${title}" />
-                        ${isRecent && mediaType === 'tv' ? `<span class="episode-badge">S${String(item.season).padStart(2, '0')}E${String(item.episode).padStart(2, '0')}</span>` : ''}
-                        ${isRecent ? `<span class="delete-badge" role="button" aria-label="Remove ${title} from recently watched"><i class="fas fa-trash"></i></span>` : ''}
-                    </div>
-                `);
-                poster.find('.poster-img').on('click', e => {
-                    e.stopPropagation();
-                    navigateToMedia(item.id, mediaType, title, imageUrl, item.release_date || item.first_air_date || item.year, item.season, item.episode);
-                });
-                if (isRecent) {
-                    poster.find('.delete-badge').on('click', e => {
-                        e.stopPropagation();
-                        state.recentlyWatched = state.recentlyWatched.filter(w => w.id !== item.id);
-                        localStorage.setItem('recentlyWatched', JSON.stringify(state.recentlyWatched));
-                        cleanPosterCache();
-                        loadRecentlyWatched();
-                    });
-                    cachePosterImages(item);
-                }
-                container.append(poster);
-            };
-
-            const loadRecentlyWatched = () => {
-                selectors.recentlyWatchedSlider.empty();
-                if (!state.recentlyWatched.length) {
-                    selectors.recentlyWatchedSection.removeClass('active').hide();
-                    return;
-                }
-                state.recentlyWatched.forEach(item => {
-                    renderMediaItem(item, item.type, selectors.recentlyWatchedSlider, true);
-                });
-                cleanPosterCache();
-                selectors.recentlyWatchedSection.addClass('active').show();
-            };
-
-            const fetchTrending = async (type, containerId) => {
-                const container = $(`#${containerId}`);
-                let url;
-                if (type === 'movie') url = `https://api.themoviedb.org/3/trending/movie/week?api_key=${config.apiKey}`;
-                else if (type === 'tv') url = `https://api.themoviedb.org/3/trending/tv/week?api_key=${config.apiKey}`;
-                else if (type === 'anime') url = `https://api.themoviedb.org/3/discover/tv?api_key=${config.apiKey}&with_genres=16&sort_by=popularity.desc&with_original_language=ja&vote_average.gte=8&vote_count.gte=1000&first_air_date.gte=1990-01-01`;
-                else url = `https://api.themoviedb.org/3/discover/tv?api_key=${config.apiKey}&with_original_language=ko&sort_by=popularity.desc&sort_by=first_air_date.desc&vote_average.gte=7&vote_count.gte=100&first_air_date.gte=2020-01-01`;
-
-                try {
-                    let items = [], page = 1, maxPages = type === 'movie' || type === 'tv' ? 2 : 1;
-                    while (items.length < 20 && page <= maxPages) {
-                        const res = await fetch(`${url}&page=${page}`);
-                        if (!res.ok) throw new Error(`Fetch failed for ${type}, page ${page}`);
-                        const data = await res.json();
-                        let validItems = data.results.filter(item => item.id && (item.title || item.name) && item.poster_path);
-                        if (type === 'tv') validItems = validItems.filter(item => !item.genre_ids.includes(16) && item.original_language !== 'ja' && item.original_language !== 'ko');
-                        items = items.concat(validItems);
-                        page++;
-                    }
-                    container.empty();
-                    items.slice(0, 20).forEach(item => renderMediaItem(item, type === 'movie' ? 'movie' : 'tv', container));
-                } catch (error) {
-                    handleError(error, `Error fetching ${type}`, container);
-                }
-            };
-
-            const fetchMovieDetails = async movieId => {
-                try {
-                    const res = await fetch(`https://api.themoviedb.org/3/movie/${movieId}?api_key=${config.apiKey}&append_to_response=images`);
-                    if (!res.ok) throw new Error(`Details fetch failed for movie ${movieId}`);
-                    const data = await res.json();
-                    const logo = (data.images?.logos || []).find(l => l.file_path && l.iso_639_1 === 'en') || data.images?.logos[0];
-                    return {
-                        logo: logo ? `https://image.tmdb.org/t/p/w500${logo.file_path}` : '',
-                        genres: data.genres?.map(g => g.name).join(', ') || ''
-                    };
-                } catch (error) {
-                    handleError(error, `Error fetching movie ${movieId} details`);
-                    return { logo: '', genres: '' };
-                }
-            };
-
-            const loadTrendingMoviesForPreview = async () => {
-                try {
-                    let movies = [], page = 1;
-                    while (movies.length < 10 && page <= 3) {
-                        const res = await fetch(`https://api.themoviedb.org/3/trending/movie/week?api_key=${config.apiKey}&page=${page}`);
-                        if (!res.ok) throw new Error(`Preview fetch failed, page ${page}`);
-                        const data = await res.json();
-                        movies = movies.concat(data.results.filter(m => 
-                            m.id && m.title && m.backdrop_path && m.poster_path && m.original_language === 'en' && m.release_date
-                        ));
-                        page++;
-                    }
-                    movies = movies.slice(0, 10);
-                    if (movies.length !== 10) throw new Error(`Only ${movies.length} valid movies fetched`);
-
-                    const details = await Promise.all(movies.map(m => fetchMovieDetails(m.id)));
-                    state.trendingMovies = movies.map((m, i) => ({ ...m, logo_path: details[i].logo || m.poster_path, genres: details[i].genres }));
-                    localStorage.setItem('trendingMovies', JSON.stringify(state.trendingMovies));
-                    renderPreviewContent();
-                    startPreviewSlideshow();
-                } catch (error) {
-                    handleError(error, 'Error fetching trending movies');
-                    state.trendingMovies = [];
-                    localStorage.setItem('trendingMovies', JSON.stringify([]));
-                }
-            };
-
-            const renderPreviewContent = () => {
-                if (state.trendingMovies.length !== 10) {
-                    loadTrendingMoviesForPreview();
-                    return;
-                }
-                selectors.previewSection.find('.preview-background').remove();
-                selectors.previewSection.prepend(
-                    state.trendingMovies.map((m, i) => 
-                        `<img class="preview-background${i === state.previewIndex ? ' active' : ''}" 
-                              src="https://image.tmdb.org/t/p/w780${m.backdrop_path}" 
-                              alt="${m.title}" 
-                              data-id="${m.id}" 
-                              data-title="${m.title}" 
-                              data-poster="https://image.tmdb.org/t/p/w500${m.poster_path}" 
-                              data-year="${m.release_date}"
-                              loading="${i === state.previewIndex ? 'eager' : 'lazy'}">`
-                    ).join('')
-                );
-
-                if (state.trendingMovies.length) {
-                    ['0', '1'].forEach(i => {
-                        new Image().src = `https://image.tmdb.org/t/p/w780${state.trendingMovies[i].backdrop_path}`;
-                        new Image().src = `https://image.tmdb.org/t/p/w500${state.trendingMovies[i].logo_path}`;
-                    });
-                }
-
-                updatePreviewContent(state.previewIndex);
-                setupPreviewTouch();
-            };
-
-            const updatePreviewContent = index => {
-                if (state.trendingMovies.length !== 10) return;
-                $('.preview-background').removeClass('active').eq(index).addClass('active');
-                const movie = state.trendingMovies[index];
-                selectors.previewTitle.html(`<img src="https://image.tmdb.org/t/p/w500${movie.logo_path}" alt="${movie.title}">`);
-                selectors.previewGenres.text(movie.genres || '');
-                selectors.previewPlayBtn.off('click').on('click', e => {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    navigateToMedia(movie.id, 'movie', movie.title, `https://image.tmdb.org/t/p/w500${movie.poster_path}`, movie.release_date);
-                });
-
-                const nextIndices = [(index + 1) % 10, (index + 2) % 10];
-                nextIndices.forEach(i => {
-                    new Image().src = `https://image.tmdb.org/t/p/w780${state.trendingMovies[i].backdrop_path}`;
-                    new Image().src = `https://image.tmdb.org/t/p/w500${state.trendingMovies[i].logo_path}`;
-                });
-            };
-
-            const setupPreviewTouch = () => {
-                let touchStartX = 0, touchEndX = 0;
-                selectors.previewSection.off('touchstart touchmove touchend');
-                selectors.previewSection.on({
-                    touchstart: e => {
-                        if (!$(e.target).closest('.preview-btn').length) touchStartX = e.originalEvent.touches[0].clientX;
-                    },
-                    touchmove: e => {
-                        if (!$(e.target).closest('.preview-btn').length) touchEndX = e.originalEvent.touches[0].clientX;
-                    },
-                    touchend: e => {
-                        if (!$(e.target).closest('.preview-btn').length && touchStartX && touchEndX) {
-                            const diff = touchStartX - touchEndX;
-                            if (Math.abs(diff) > 30) {
-                                stopPreviewSlideshow();
-                                state.previewIndex = diff > 0 
-                                    ? (state.previewIndex + 1) % 10 
-                                    : (state.previewIndex - 1 + 10) % 10;
-                                localStorage.setItem('previewIndex', state.previewIndex);
-                                updatePreviewContent(state.previewIndex);
-                                startPreviewSlideshow();
-                            }
-                            touchStartX = touchEndX = 0;
-                        }
-                    }
-                });
-            };
-
-            const startPreviewSlideshow = () => {
-                if (state.previewInterval || selectors.videoPage.is(':visible') || state.trendingMovies.length !== 10) return;
-                state.previewInterval = setInterval(() => {
-                    state.previewIndex = (state.previewIndex + 1) % 10;
-                    localStorage.setItem('previewIndex', state.previewIndex);
-                    updatePreviewContent(state.previewIndex);
-                }, 6000);
-            };
-
-            const stopPreviewSlideshow = () => {
-                if (state.previewInterval) {
-                    clearInterval(state.previewInterval);
-                    state.previewInterval = null;
-                }
-            };
-
-            const loadHomepage = async () => {
-                selectors.homepage.show();
-                selectors.videoPage.hide();
-                selectors.mainTitle.show();
-                selectors.searchIcon.show();
-                selectors.backArrow.hide();
-                selectors.mediaTitle.hide();
-                selectors.videoBackArrow.hide();
-                selectors.videoMediaTitle.hide();
-                selectors.previewSection.show();
-                selectors.footer.show();
-                selectors.seasonSelector.hide();
-                selectors.episodeSelector.hide();
-                [selectors.moviesSlider, selectors.tvSlider, selectors.animeSlider, selectors.kdramaSlider].forEach(s => s.empty());
-
-                try {
-                    const cachedMovies = JSON.parse(localStorage.getItem('trendingMovies') || '[]');
-                    if (isValidMovieCache(cachedMovies)) {
-                        state.trendingMovies = cachedMovies;
-                        renderPreviewContent();
-                        startPreviewSlideshow();
-                    } else {
-                        await loadTrendingMoviesForPreview();
-                    }
-                    await Promise.all([
-                        fetchTrending('movie', 'moviesSliderContainer'),
-                        fetchTrending('tv', 'tvSliderContainer'),
-                        fetchTrending('anime', 'animeSliderContainer'),
-                        fetchTrending('kdrama', 'kdramaSliderContainer')
-                    ]);
-                    loadRecentlyWatched();
-                } catch (error) {
-                    handleError(error, 'Error loading homepage', selectors.previewSection);
-                    state.trendingMovies = [];
-                    selectors.previewSection.find('.preview-background').remove();
-                    selectors.previewTitle.empty();
-                    selectors.previewGenres.empty();
-                }
-            };
-
-            const navigateToMedia = (id, type, title, poster, year, season, episode) => {
-                stopPreviewSlideshow();
-                state.mediaId = id;
-                state.mediaType = type;
-                state.season = season;
-                state.episode = episode;
-                state.selectedEpisodes = {};
-                state.lastPlayedEpisode = { season: null, episode: null };
-                if (type === 'tv' && season && episode) {
-                    state.selectedEpisodes[season] = episode;
-                    state.lastPlayedEpisode = { season, episode };
-                }
-
-                const path = type === 'movie' ? `/movie/${id}` : `/tv/${id}${season && episode ? `?season=${season}&episode=${episode}` : ''}`;
-                window.history.pushState({ id, type, title, poster, year, season, episode }, '', path);
-
-                selectors.videoPage.data({ title, title, year });
-
-                handleMediaClick(title, poster, year);
-
-                if (type === 'movie' || (type === 'tv' && season && episode)) {
-                    const item = { id, type, title, poster: poster || '', year, season, episode, timestamp: Date.now() };
-                    const index = state.recentlyWatched.findIndex(w => w.id === id);
-                    if (index !== -1) {
-                        state.recentlyWatched[index] = item;
-                        state.recentlyWatched.unshift(state.recentlyWatched.splice(index, 1)[0]);
-                    } else {
-                        state.recentlyWatched.unshift(item);
-                    }
-                    state.recentlyWatched = state.recentlyWatched.slice(0, 10);
-                    localStorage.setItem('recentlyWatched', JSON.stringify(state.recentlyWatched));
-                    cachePosterImages(item);
-                }
-
-                selectors.searchContainer.removeClass('active');
-                selectors.searchBox.val('');
-                selectors.searchResults.empty();
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-            };
-
-            const handleMediaClick = async (title, poster, year) => {
-                selectors.videoFrame.attr('src', '');
-                selectors.videoPage.data({ title, poster, year });
-
-                selectors.videoPage.addClass('active').show();
-                selectors.homepage.hide();
-                selectors.mainTitle.hide();
-                selectors.searchIcon.hide();
-                selectors.backArrow.hide();
-                selectors.mediaTitle.hide();
-                selectors.videoBackArrow.show();
-                selectors.videoMediaTitle.show();
-                selectors.footer.hide();
-
-                selectors.videoMediaTitle.text(title && year ? `${title}\n(${year.split('-')[0]})` : title || 'Loading...');
-
-                selectors.seasonSelector.toggle(state.mediaType === 'tv');
-                selectors.episodeSelector.toggle(state.mediaType === 'tv');
-
-                try {
-                    await fetchMediaDetails();
-                    if (state.mediaType === 'movie') {
-                        embedVideo();
-                    } else {
-                        await loadSeasons();
-                        if (state.season && state.episode) {
-                            embedVideo();
-                            $(`.season-btn[data-value="${state.season}"]`).addClass('active');
-                            await loadEpisodes(state.season);
-                            $(`.episode-btn[data-value="${state.episode}"]`).addClass('active');
-                        }
-                        selectors.videoPage.data({ title, poster, year });
-                    }
-                    selectors.selectorContainer.addClass('active').show();
-                    selectors.mediaDetails.addClass('active').show();
-                } catch (error) {
-                    handleError(error, 'Error loading media');
-                    selectors.videoFrame.attr('src', '');
-                    selectors.videoMediaTitle.text('Loading...');
-                    selectors.mediaDetails.hide();
-                }
-                $('body').css('overflow-y', 'auto');
-            };
-
-            const fetchMediaDetails = async () => {
-                const key = `${state.mediaType}-${state.mediaId}`;
-                if (state.cachedMedia[key]) return applyMediaDetails(state.cachedMedia[key]);
-
-                try {
-                    const res = await fetch(`https://api.themoviedb.org/3/${state.mediaType}/${state.mediaId}?api_key=${config.apiKey}`);
-                    if (!res.ok) throw new Error('Failed to fetch media details');
-                    const data = await res.json();
-                    state.cachedMedia[key] = data;
-                    applyMediaDetails(data);
-                } catch (error) {
-                    handleError(error, 'Error fetching media details');
-                    selectors.mediaPoster.attr('src', '');
-                    selectors.mediaDetailsTitle.text('');
-                    selectors.mediaYearGenre.text('');
-                    selectors.mediaPlot.text('');
-                    selectors.videoMediaTitle.text('Loading...');
-                    selectors.mediaDetails.hide();
-                    throw error;
-                }
-            };
-
-            const applyMediaDetails = data => {
-                const poster = data.poster_path ? `https://image.tmdb.org/t/p/w500${data.poster_path}` : '';
-                const title = data.title || data.name || 'Unknown Title';
-                const year = (data.release_date || data.first_air_date || '').split('-')[0];
-                const genres = data.genres?.map(g => g.name).join(', ') || 'N/A';
-                const plot = data.overview || 'No plot summary available.';
-
-                selectors.mediaPoster.attr('src', poster);
-                selectors.mediaDetailsTitle.text(title);
-                selectors.mediaYearGenre.text(`${year} | ${genres}`);
-                selectors.mediaPlot.text(plot);
-                selectors.videoMediaTitle.text(`${title}\n(${year})`);
-            };
-
-            const embedVideo = () => {
-                const server = getServerUrl();
-                let url;
-                if (state.mediaType === 'movie') {
-                    const { title, poster, year } = selectors.videoPage.data();
-                    if (title && year) selectors.videoMediaTitle.text(`${title}\n(${year.split('-')[0]})`);
-                    url = server === 'https://vidsrc.cc/v2' ? `${server}/embed/movie/${state.mediaId}` : `${server}/movie/${state.mediaId}`;
-                } else if (state.season && state.episode) {
-                    url = server === 'https://vidsrc.cc/v2' ? `${server}/embed/tv/${state.mediaId}/${state.season}/${state.episode}` : `${server}/tv/${state.mediaId}/${state.season}/${state.episode}`;
-                } else {
-                    selectors.videoPage.addClass('active');
-                    return;
-                }
-
-                if (!config.servers.some(s => url.startsWith(s.url))) {
-                    console.error('Invalid embed URL:', url);
-                    selectors.videoFrame.attr('src', '');
-                    return;
-                }
-
-                selectors.videoFrame.attr('src', url);
-                selectors.videoPage.addClass('active');
-                selectors.selectorContainer.addClass('active').show();
-                selectors.mediaDetails.addClass('active').show();
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-            };
-
-            const loadSeasons = async () => {
-                try {
-                    const res = await fetch(`https://api.themoviedb.org/3/tv/${state.mediaId}?api_key=${config.apiKey}`);
-                    if (!res.ok) throw new Error('Failed to fetch seasons');
-                    const data = await res.json();
-                    const seasons = data.seasons.filter(s => s.season_number > 0);
-                    selectors.videoPage.data({
-                        title: data.name || '',
-                        poster: data.poster_path ? `https://image.tmdb.org/t/p/w500${data.poster_path}` : '',
-                        year: data.first_air_date || ''
-                    });
-                    selectors.videoMediaTitle.text(`${data.name}\n(${data.first_air_date?.split('-')[0] || ''})`);
-
-                    selectors.seasonGrid.empty();
-                    seasons.forEach(s => {
-                        const btn = $(`<button class="season-btn" data-value="${s.season_number}">Season ${s.season_number}</button>`);
-                        btn.on('click', () => {
-                            $('.season-btn').removeClass('active');
-                            btn.addClass('active');
-                            state.season = s.season_number;
-                            loadEpisodes(s.season_number);
-                        });
-                        selectors.seasonGrid.append(btn);
-                    });
-
-                    const targetSeason = state.season || 1;
-                    const seasonBtn = $(`.season-btn[data-value="${targetSeason}"]`);
-                    if (seasonBtn.length) {
-                        seasonBtn.addClass('active');
-                        loadEpisodes(targetSeason);
-                    } else if (seasons.length) {
-                        $(`.season-btn[data-value="${seasons[0].season_number}"]`).addClass('active');
-                        loadEpisodes(seasons[0].season_number);
-                    }
-                } catch (error) {
-                    handleError(error, 'Error fetching seasons', selectors.seasonGrid);
-                    selectors.videoMediaTitle.text('Loading...');
-                    throw error;
-                }
-            };
-
-            const loadEpisodes = async season => {
-                try {
-                    const res = await fetch(`https://api.themoviedb.org/3/tv/${state.mediaId}/season/${season}?api_key=${config.apiKey}`);
-                    if (!res.ok) throw new Error('Failed to fetch episodes');
-                    const data = await res.json();
-                    selectors.episodeGrid.empty();
-                    data.episodes.forEach(e => {
-                        const btn = $(`<button class="episode-btn" data-value="${e.episode_number}" title="${e.name || `Episode ${e.episode_number}`}">${e.episode_number}</button>`);
-                        btn.on('click', () => {
-                            $('.episode-btn').removeClass('active');
-                            btn.addClass('active');
-                            state.season = season;
-                            state.episode = e.episode_number;
-                            state.selectedEpisodes = { [season]: e.episode_number };
-                            state.lastPlayedEpisode = { season, episode: e.episode_number };
-                            embedVideo();
-                            navigateToMedia(
-                                state.mediaId, 'tv', 
-                                selectors.videoPage.data('title'), 
-                                selectors.videoPage.data('poster'), 
-                                selectors.videoPage.data('year'), 
-                                season, e.episode_number
-                            );
-                        });
-                        if (state.selectedEpisodes[season] === e.episode_number) {
-                            btn.addClass('active');
-                        }
-                        selectors.episodeGrid.append(btn);
-                    });
-                } catch (error) {
-                    handleError(error, 'Error fetching episodes', selectors.episodeGrid);
-                    throw error;
-                }
-            };
-
-            const setupSearch = () => {
-                selectors.searchIcon.on('click keypress', e => {
-                    if (e.type === 'click' || e.key === 'Enter' || e.key === ' ') {
-                        selectors.searchContainer.toggleClass('active');
-                        if (selectors.searchContainer.hasClass('active')) selectors.searchBox.focus();
-                        else {
-                            selectors.searchBox.val('');
-                            selectors.searchResults.empty();
-                        }
-                    }
-                });
-
-                const levenshteinDistance = (a, b) => {
-                    const matrix = Array(b.length + 1).fill().map(() => Array(a.length + 1).fill(0));
-                    for (let i = 0; i <= a.length; i++) matrix[0][i] = i;
-                    for (let j = 0; j <= b.length; j++) matrix[j][0] = j;
-                    for (let j = 1; j <= b.length; j++) {
-                        for (let i = 1; i <= a.length; i++) {
-                            const indicator = a[i - 1] === b[j - 1] ? 0 : 1;
-                            matrix[j][i] = Math.min(
-                                matrix[j][i - 1] + 1,
-                                matrix[j - 1][i] + 1,
-                                matrix[j - 1][i - 1] + indicator
-                            );
-                        }
-                    }
-                    return matrix[b.length][a.length];
-                };
-
-                const debounce = (func, wait) => {
-                    let timeout;
-                    return (...args) => {
-                        clearTimeout(timeout);
-                        timeout = setTimeout(() => func(...args), wait);
-                    };
-                };
-
-                selectors.searchBox.on('input', debounce(async () => {
-                    const query = selectors.searchBox.val().trim();
-                    if (query.length < 2) return selectors.searchResults.empty();
-
-                    try {
-                        const res = await fetch(`https://api.themoviedb.org/3/search/multi?api_key=${config.apiKey}&query=${encodeURIComponent(query)}&page=1&include_adult=false`);
-                        if (!res.ok) throw new Error('Search fetch failed');
-                        const data = await res.json();
-                        let results = data.results
-                            .filter(item => 
-                                (item.media_type === 'movie' || item.media_type === 'tv') && 
-                                item.id && 
-                                (item.title || item.name) && 
-                                item.poster_path && 
-                                (item.release_date || item.first_air_date)
-                            )
-                            .slice(0, 20);
-
-                        const queryLower = query.toLowerCase();
-                        results.sort((a, b) => {
-                            const aTitle = (a.title || a.name || '').toLowerCase();
-                            const bTitle = (b.title || b.name || '').toLowerCase();
-
-                            if (aTitle === queryLower && bTitle !== queryLower) return -1;
-                            if (bTitle === queryLower && aTitle !== queryLower) return 1;
-
-                            if (aTitle.startsWith(queryLower) && !bTitle.startsWith(queryLower)) return -1;
-                            if (bTitle.startsWith(queryLower) && !aTitle.startsWith(queryLower)) return 1;
-
-                            const aDistance = levenshteinDistance(queryLower, aTitle);
-                            const bDistance = levenshteinDistance(queryLower, bTitle);
-                            return aDistance - bDistance;
-                        });
-
-                        results = results.slice(0, 10);
-
-                        selectors.searchResults.empty();
-                        if (!results.length) return selectors.searchResults.html('<div class="search-no-results">No results found</div>');
-
-                        results.forEach(item => {
-                            const title = item.title || item.name;
-                            const year = (item.release_date || item.first_air_date || '').split('-')[0];
-                            const poster = `https://image.tmdb.org/t/p/w92${item.poster_path}`;
-                            const type = item.media_type === 'movie' ? 'Movie' : 'TV';
-                            const result = $(`
-                                <div class="search-result-item" role="button" aria-label="Select ${title}">
-                                    <img src="${poster}" alt="${title}" class="search-result-poster" loading="lazy" />
-                                    <div class="search-result-info">
-                                        <div class="search-result-title">${title}</div>
-                                        <div class="search-result-year">${year} | ${type}</div>
-                                    </div>
-                                </div>
-                            `);
-                            result.on('click', () => navigateToMedia(item.id, item.media_type, title, `https://image.tmdb.org/t/p/w500${item.poster_path}`, item.release_date || item.first_air_date));
-                            selectors.searchResults.append(result);
-                        });
-                    } catch (error) {
-                        handleError(error, 'Error searching', selectors.searchResults);
-                        selectors.searchResults.html('<div class="search-no-results">No results found</div>');
-                    }
-                }, 300));
-            };
-
-            const checkRouteAndLoad = () => {
-                const path = window.location.pathname;
-                if (path === '/' || path === '') {
-                    loadHomepage();
-                } else if (path.startsWith('/movie/')) {
-                    const id = path.split('/movie/')[1];
-                    if (id) {
-                        const s = history.state || {};
-                        navigateToMedia(id, 'movie', s.title, s.poster, s.year);
-                    }
-                } else if (path.startsWith('/tv/')) {
-                    const id = path.split('/tv/')[1];
-                    if (id) {
-                        const s = history.state || {};
-                        const params = new URLSearchParams(window.location.search);
-                        const season = parseInt(params.get('season')) || s.season;
-                        const episode = parseInt(params.get('episode')) || s.episode;
-                        navigateToMedia(id, 'tv', s.title, s.poster, s.year, season, episode);
-                    }
-                } else {
-                    loadHomepage();
-                }
-            };
-
-            selectors.videoBackArrow.on('click', () => {
-                window.history.pushState({}, '', '/');
-                selectors.videoPage.removeClass('active').hide();
-                selectors.videoFrame.attr('src', '');
-                selectors.selectorContainer.removeClass('active').hide();
-                selectors.seasonSelector.hide();
-                selectors.episodeSelector.hide();
-                selectors.mediaDetails.hide();
-                loadHomepage();
-            });
-
-            selectors.backArrow.on('click', () => {
-                window.history.back();
-            });
-
-            window.onpopstate = event => {
-                const path = window.location.pathname;
-                if (path === '/' || path === '') {
-                    selectors.videoPage.removeClass('active').hide();
-                    selectors.videoFrame.attr('src', '');
-                    selectors.selectorContainer.removeClass('active').hide();
-                    selectors.seasonSelector.hide();
-                    selectors.episodeSelector.hide();
-                    selectors.mediaDetails.hide();
-                    loadHomepage();
-                } else if (path.startsWith('/movie/')) {
-                    const id = path.split('/movie/')[1];
-                    if (id) {
-                        const s = event.state || {};
-                        navigateToMedia(id, 'movie', s.title, s.poster, s.year);
-                    }
-                } else if (path.startsWith('/tv/')) {
-                    const id = path.split('/tv/')[1];
-                    if (id) {
-                        const s = event.state || {};
-                        const params = new URLSearchParams(window.location.search);
-                        const season = parseInt(params.get('season')) || s.season;
-                        const episode = parseInt(params.get('episode')) || s.episode;
-                        navigateToMedia(id, 'tv', s.title, s.poster, s.year, season, episode);
-                    }
-                }
-            };
-
-            initializeServers();
-            loadRecentlyWatched();
-            checkRouteAndLoad();
-            setupSearch();
-        });
-    </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL" crossorigin="anonymous"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js" integrity="sha256-/xUj+3OJU5yExlq6GSYGSHk7tPXikynS7ogEvDej/m4=" crossorigin="anonymous"></script>
+    <script src="script.js"></script>
 </body>
 </html>
