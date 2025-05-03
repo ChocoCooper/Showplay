@@ -174,8 +174,6 @@ body {
     max-height: 100px;
     object-fit: contain;
     margin-bottom: 10px;
-    opacity: 0;
-    animation: fadeIn 0.8s ease forwards;
 }
 
 .preview-meta {
