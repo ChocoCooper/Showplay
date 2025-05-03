@@ -620,7 +620,7 @@ iframe {
     animation: shimmer 1.5s infinite;
 }
 
-.rating-badge, .delete-badge {
+.rating-badge, .delete-badge, .episode-info {
     position: absolute;
     background: rgba(0, 0, 0, 0.7);
     color: #ffffff;
@@ -647,6 +647,14 @@ iframe {
     color: #ff0000;
     width: 30px;
     height: 30px;
+}
+
+.episode-info {
+    bottom: 5px;
+    left: 5px;
+    font-size: 12px;
+    padding: 2px 6px;
+    background: rgba(0, 0, 0, 0.8);
 }
 
 .rating-badge i {
@@ -868,7 +876,7 @@ iframe {
         height: 157.5px;
     }
 
-    .rating-badge, .delete-badge {
+    .rating-badge, .delete-badge, .episode-info {
         border-radius: 6px;
     }
 
@@ -886,6 +894,13 @@ iframe {
         height: 24px;
         left: 5px;
         top: 5px;
+    }
+
+    .episode-info {
+        bottom: 5px;
+        left: 5px;
+        font-size: 10px;
+        padding: 2px 4px;
     }
 
     .rating-badge i, .delete-badge i {
