@@ -503,14 +503,14 @@ $(document).ready(() => {
                 e.stopPropagation();
                 const item = { id: movie.id, type: 'movie', title: movie.title, poster: movie.poster_path || '', timestamp: Date.now() };
                 const isInWatchlist = state.watchlist.some(w => w.id === item.id);
-                if (!isInWatchlist) {
-                    state.watchlist.push(item);
-                    localStorage.setItem('watchlist', JSON.stringify(state.watchlist));
-                    $(e.currentTarget).html('<i class="fa-solid fa-check"></i>');
-                    alert(`${movie.title} added to watchlist!`);
+                if (isInWatchlist) {
+                    state.watchlist = state.watchlist.filter(w => w.id !== item.id);
+                    $(e.currentTarget).html('<i class="fas fa-plus"></i>');
                 } else {
-                    alert(`${movie.title} is already in your watchlist.`);
+                    state.watchlist.push(item);
+                    $(e.currentTarget).html('<i class="fa-solid fa-check"></i>');
                 }
+                localStorage.setItem('watchlist', JSON.stringify(state.watchlist));
             });
 
             selectors.previewItemsContainer.append(previewItem);
@@ -889,14 +889,14 @@ $(document).ready(() => {
             timestamp: Date.now()
         };
         const isInWatchlist = state.watchlist.some(w => w.id === item.id);
-        if (!isInWatchlist) {
-            state.watchlist.push(item);
-            localStorage.setItem('watchlist', JSON.stringify(state.watchlist));
-            selectors.watchlistBtn.html('Add to Watchlist <i class="fa-solid fa-check"></i>');
-            alert(`${item.title} added to watchlist!`);
+        if (isInWatchlist) {
+            state.watchlist = state.watchlist.filter(w => w.id !== item.id);
+            selectors.watchlistBtn.html('Add to Watchlist <i class="fas fa-plus"></i>');
         } else {
-            alert(`${item.title} is already in your watchlist.`);
+            state.watchlist.push(item);
+            selectors.watchlistBtn.html('Add to Watchlist <i class="fa-solid fa-check"></i>');
         }
+        localStorage.setItem('watchlist', JSON.stringify(state.watchlist));
     });
 
     selectors.backBtn.on('click', () => {
@@ -975,8 +975,12 @@ $(document).ready(() => {
                 stateData.episode,
                 stateData.section
             );
+            selectors.sidebarNavItems.removeClass('active');
+            selectors.sidebarNavItems.filter('[data-section="home"]').addClass('active');
         } else {
             loadHomepage();
+            selectors.sidebarNavItems.removeClass('active');
+            selectors.sidebarNavItems.filter('[data-section="home"]').addClass('active');
         }
     });
 
