@@ -46,7 +46,7 @@ $(document).ready(() => {
         trendingTV: [],
         trendingAnime: [],
         trendingKdrama: [],
-        previewMovies: [],
+        previewItems: [],
         previewIndex: parseInt(localStorage.getItem('previewIndex')) || 0,
         previewInterval: null,
         watchlist: (() => {
@@ -144,7 +144,13 @@ $(document).ready(() => {
             season: mediaType === 'tv' ? (state.currentPlayingSeason || item.season || null) : null,
             episode: mediaType === 'tv' ? (state.currentPlayingEpisode || item.episode || null) : null
         };
-        state.history = state.history.filter(h => h.id !== item.id || h.season !== historyItem.season || h.episode !== historyItem.episode);
+        // Remove existing entry with same id, type, season, and episode to prevent duplicates
+        state.history = state.history.filter(h => 
+            !(h.id === historyItem.id && 
+              h.type === historyItem.type && 
+              h.season === historyItem.season && 
+              h.episode === historyItem.episode)
+        );
         state.history.unshift(historyItem);
         state.history = state.history.slice(0, 20);
         localStorage.setItem('history', JSON.stringify(state.history));
@@ -159,12 +165,14 @@ $(document).ready(() => {
         }
         const isMobile = window.matchMedia("(max-width: 767px)").matches;
         const imageUrl = posterPath ? `https://image.tmdb.org/t/p/${isMobile ? 'w185' : 'w500'}${posterPath}` : config.fallbackImage;
+        const episodeInfo = item.type === 'tv' && item.season && item.episode ? `S${item.season} E${item.episode}` : '';
         const poster = $(`
             <div class="poster-item">
                 <div class="poster-img-placeholder"></div>
                 <img src="${imageUrl}" alt="${title}" class="poster-img" role="button" aria-label="Play ${title}" />
                 <span class="rating-badge"><i class="fas fa-star"></i>${rating}</span>
                 ${isLibrary ? `<span class="delete-badge" aria-label="Delete ${title} from ${container.attr('id') === 'watchlistSlider' ? 'watchlist' : 'history'}"><i class="fas fa-trash"></i></span>` : ''}
+                ${episodeInfo ? `<span class="episode-info">${episodeInfo}</span>` : ''}
             </div>
         `);
         const img = poster.find('.poster-img');
@@ -197,7 +205,11 @@ $(document).ready(() => {
                     state.watchlist = state.watchlist.filter(w => w.id !== item.id);
                     localStorage.setItem('watchlist', JSON.stringify(state.watchlist));
                 } else {
-                    state.history = state.history.filter(h => !(h.id === item.id && h.season === item.season && h.episode === item.episode));
+                    state.history = state.history.filter(h => 
+                        !(h.id === item.id && 
+                          h.season === item.season && 
+                          h.episode === item.episode)
+                    );
                     localStorage.setItem('history', JSON.stringify(state.history));
                 }
                 loadLibrary(true);
@@ -389,8 +401,8 @@ $(document).ready(() => {
         window.history.pushState({ section: 'search' }, '', `${config.baseUrl}/search`);
     };
 
-    const fetchMovieLogo = async movieId => {
-        const url = `https://api.themoviedb.org/3/movie/${movieId}/images?api_key=${config.apiKey}&include_image_language=en,null`;
+    const fetchMediaLogo = async (mediaId, mediaType) => {
+        const url = `https://api.themoviedb.org/3/${mediaType}/${mediaId}/images?api_key=${config.apiKey}&include_image_language=en,null`;
         try {
             const data = await fetchWithRetry(url);
             await sleep(250);
@@ -398,7 +410,7 @@ $(document).ready(() => {
             const logo = logos.find(l => l.file_path && l.iso_639_1 === 'en') || logos[0];
             return logo ? `https://image.tmdb.org/t/p/original${logo.file_path}` : null;
         } catch (error) {
-            console.error(`Error fetching logo for movie ${movieId}`, error);
+            console.error(`Error fetching logo for ${mediaType} ${mediaId}`, error);
             return null;
         }
     };
@@ -416,60 +428,63 @@ $(document).ready(() => {
     };
 
     const loadTrendingMoviesForPreview = async () => {
-        const baseUrl = `https://api.themoviedb.org/3/trending/movie/week?api_key=${config.apiKey}`;
+        const baseUrl = `https://api.themoviedb.org/3/trending/all/day?api_key=${config.apiKey}`;
         try {
-            let movies = [], page = 1, maxPages = 5, desiredCount = 5;
-            while (movies.length < desiredCount && page <= maxPages) {
+            let items = [], page = 1, maxPages = 5, desiredCount = 10;
+            while (items.length < desiredCount && page <= maxPages) {
                 const data = await fetchWithRetry(`${baseUrl}&page=${page}`);
                 if (!data.results) throw new Error('No results in preview API response');
-                const validMovies = data.results.filter(m =>
-                    m.id && m.title && m.backdrop_path && m.poster_path && m.release_date && m.vote_average && m.original_language === 'en'
+                const validItems = data.results.filter(m =>
+                    m.id && (m.title || m.name) && m.backdrop_path && m.poster_path && 
+                    (m.release_date || m.first_air_date) && m.vote_average && 
+                    (m.media_type === 'movie' || m.media_type === 'tv')
                 );
-                const moviesWithLogos = await Promise.all(validMovies.map(async m => {
-                    const logoUrl = await fetchMovieLogo(m.id);
+                const itemsWithLogos = await Promise.all(validItems.map(async m => {
+                    const logoUrl = await fetchMediaLogo(m.id, m.media_type);
                     if (!logoUrl) return null;
                     return { ...m, logo_path: logoUrl };
                 }));
-                movies = movies.concat(moviesWithLogos.filter(m => m !== null));
+                items = items.concat(itemsWithLogos.filter(m => m !== null));
                 page++;
             }
-            movies = movies.slice(0, desiredCount);
-            state.previewMovies = movies;
-            return movies;
+            items = items.slice(0, desiredCount);
+            state.previewItems = items;
+            return items;
         } catch (error) {
-            console.error('Failed to load preview movies', error);
+            console.error('Failed to load preview items', error);
             return [];
         }
     };
 
-    const renderPreviewContent = async (movies) => {
+    const renderPreviewContent = async (items) => {
         selectors.previewItemsContainer.empty();
         const isDesktop = window.matchMedia("(min-width: 768px)").matches;
         const backdropSize = isDesktop ? 'original' : 'w780';
 
-        for (const [i, movie] of movies.entries()) {
-            const releaseDate = new Date(movie.release_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-            const backdropUrl = movie.backdrop_path ? `https://image.tmdb.org/t/p/${backdropSize}${movie.backdrop_path}` : config.fallbackImage;
-            const isInWatchlist = state.watchlist.some(w => w.id === movie.id);
+        for (const [i, item] of items.entries()) {
+            const mediaType = item.media_type === 'movie' ? 'MOVIE' : 'TV';
+            const releaseDate = new Date(item.release_date || item.first_air_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+            const backdropUrl = item.backdrop_path ? `https://image.tmdb.org/t/p/${backdropSize}${item.backdrop_path}` : config.fallbackImage;
+            const isInWatchlist = state.watchlist.some(w => w.id === item.id);
             const previewItem = $(`
                 <div class="preview-item" data-index="${i}">
                     <div class="preview-img-placeholder"></div>
                     <img class="preview-background" 
                          src="${backdropUrl}" 
-                         alt="${movie.title}" 
-                         data-id="${movie.id}" 
-                         data-title="${movie.title}" 
-                         data-poster="https://image.tmdb.org/t/p/w500${movie.poster_path || ''}" 
-                         data-year="${movie.release_date}">
+                         alt="${item.title || item.name}" 
+                         data-id="${item.id}" 
+                         data-title="${item.title || item.name}" 
+                         data-poster="https://image.tmdb.org/t/p/w500${item.poster_path || ''}" 
+                         data-year="${item.release_date || item.first_air_date}">
                     <div class="preview-background-overlay"></div>
                     <div class="preview-overlay"></div>
                     <div class="preview-content">
-                        <img class="preview-title" src="${movie.logo_path}" alt="${movie.title}">
+                        <img class="preview-title" src="${item.logo_path}" alt="${item.title || item.name}">
                         <div class="preview-meta">
-                            <span class="release-date">MOVIE • ${releaseDate}</span>
-                            <span class="rating"><i class="fas fa-star"></i><span class="rating-value">${movie.vote_average.toFixed(1)}</span></span>
+                            <span class="release-date">${mediaType} • ${releaseDate}</span>
+                            <span class="rating"><i class="fas fa-star"></i><span class="rating-value">${item.vote_average.toFixed(1)}</span></span>
                         </div>
-                        <p class="preview-description">${movie.overview || 'No description available.'}</p>
+                        <p class="preview-description">${item.overview || 'No description available.'}</p>
                         <div class="preview-buttons">
                             <button class="preview-btn play-btn"><i class="fa-solid fa-play"></i> Watch</button>
                             <button class="preview-btn secondary add-btn"><i class="${isInWatchlist ? 'fa-solid fa-check' : 'fas fa-plus'}"></i></button>
@@ -485,7 +500,7 @@ $(document).ready(() => {
                 previewItem.find('.preview-img-placeholder').remove();
                 selectors.previewSection.find('.preview-placeholder').remove();
             } catch (error) {
-                console.warn(`Error loading backdrop for ${movie.title}`, error);
+                console.warn(`Error loading backdrop for ${item.title || item.name}`, error);
                 backgroundImg.attr('src', config.fallbackImage).addClass('loaded');
                 previewItem.find('.preview-img-placeholder').remove();
                 selectors.previewSection.find('.preview-placeholder').remove();
@@ -494,20 +509,28 @@ $(document).ready(() => {
             previewItem.find('.play-btn').on('click', e => {
                 e.stopPropagation();
                 e.preventDefault();
-                const year = movie.release_date;
-                navigateToMedia(movie.id, 'movie', movie.title, `https://image.tmdb.org/t/p/w500${movie.poster_path || ''}`, year, null, null, 'home');
-                addToHistory(movie, 'movie', 'home');
+                const year = (item.release_date || item.first_air_date || '').split('-')[0] || 'N/A';
+                const mediaType = item.media_type === 'movie' ? 'movie' : 'tv';
+                navigateToMedia(item.id, mediaType, item.title || item.name, `https://image.tmdb.org/t/p/w500${item.poster_path || ''}`, year, null, null, 'home');
+                addToHistory(item, mediaType, 'home');
             });
 
             previewItem.find('.add-btn').on('click', e => {
                 e.stopPropagation();
-                const item = { id: movie.id, type: 'movie', title: movie.title, poster: movie.poster_path || '', timestamp: Date.now() };
+                const mediaType = item.media_type === 'movie' ? 'movie' : 'tv';
+                const itemData = { 
+                    id: item.id, 
+                    type: mediaType, 
+                    title: item.title || item.name, 
+                    poster: item.poster_path || '', 
+                    timestamp: Date.now() 
+                };
                 const isInWatchlist = state.watchlist.some(w => w.id === item.id);
                 if (isInWatchlist) {
                     state.watchlist = state.watchlist.filter(w => w.id !== item.id);
                     $(e.currentTarget).html('<i class="fas fa-plus"></i>');
                 } else {
-                    state.watchlist.push(item);
+                    state.watchlist.push(itemData);
                     $(e.currentTarget).html('<i class="fa-solid fa-check"></i>');
                 }
                 localStorage.setItem('watchlist', JSON.stringify(state.watchlist));
@@ -520,7 +543,7 @@ $(document).ready(() => {
     };
 
     const updatePreviewContent = (index, direction = null) => {
-        if (!state.previewMovies.length) return;
+        if (!state.previewItems.length) return;
 
         const $items = $('.preview-item');
         const totalItems = $items.length;
@@ -533,10 +556,10 @@ $(document).ready(() => {
         const isDesktop = window.matchMedia("(min-width: 768px)").matches;
         const backdropSize = isDesktop ? 'original' : 'w780';
         nextIndices.forEach(i => {
-            if (state.previewMovies[i]) {
+            if (state.previewItems[i]) {
                 preloadImages([
-                    `https://image.tmdb.org/t/p/${backdropSize}${state.previewMovies[i].backdrop_path || ''}`,
-                    state.previewMovies[i].logo_path
+                    `https://image.tmdb.org/t/p/${backdropSize}${state.previewItems[i].backdrop_path || ''}`,
+                    state.previewItems[i].logo_path
                 ]);
             }
         });
@@ -559,8 +582,8 @@ $(document).ready(() => {
                         stopPreviewSlideshow();
                         state.swipeDirection = diff > 0 ? 'left' : 'right';
                         state.previewIndex = diff > 0
-                            ? (state.previewIndex + 1) % state.previewMovies.length
-                            : (state.previewIndex - 1 + state.previewMovies.length) % state.previewMovies.length;
+                            ? (state.previewIndex + 1) % state.previewItems.length
+                            : (state.previewIndex - 1 + state.previewItems.length) % state.previewItems.length;
                         localStorage.setItem('previewIndex', state.previewIndex);
                         updatePreviewContent(state.previewIndex, state.swipeDirection);
                         startPreviewSlideshow();
@@ -572,9 +595,9 @@ $(document).ready(() => {
     };
 
     const startPreviewSlideshow = () => {
-        if (state.previewInterval || selectors.videoPage.is(':visible') || !state.previewMovies.length) return;
+        if (state.previewInterval || selectors.videoPage.is(':visible') || !state.previewItems.length) return;
         state.previewInterval = setInterval(() => {
-            state.previewIndex = (state.previewIndex + 1) % state.previewMovies.length;
+            state.previewIndex = (state.previewIndex + 1) % state.previewItems.length;
             localStorage.setItem('previewIndex', state.previewIndex);
             updatePreviewContent(state.previewIndex);
         }, 6000);
@@ -589,7 +612,7 @@ $(document).ready(() => {
 
     const loadInitialContent = async () => {
         try {
-            const [previewMovies, movieItems, tvItems, animeItems, kdramaItems] = await Promise.all([
+            const [previewItems, movieItems, tvItems, animeItems, kdramaItems] = await Promise.all([
                 loadTrendingMoviesForPreview(),
                 fetchTrending('movie', 'moviesSliderContainer'),
                 fetchTrending('tv', 'tvSliderContainer'),
@@ -610,7 +633,7 @@ $(document).ready(() => {
             const backdropSize = isMobile ? 'w780' : 'original';
             const posterSize = isMobile ? 'w185' : 'w500';
             const preloadUrls = [
-                ...previewMovies.slice(0, 2).flatMap(m => [
+                ...previewItems.slice(0, 2).flatMap(m => [
                     `https://image.tmdb.org/t/p/${backdropSize}${m.backdrop_path || ''}`,
                     m.logo_path
                 ]),
@@ -622,7 +645,7 @@ $(document).ready(() => {
 
             await preloadImages(preloadUrls);
 
-            await renderPreviewContent(previewMovies);
+            await renderPreviewContent(previewItems);
             selectors.moviesSlider.empty();
             for (const item of movieItems) await renderMediaItem(item, 'movie', selectors.moviesSlider);
             selectors.tvSlider.empty();
@@ -743,9 +766,9 @@ $(document).ready(() => {
                 embedVideo();
             } else {
                 await loadSeasons();
+                await loadEpisodes(state.currentPlayingSeason || 1);
                 if (state.currentPlayingSeason && state.currentPlayingEpisode) {
                     embedVideo();
-                    await loadEpisodes(state.currentPlayingSeason);
                 }
             }
         } catch (error) {
@@ -799,7 +822,7 @@ $(document).ready(() => {
     const renderSeasons = seasons => {
         selectors.seasonGrid.empty();
         seasons.forEach(s => {
-            const btn = $(`<button class="season-btn" aria-label="Select season ${s.season_number}">${s.season_number}</button>`).data('season', s.season_number);
+            const btn = $(`<button class="season-btn" aria-label="Select Season ${s.season_number}">Season ${s.season_number}</button>`).data('season', s.season_number);
             if (s.season_number === (state.currentPlayingSeason || 1)) {
                 btn.addClass('active');
             }
@@ -839,7 +862,7 @@ $(document).ready(() => {
         selectors.episodeGrid.empty();
         episodes.forEach(e => {
             const btn = $(`<button class="episode-btn" aria-label="Select episode ${e.episode_number}">${e.episode_number}</button>`).data('episode', e.episode_number);
-            if (e.episode_number === (state.currentPlayingEpisode || 1)) {
+            if (e.episode_number === state.currentPlayingEpisode) {
                 btn.addClass('active');
             }
             btn.on('click', () => {
