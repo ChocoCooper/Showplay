@@ -40,13 +40,9 @@
                             <a class="download-btn" id="downloadBtn" href="#" target="_blank" aria-label="Download media">Download <i class="fa-solid fa-download"></i></a>
                         </div>
                     </div>
-                    <div class="season-selector" id="seasonSelector" style="display: none;">
-                        <div class="selector-title">Select Season</div>
-                        <div class="season-buttons" id="seasonGrid"></div>
-                    </div>
-                    <div class="episode-selector" id="episodeSelector" style="display: none;">
-                        <div class="selector-title">Select Episode</div>
-                        <div class="episode-buttons" id="episodeGrid"></div>
+                    <div class="season-episode-selector" id="seasonEpisodeSelector" style="display: none;">
+                        <div class="selector-title">Seasons & Episodes</div>
+                        <div class="season-episode-accordion" id="seasonEpisodeAccordion"></div>
                     </div>
                     <div class="media-details" id="mediaDetails">
                         <div class="media-details-container">
@@ -83,7 +79,6 @@
                 </div>
 
                 <div class="preview-section" id="previewSection">
-                    <div class="preview-placeholder"></div>
                     <div class="preview-items-container" id="previewItemsContainer"></div>
                 </div>
 
@@ -91,80 +86,28 @@
                     <div class="slider-header">
                         <h2 class="slider-title">Trending Movies</h2>
                     </div>
-                    <div class="poster-slider" id="moviesSliderContainer">
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                    </div>
+                    <div class="poster-slider" id="moviesSliderContainer"></div>
                 </div>
 
                 <div class="media-slider-section" data-type="tv">
                     <div class="slider-header">
                         <h2 class="slider-title">Trending Shows</h2>
                     </div>
-                    <div class="poster-slider" id="tvSliderContainer">
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                    </div>
+                    <div class="poster-slider" id="tvSliderContainer"></div>
                 </div>
 
                 <div class="media-slider-section" data-type="anime">
                     <div class="slider-header">
                         <h2 class="slider-title">Popular Anime</h2>
                     </div>
-                    <div class="poster-slider" id="animeSliderContainer">
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                    </div>
+                    <div class="poster-slider" id="animeSliderContainer"></div>
                 </div>
 
                 <div class="media-slider-section" data-type="kdrama">
                     <div class="slider-header">
                         <h2 class="slider-title">Popular K-Dramas</h2>
                     </div>
-                    <div class="poster-slider" id="kdramaSliderContainer">
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                        <div class="poster-item"><div class="poster-img-placeholder"></div></div>
-                    </div>
+                    <div class="poster-slider" id="kdramaSliderContainer"></div>
                 </div>
 
                 <div class="library-section" id="librarySection">
