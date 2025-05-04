@@ -929,4 +929,54 @@ iframe {
     .delete-badge i {
         font-size: 12px;
     }
+
+    .search-container {
+        position: relative;
+        width: 100%;
+        max-width: 600px;
+        margin: 0 auto 20px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .search-input {
+        font-size: 0.8rem;
+        padding: 8px 35px 8px 12px;
+        width: 100%;
+    }
+
+    .search-icon {
+        font-size: 1rem;
+        right: 15px;
+    }
+
+    .search-filter {
+        font-size: 0.9rem;
+        padding: 8px;
+        width: 100%;
+        max-width: 80px;
+    }
+
+    .search-results, .search-trending {
+        justify-content: flex-start;
+    }
+
+    .search-results .poster-item, .search-trending .poster-item {
+        width: calc((100% - 20px) / 3);
+        height: calc((100% - 20px) / 3 * 1.5);
+    }
+}
+
+@media (min-width: 400px) {         
+    .poster-item {
+        width: 116px;
+        height: 174px;
+    }
+    .slider-title {
+        font-size: 1.2rem;
+    }
+    .preview-section {
+        height: 220px;
+    }
 }
