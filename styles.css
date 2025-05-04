@@ -350,6 +350,7 @@ iframe {
     gap: 8px;
     flex: 1;
     max-width: 200px;
+    text-decoration: none;
 }
 
 .server-btn {
