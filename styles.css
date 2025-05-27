@@ -15,6 +15,7 @@
     --selector-bg: #333333;
     --selector-active: #2af598;
     --selector-text: #ffffff;
+    --placeholder-bg: #ccc; /* Grey placeholder for images */
 }
 
 * {
@@ -34,6 +35,18 @@ body {
 .app-container {
     display: flex;
     min-height: 100vh;
+}
+
+.loading-spinner {
+    display: none;
+    text-align: center;
+    padding: 20px;
+    font-size: 1.5rem;
+    color: var(--primary-color);
+}
+
+.loading-spinner.active {
+    display: block;
 }
 
 .sidebar {
@@ -128,6 +141,15 @@ body {
     z-index: 1;
 }
 
+.preview-background.poster-placeholder {
+    background: var(--placeholder-bg);
+    display: block;
+}
+
+.preview-background.loaded {
+    background: none;
+}
+
 .preview-background-overlay {
     position: absolute;
     top: 0;
@@ -163,6 +185,15 @@ body {
     max-height: 100px;
     object-fit: contain;
     margin-bottom: 10px;
+}
+
+.preview-title.poster-placeholder {
+    background: var(--placeholder-bg);
+    display: block;
+}
+
+.preview-title.loaded {
+    background: none;
 }
 
 .preview-meta {
@@ -483,6 +514,15 @@ iframe {
     display: block;
 }
 
+.media-details-poster img.poster-placeholder {
+    background: var(--placeholder-bg);
+    display: block;
+}
+
+.media-details-poster img.loaded {
+    background: none;
+}
+
 .media-details-content {
     flex: 1;
     max-height: 750px;
@@ -630,7 +670,13 @@ iframe {
     display: none;
 }
 
+.poster-img.poster-placeholder {
+    background: var(--placeholder-bg);
+    display: block;
+}
+
 .poster-img.loaded {
+    background: none;
     display: block;
 }
 
