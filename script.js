@@ -1,8 +1,13 @@
 $(document).ready(() => {
+    // Placeholder SVG for posters and preview content
+    const placeholderSvg = 'data:image/svg+xml,%3Csvg width="100%" height="100%" viewBox="0 0 100 150" xmlns="http://www.w3.org/2000/svg"%3E%3Crect width="100" height="150" fill="%23ccc"%3E%3C/rect%3E%3Ctext x="50%" y="50%" font-family="Arial" font-size="12" fill="%23666" text-anchor="middle" dy=".3em"%3EPlaceholder%3C/text%3E%3C/svg%3E';
+    const previewTitlePlaceholderSvg = 'data:image/svg+xml,%3Csvg width="400" height="100" viewBox="0 0 400 100" xmlns="http://www.w3.org/2000/svg"%3E%3Crect width="400" height="100" fill="%23ccc"%3E%3C/rect%3E%3Ctext x="50%" y="50%" font-family="Arial" font-size="20" fill="%23666" text-anchor="middle" dy=".3em"%3EPreview Placeholder%3C/text%3E%3C/svg%3E';
+
     // DOM Selectors
     const selectors = {
         videoPage: $('#videoPage'),
         videoFrame: $('#videoFrame'),
+        videoError: $('#videoError'),
         videoMediaTitle: $('#videoMediaTitle'),
         watchlistBtn: $('#watchlistBtn'),
         downloadBtn: $('#downloadBtn'),
@@ -32,8 +37,7 @@ $(document).ready(() => {
         searchFilter: $('#searchFilter'),
         searchResults: $('#searchResults'),
         searchTrending: $('#searchTrending'),
-        sidebarNavItems: $('.sidebar-nav li'),
-        mainSpinner: $('.main-content > .loading-spinner')
+        sidebarNavItems: $('.sidebar-nav li')
     };
 
     // Application State
@@ -47,7 +51,8 @@ $(document).ready(() => {
         watchlist: JSON.parse(localStorage.getItem('watchlist')) || [],
         history: JSON.parse(localStorage.getItem('history')) || [],
         previousSection: 'home',
-        abortController: null
+        abortController: null,
+        currentServerIndex: 0
     };
 
     // Configuration
@@ -56,21 +61,21 @@ $(document).ready(() => {
         servers: [
             { 
                 name: 'Server 1', 
-                url: 'https://vidfast.pro', 
-                moviePattern: 'https://vidfast.pro/movie/{tmdb_id}', 
-                tvPattern: 'https://vidfast.pro/tv/{tmdb_id}/{season}/{episode}' 
+                url: 'https://vidsrc.me', 
+                moviePattern: 'https://vidsrc.me/embed/movie/{tmdb_id}', 
+                tvPattern: 'https://vidsrc.me/embed/tv/{tmdb_id}/{season}/{episode}' 
             },
             { 
                 name: 'Server 2', 
-                url: 'https://111movies.com', 
-                moviePattern: 'https://111movies.com/movie/{tmdb_id}', 
-                tvPattern: 'https://111movies.com/tv/{tmdb_id}/{season}/{episode}' 
+                url: 'https://vidsrc.to', 
+                moviePattern: 'https://vidsrc.to/embed/movie/{tmdb_id}', 
+                tvPattern: 'https://vidsrc.to/embed/tv/{tmdb_id}/{season}/{episode' 
             },
             { 
-                name: 'Server 3', 
-                url: 'https://vidsrc.cc/v2', 
-                moviePattern: 'https://vidsrc.cc/v2/embed/movie/{tmdb_id}', 
-                tvPattern: 'https://vidsrc.cc/v2/embed/tv/{tmdb_id}/{season}/{episode}' 
+                name: 'Server 3',
+                url: 'https://vidsrc.pro', 
+                moviePattern: 'https://vidsrc.pro/embed/movie/{tmdb_id}', 
+                tvPattern: 'https://vidsrc.pro/embed/tv/{tmdb_id}/{season}/{episode}' 
             }
         ]
     };
@@ -97,10 +102,18 @@ $(document).ready(() => {
 
     // Utility: Get Image URL
     const getImageUrl = (path, type = 'poster') => {
-        if (!path) return ''; // No fallback, rely on placeholder
+        if (!path) return placeholderSvg;
         const isMobile = window.matchMedia("(max-width: 767px)").matches;
         const size = type === 'backdrop' ? (isMobile ? 'w780' : 'original') : (isMobile ? 'w185' : 'w500');
         return `https://image.tmdb.org/t/p/${size}${path.startsWith('/') ? path : '/' + path}`;
+    };
+
+    // Utility: Get Image Srcset
+    const getImageSrcset = (path, type = 'poster') => {
+        if (!path) return '';
+        const base = 'https://image.tmdb.org/t/p/';
+        const sizes = type === 'backdrop' ? ['w780', 'original'] : ['w185', 'w342', 'w500'];
+        return sizes.map(size => `${base}${size}${path.startsWith('/') ? path : '/' + path} ${size === 'original' ? '2000w' : `${parseInt(size.slice(1))}w`}`).join(', ');
     };
 
     // Utility: Load Image with Retry
@@ -160,6 +173,7 @@ $(document).ready(() => {
             btn.on('click', () => {
                 $('.server-btn').removeClass('active');
                 btn.addClass('active');
+                state.currentServerIndex = i;
                 if (state.mediaId && (state.mediaType === 'movie' || (state.season && state.episode))) {
                     embedVideo();
                 }
@@ -169,24 +183,32 @@ $(document).ready(() => {
     };
 
     // Get Active Server
-    const getActiveServer = () => $('.server-btn.active').data('server') || config.servers[0];
+    const getActiveServer = () => $('.server-btn.active').data('server') || config.servers[state.currentServerIndex];
+
+    // Try Next Server
+    const tryNextServer = () => {
+        state.currentServerIndex = (state.currentServerIndex + 1) % config.servers.length;
+        $('.server-btn').removeClass('active');
+        $(`.server-btn:eq(${state.currentServerIndex})`).addClass('active');
+        embedVideo();
+    };
 
     // Embed Video
     const embedVideo = () => {
+        selectors.videoError.hide();
         if (!state.mediaId) {
             console.error('Cannot embed video: mediaId is not set');
             selectors.videoFrame.attr('src', '');
-            selectors.videoFrame.after('<p class="error-message">No media selected.</p>');
+            selectors.videoError.text('No media selected.').show();
             return;
         }
         if (state.mediaType === 'tv' && (!state.season || !state.episode)) {
             console.error('Cannot embed TV video: season or episode is not set');
             selectors.videoFrame.attr('src', '');
-            selectors.videoFrame.after('<p class="error-message">Please select a season and episode.</p>');
+            selectors.videoError.text('Please select a season and episode.').show();
             return;
         }
 
-        $('.error-message').remove();
         const server = getActiveServer();
         let src;
         if (state.mediaType === 'movie') {
@@ -197,10 +219,30 @@ $(document).ready(() => {
                 .replace('{season}', state.season)
                 .replace('{episode}', state.episode);
         }
-        selectors.videoFrame.attr('src', src).on('error', () => {
+
+        selectors.videoFrame.attr('src', src).off('error').on('error', () => {
             selectors.videoFrame.attr('src', '');
-            selectors.videoFrame.after(`<p class="error-message">Failed to load video from ${server.name}. Try another server.</p>`);
+            if (state.currentServerIndex < config.servers.length - 1) {
+                selectors.videoError.text(`Failed to load video from ${server.name}. Trying next server...`).show();
+                tryNextServer();
+            } else {
+                selectors.videoError.text(`All servers failed to load video for ${selectors.videoMediaTitle.text()}. Please try again later.`).show();
+            }
         });
+
+        // Test server availability
+        fetch(server.url, { method: 'HEAD' })
+            .then(res => {
+                if (!res.ok) throw new Error('Server unavailable');
+            })
+            .catch(() => {
+                if (state.currentServerIndex < config.servers.length - 1) {
+                    selectors.videoError.text(`Server ${server.name} is unavailable. Trying next server...`).show();
+                    tryNextServer();
+                } else {
+                    selectors.videoError.text(`All servers are unavailable for ${selectors.videoMediaTitle.text()}. Please try again later.`).show();
+                }
+            });
     };
 
     // Fetch Media
@@ -260,7 +302,9 @@ $(document).ready(() => {
         const posterPath = item.poster_path || item.poster || '';
         const rating = (item.vote_average || item.rating || 0).toFixed(1) || 'N/A';
         const imageUrl = getImageUrl(posterPath);
-        if (!imageUrl && renderType !== 'preview') return; // Skip if no poster for sliders/library
+        const imageSrcset = getImageSrcset(posterPath);
+        const imageSizes = renderType === 'preview' ? '(max-width: 767px) 70vw, 400px' : '(max-width: 767px) 105px, 140px';
+        if (!imageUrl && renderType !== 'preview') return;
 
         const createElement = (html) => $(html);
         const attachClickHandler = (element, clickHandler) => {
@@ -273,6 +317,8 @@ $(document).ready(() => {
 
         if (renderType === 'preview') {
             const backdropUrl = getImageUrl(item.backdrop_path, 'backdrop');
+            const backdropSrcset = getImageSrcset(item.backdrop_path, 'backdrop');
+            const logoUrl = item.logo_path || previewTitlePlaceholderSvg;
             if (!backdropUrl) return;
 
             const mediaType = item.media_type === 'movie' ? 'MOVIE' : 'TV';
@@ -280,11 +326,11 @@ $(document).ready(() => {
             const isInWatchlist = state.watchlist.some(w => w.id === item.id);
             const previewItem = createElement(`
                 <div class="preview-item" data-index="${container.children().length}">
-                    <img class="preview-background poster-placeholder" src="${backdropUrl}" alt="${title}" data-id="${item.id}" data-title="${title}" data-poster="${imageUrl}" loading="lazy">
+                    <img class="preview-background poster-placeholder" src="${backdropUrl}" srcset="${backdropSrcset}" sizes="(max-width: 767px) 100vw, 780px" alt="${title}" data-id="${item.id}" data-title="${title}" data-poster="${imageUrl}" loading="lazy">
                     <div class="preview-background-overlay"></div>
                     <div class="preview-overlay"></div>
                     <div class="preview-content">
-                        <img class="preview-title poster-placeholder" src="${item.logo_path}" alt="${title}" loading="lazy">
+                        <img class="preview-title poster-placeholder" src="${logoUrl}" alt="${title}" loading="lazy">
                         <div class="preview-meta">
                             <span class="media-type">${mediaType} • ${genres.join(', ')}</span>
                             <span class="rating"><i class="fas fa-star"></i>${rating}</span>
@@ -301,7 +347,10 @@ $(document).ready(() => {
             try {
                 await loadImage(backdropUrl);
                 previewItem.find('.preview-background').addClass('loaded').removeClass('poster-placeholder');
-                previewItem.find('.preview-title').addClass('loaded').removeClass('poster-placeholder');
+                if (item.logo_path) {
+                    await loadImage(item.logo_path);
+                    previewItem.find('.preview-title').addClass('loaded').removeClass('poster-placeholder');
+                }
             } catch (error) {
                 console.error(`Failed to load preview image for ${title}`, error);
                 previewItem.remove();
@@ -327,20 +376,19 @@ $(document).ready(() => {
         } else {
             const poster = createElement(`
                 <div class="poster-item">
-                    <img src="${imageUrl}" alt="${title}" class="poster-img poster-placeholder" role="button" aria-label="Play ${title}" loading="lazy">
+                    <img src="${imageUrl}" srcset="${imageSrcset}" sizes="${imageSizes}" alt="${title}" class="poster-img poster-placeholder" role="button" aria-label="Play ${title}" loading="lazy">
                     <span class="rating-badge"><i class="fas fa-star"></i>${rating}</span>
                     ${isLibrary && item.season && item.episode ? `<span class="episode-info">S${item.season} E${item.episode}</span>` : ''}
                     ${isLibrary ? `<span class="delete-badge" aria-label="Delete ${title} from ${container.attr('id') === 'watchlistSlider' ? 'watchlist' : 'history'}"><i class="fas fa-trash"></i></span>` : ''}
                 </div>
             `);
 
-            if (imageUrl) {
+            if (imageUrl !== placeholderSvg) {
                 try {
                     await loadImage(imageUrl);
                     poster.find('.poster-img').addClass('loaded').removeClass('poster-placeholder');
                 } catch (error) {
                     console.error(`Failed to load poster for ${title}`, error);
-                    // Keep placeholder, no fallback image
                 }
             }
 
@@ -392,7 +440,6 @@ $(document).ready(() => {
 
     // Load Library
     const loadLibrary = async () => {
-        selectors.librarySection.find('.loading-spinner').addClass('active');
         selectors.watchlistSlider.empty();
         selectors.historySlider.empty();
 
@@ -421,8 +468,6 @@ $(document).ready(() => {
                 await renderItem(item, selectors.historySlider, 'slider', true);
             }
         }
-
-        selectors.librarySection.find('.loading-spinner').removeClass('active');
     };
 
     // Load Season and Episode Accordion
@@ -510,10 +555,11 @@ $(document).ready(() => {
         state.mediaType = 'movie';
         state.season = null;
         state.episode = null;
+        state.currentServerIndex = 0;
         selectors.videoFrame.attr('src', '');
-        $('.error-message').remove();
+        selectors.videoError.hide();
         selectors.videoMediaTitle.text('');
-        selectors.mediaPoster.attr('src', '').attr('alt', '').addClass('poster-placeholder').removeClass('loaded');
+        selectors.mediaPoster.attr('src', placeholderSvg).attr('alt', '').addClass('poster-placeholder').removeClass('loaded');
         selectors.mediaRatingBadge.find('.rating-value').text('');
         selectors.mediaDetailsTitle.text('');
         selectors.mediaYearGenre.text('');
@@ -528,7 +574,6 @@ $(document).ready(() => {
     const loadHomepage = async () => {
         if (state.abortController) state.abortController.abort();
         state.abortController = new AbortController();
-        selectors.mainSpinner.addClass('active');
         selectors.homepage.hide();
         selectors.videoPage.hide();
         selectors.previewSection.hide();
@@ -574,8 +619,6 @@ $(document).ready(() => {
             console.error('Failed to load homepage', error);
             selectors.previewSection.html('<div class="error-message">Failed to load content. <button class="retry-button">Retry</button></div>');
             $('.retry-button').on('click', loadHomepage);
-        } finally {
-            selectors.mainSpinner.removeClass('active');
         }
     };
 
@@ -583,7 +626,6 @@ $(document).ready(() => {
     const loadSearchSection = async () => {
         if (state.abortController) state.abortController.abort();
         state.abortController = new AbortController();
-        selectors.mainSpinner.addClass('active');
         selectors.homepage.hide();
         selectors.videoPage.hide();
         selectors.previewSection.hide();
@@ -596,7 +638,6 @@ $(document).ready(() => {
 
         selectors.homepage.show();
         selectors.searchSection.show();
-        selectors.searchSection.find('.loading-spinner').addClass('active');
         selectors.searchInput.focus();
         stopPreviewSlideshow();
 
@@ -604,7 +645,7 @@ $(document).ready(() => {
         selectors.searchTrending.empty();
         try {
             const filter = selectors.searchFilter.val();
-            const items = await fetchMedia(filter, false, state.abortController?.signal);
+            const items = await fetchMedia(filter, false);
             items.forEach(item => renderItem(item, selectors.searchTrending));
             window.history.replaceState({ section: 'search' }, '', '/search');
         } catch (error) {
@@ -612,9 +653,6 @@ $(document).ready(() => {
             console.error('Failed to load search section', error);
             selectors.searchTrending.html('<div class="error-message">Failed to load trending content. <button class="retry-button">Retry</button></div>');
             $('.retry-button').on('click', loadSearchSection);
-        } finally {
-            selectors.searchSection.find('.loading-spinner').removeClass('active');
-            selectors.mainSpinner.removeClass('active');
         }
     };
 
@@ -622,11 +660,9 @@ $(document).ready(() => {
     const navigateToMedia = async (id, type, title, poster, year, season = null, episode = null, section = null) => {
         if (state.abortController) state.abortController.abort();
         state.abortController = new AbortController();
-        selectors.mainSpinner.addClass('active');
         selectors.videoPage.hide();
         selectors.homepage.hide();
         selectors.mediaDetails.hide();
-        selectors.mediaDetails.find('.loading-spinner').addClass('active');
         stopPreviewSlideshow();
         resetVideoPlayerState();
 
@@ -636,7 +672,6 @@ $(document).ready(() => {
             selectors.mediaYearGenre.text('');
             selectors.mediaPlot.text('The selected media is invalid. Please try another title.');
             loadHomepage();
-            selectors.mainSpinner.removeClass('active');
             return;
         }
 
@@ -649,7 +684,6 @@ $(document).ready(() => {
             if (error.name === 'AbortError') return;
             console.error(`Media not found: ID=${id}, Type=${type}`, error);
             loadHomepage();
-            selectors.mainSpinner.removeClass('active');
             return;
         }
 
@@ -676,27 +710,38 @@ $(document).ready(() => {
 
         selectors.videoPage.show();
         selectors.videoMediaTitle.show().text(`${title}\n(${year || 'N/A'})`);
-        selectors.selectorContainer.show();
-        selectors.mediaDetails.show();
+        selectors.selectorContainer.addClass('active');
+        selectors.mediaDetails.addClass('active');
 
         const cachedData = mediaCache.get(id, type);
         const updateUI = (data) => {
             const genres = data.genres?.slice(0, 2).map(g => g.name.split(' ')[0]) || ['N/A'];
-            const posterUrl = getImageUrl(data.poster_path) || '';
-            selectors.mediaPoster.attr('src', posterUrl).attr('alt', `${title} Poster`).toggleClass('poster-placeholder', !posterUrl).toggleClass('loaded', !!posterUrl);
+            const posterUrl = getImageUrl(data.poster_path) || placeholderSvg;
+            const posterSrcset = getImageSrcset(data.poster_path);
+            selectors.mediaPoster
+                .attr('src', posterUrl)
+                .attr('srcset', posterSrcset)
+                .attr('sizes', '(max-width: 767px) 105px, 200px')
+                .attr('alt', `${title} Poster`)
+                .toggleClass('poster-placeholder', posterUrl === placeholderSvg)
+                .toggleClass('loaded', posterUrl !== placeholderSvg);
             selectors.mediaRatingBadge.find('.rating-value').text(data.vote_average?.toFixed(1) || 'N/A');
             selectors.mediaDetailsTitle.text(title);
             selectors.mediaYearGenre.text(`${type.toUpperCase()} • ${year || 'N/A'} • ${genres.join(', ')}`);
             selectors.mediaPlot.text(data.overview || 'No description available.');
-            selectors.mediaDetails.find('.loading-spinner').removeClass('active');
         };
 
         if (cachedData) {
             console.log(`Using cached data for ${title} (ID: ${id}, Type: ${type})`);
             updateUI(cachedData);
-            selectors.mainSpinner.removeClass('active');
         } else {
-            selectors.mediaPoster.attr('src', poster || '').attr('alt', `${title} Poster`).toggleClass('poster-placeholder', !poster).toggleClass('loaded', !!poster);
+            selectors.mediaPoster
+                .attr('src', poster || placeholderSvg)
+                .attr('srcset', getImageSrcset(poster))
+                .attr('sizes', '(max-width: 767px) 105px, 200px')
+                .attr('alt', `${title} Poster`)
+                .toggleClass('poster-placeholder', !poster)
+                .toggleClass('loaded', !!poster);
             selectors.mediaRatingBadge.find('.rating-value').text('Loading...');
             selectors.mediaDetailsTitle.text(title);
             selectors.mediaYearGenre.text(`${type.toUpperCase()} • ${year || 'N/A'} • Loading...`);
@@ -716,32 +761,29 @@ $(document).ready(() => {
                 selectors.mediaPlot.html('Failed to load media details. <button class="retry-button">Retry</button>');
                 $('.retry-button').on('click', () => navigateToMedia(id, type, title, poster, year, season, episode, section));
             }
-        } finally {
-            selectors.mainSpinner.removeClass('active');
         }
 
-        if (type === 'movie') {
+        initializeServers();
+        if (type === 'movie' || (type === 'tv' && season && episode)) {
             embedVideo();
-        } else {
-            loadSeasonEpisodeAccordion();
+        }
+        if (type === 'tv') {
+            await loadSeasonEpisodeAccordion();
             if (season && episode) {
-                $(`.episode-btn[data-season="${season}"][data-episode="${episode}"]`).addClass('active');
-                embedVideo();
+                selectors.seasonEpisodeAccordion.find(`.episode-btn[data-season="${season}"][data-episode="${episode}"]`).addClass('active');
             }
         }
     };
 
     // Navigate to Section
-    const navigateToSection = async section => {
+    const navigateToSection = section => {
         selectors.sidebarNavItems.removeClass('active');
         selectors.sidebarNavItems.filter(`[data-section="${section}"]`).addClass('active');
-        
         if (section === 'home') {
-            await loadHomepage();
+            loadHomepage();
         } else if (section === 'search') {
-            await loadSearchSection();
+            loadSearchSection();
         } else if (section === 'library') {
-            selectors.mainSpinner.addClass('active');
             selectors.homepage.hide();
             selectors.videoPage.hide();
             selectors.previewSection.hide();
@@ -749,41 +791,54 @@ $(document).ready(() => {
             selectors.tvSlider.parent().hide();
             selectors.animeSlider.parent().hide();
             selectors.kdramaSlider.parent().hide();
-            selectors.librarySection.hide();
             selectors.searchSection.hide();
             selectors.librarySection.show();
+            loadLibrary();
             stopPreviewSlideshow();
-            await loadLibrary();
             window.history.replaceState({ section: 'library' }, '', '/library');
-            selectors.mainSpinner.removeClass('active');
         }
     };
 
     // Setup Preview Touch
     const setupPreviewTouch = () => {
-        let startX = 0;
-        selectors.previewSection.on('touchstart', e => startX = e.originalEvent.touches[0].clientX);
-        selectors.previewSection.on('touchend', e => {
-            const endX = e.originalEvent.changedTouches[0].clientX;
+        let startX = 0, endX = 0;
+        const container = selectors.previewItemsContainer;
+
+        container.on('touchstart', e => {
+            startX = e.originalEvent.touches[0].clientX;
+            stopPreviewSlideshow();
+        });
+
+        container.on('touchmove', e => {
+            endX = e.originalEvent.touches[0].clientX;
+        });
+
+        container.on('touchend', () => {
             if (Math.abs(startX - endX) > 50) {
-                stopPreviewSlideshow();
-                state.previewIndex += startX > endX ? 1 : -1;
-                if (state.previewIndex < 0) state.previewIndex = selectors.previewItemsContainer.children().length - 1;
-                if (state.previewIndex >= selectors.previewItemsContainer.children().length) state.previewIndex = 0;
+                const items = container.find('.preview-item');
+                const totalItems = items.length;
+                if (startX > endX) {
+                    state.previewIndex = (state.previewIndex + 1) % totalItems;
+                } else {
+                    state.previewIndex = (state.previewIndex - 1 + totalItems) % totalItems;
+                }
                 localStorage.setItem('previewIndex', state.previewIndex);
-                selectors.previewItemsContainer.css('transform', `translateX(${-state.previewIndex * 100}%)`);
-                startPreviewSlideshow();
+                container.css('transform', `translateX(-${state.previewIndex * 100}%)`);
             }
+            startPreviewSlideshow();
         });
     };
 
     // Start Preview Slideshow
     const startPreviewSlideshow = () => {
-        if (state.previewInterval || selectors.videoPage.is(':visible')) return;
+        stopPreviewSlideshow();
         state.previewInterval = setInterval(() => {
-            state.previewIndex = (state.previewIndex + 1) % selectors.previewItemsContainer.children().length;
+            const items = selectors.previewItemsContainer.find('.preview-item');
+            const totalItems = items.length;
+            if (totalItems === 0) return;
+            state.previewIndex = (state.previewIndex + 1) % totalItems;
             localStorage.setItem('previewIndex', state.previewIndex);
-            selectors.previewItemsContainer.css('transform', `translateX(${-state.previewIndex * 100}%)`);
+            selectors.previewItemsContainer.css('transform', `translateX(-${state.previewIndex * 100}%)`);
         }, 6000);
     };
 
@@ -795,54 +850,6 @@ $(document).ready(() => {
         }
     };
 
-    // Resume Preview Slideshow
-    const resumePreviewSlideshow = () => {
-        if (!selectors.videoPage.is(':visible')) {
-            startPreviewSlideshow();
-        }
-    };
-
-    // Handle Initial Load
-    const handleInitialLoad = async () => {
-        if (state.abortController) state.abortController.abort();
-        state.abortController = new AbortController();
-        const path = window.location.pathname;
-        const movieMatch = path.match(/^\/movie\/(\d+)$/);
-        const tvMatch = path.match(/^\/tv\/(\d+)(?:\/(\d+)\/(\d+))?$/);
-
-        if (movieMatch) {
-            const id = movieMatch[1];
-            try {
-                const data = await fetchWithRetry(`https://api.themoviedb.org/3/movie/${id}?api_key=${config.apiKey}`, 3, 500, state.abortController?.signal);
-                const title = data.title || 'Unknown';
-                const year = data.release_date?.split('-')[0] || 'N/A';
-                const poster = getImageUrl(data.poster_path);
-                navigateToMedia(id, 'movie', title, poster, year, null, null, 'home');
-            } catch (error) {
-                if (error.name === 'AbortError') return;
-                console.error(`Failed to load movie ${id}`, error);
-                loadHomepage();
-            }
-        } else if (tvMatch) {
-            const id = tvMatch[1];
-            const season = tvMatch[2] ? parseInt(tvMatch[2]) : null;
-            const episode = tvMatch[3] ? parseInt(tvMatch[3]) : null;
-            try {
-                const data = await fetchWithRetry(`https://api.themoviedb.org/3/tv/${id}?api_key=${config.apiKey}`, 3, 500, state.abortController?.signal);
-                const title = data.name || 'Unknown';
-                const year = data.first_air_date?.split('-')[0] || 'N/A';
-                const poster = getImageUrl(data.poster_path);
-                navigateToMedia(id, 'tv', title, poster, year, season, episode, 'home');
-            } catch (error) {
-                if (error.name === 'AbortError') return;
-                console.error(`Failed to load TV show ${id}`, error);
-                loadHomepage();
-            }
-        } else {
-            loadHomepage();
-        }
-    };
-
     // Event Listeners
     selectors.sidebarNavItems.on('click', function() {
         const section = $(this).data('section');
@@ -850,32 +857,42 @@ $(document).ready(() => {
     });
 
     selectors.backBtn.on('click', () => {
-        resetVideoPlayerState();
-        navigateToSection(state.previousSection);
+        if (state.previousSection === 'search') {
+            navigateToSection('search');
+        } else if (state.previousSection === 'library') {
+            navigateToSection('library');
+        } else {
+            navigateToSection('home');
+        }
     });
 
     selectors.watchlistBtn.on('click', () => {
-        const item = {
-            id: state.mediaId,
-            type: state.mediaType,
-            title: selectors.videoPage.data('title'),
-            poster: selectors.videoPage.data('poster'),
-            rating: parseFloat(selectors.mediaRatingBadge.find('.rating-value').text()) || 0
-        };
-        toggleWatchlist(item);
-        selectors.watchlistBtn.html(`Add to Watchlist <i class="${state.watchlist.some(w => w.id === item.id) ? 'fa-solid fa-check' : 'fas fa-plus'}"></i>`);
+        const id = state.mediaId;
+        const type = state.mediaType;
+        const title = selectors.videoMediaTitle.text().split('\n')[0];
+        const poster = selectors.mediaPoster.attr('src');
+        const rating = parseFloat(selectors.mediaRatingBadge.find('.rating-value').text()) || 0;
+        toggleWatchlist({ id, type, title, poster, rating });
+        selectors.watchlistBtn.html(`Add to Watchlist <i class="${state.watchlist.some(w => w.id === id) ? 'fa-solid fa-check' : 'fas fa-plus'}"></i>`);
     });
 
-    selectors.searchInput.on('input', async () => {
+    // Debounced Search
+    const debounce = (func, wait) => {
+        let timeout;
+        return (...args) => {
+            clearTimeout(timeout);
+            timeout = setTimeout(() => func(...args), wait);
+        };
+    };
+
+    selectors.searchInput.on('input', debounce(async () => {
         const query = selectors.searchInput.val().trim();
         if (query.length < 3) {
             selectors.searchResults.empty();
             return;
         }
 
-        selectors.searchSection.find('.loading-spinner').addClass('active');
         selectors.searchResults.empty();
-
         try {
             const type = selectors.searchFilter.val();
             const data = await fetchWithRetry(
@@ -899,31 +916,43 @@ $(document).ready(() => {
             console.error('Search failed', error);
             selectors.searchResults.html('<div class="error-message">Failed to load search results. <button class="retry-button">Retry</button></div>');
             $('.retry-button').on('click', () => selectors.searchInput.trigger('input'));
-        } finally {
-            selectors.searchSection.find('.loading-spinner').removeClass('active');
         }
-    });
+    }, 300));
 
-    selectors.searchFilter.on('change', () => {
-        selectors.searchInput.val('');
-        selectors.searchResults.empty();
-        loadSearchSection();
-    });
+    selectors.searchFilter.on('change', loadSearchSection);
 
-    window.onpopstate = event => {
-        if (state.abortController) state.abortController.abort();
-        state.abortController = new AbortController();
-        const state = event.state;
-        if (state && state.section) {
-            navigateToSection(state.section);
-        } else if (state && state.id && state.type) {
-            navigateToMedia(state.id, state.type, state.title, state.poster, state.year, state.season, state.episode, state.section);
+    window.onpopstate = async e => {
+        const s = e.state;
+        if (s && s.section) {
+            navigateToSection(s.section);
+        } else if (s && s.id && s.type) {
+            await navigateToMedia(s.id, s.type, s.title, s.poster, s.year, s.season, s.episode, s.section);
         } else {
-            loadHomepage();
+            navigateToSection('home');
         }
     };
 
-    // Initialize
-    initializeServers();
+    // Initial Load
+    const handleInitialLoad = async () => {
+        const path = window.location.pathname;
+        const match = path.match(/^\/(movie|tv)\/(\d+)(?:\/(\d+)\/(\d+))?$/);
+        if (match) {
+            const [, type, id, season, episode] = match;
+            try {
+                const data = await fetchWithRetry(`https://api.themoviedb.org/3/${type}/${id}?api_key=${config.apiKey}`, 3, 500);
+                const title = data.title || data.name || 'Unknown';
+                const year = (data.release_date || data.first_air_date || '').split('-')[0] || 'N/A';
+                const poster = getImageUrl(data.poster_path);
+                navigateToMedia(parseInt(id), type, title, poster, year, season ? parseInt(season) : null, episode ? parseInt(episode) : null, 'home');
+            } catch (error) {
+                console.error('Failed to load initial media', error);
+                loadHomepage();
+            }
+        } else {
+            const section = path === '/search' ? 'search' : path === '/library' ? 'library' : 'home';
+            navigateToSection(section);
+        }
+    };
+
     handleInitialLoad();
 });
