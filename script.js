@@ -51,7 +51,7 @@ $(document).ready(() => {
 
     // Configuration
     const config = {
-        apiKey: 'ea118e768e75a1fe3b53dc99c9e4de09', // TODO: Move to server-side proxy
+        apiKey: 'ea118e768e75a1fe3b53dc99c9e4de09', // TODO: Secure TMDB API key by moving to server-side proxy
         servers: [
             { 
                 name: 'Server 1', 
@@ -281,12 +281,13 @@ $(document).ready(() => {
                         </div>
                     </div>
                 </div>
-            `);
+            );
 
             try {
                 await loadImage(backdropUrl);
                 previewItem.find('.preview-background').addClass('loaded');
             } catch (error) {
+                console.error(`Failed to load preview backdrop for ${title}`, error);
                 previewItem.remove();
                 return;
             }
@@ -301,9 +302,9 @@ $(document).ready(() => {
             });
 
             attachClickHandler(previewItem.find('.add-btn'), () => {
-                toggleWatchlist({ id: item.id, type: item.media_type, title, poster: posterPath, rating: item.vote_average });
+                toggleWatchlist({ id: id, type: item.media_type, title, poster: posterPath, rating: item.rating_average });
                 const isInWatchlist = state.watchlist.some(w => w.id === item.id);
-                previewItem.find('.add-btn').children('i').removeClass('fa-solid fa-check fas fa-plus').addClass(isInWatchlist ? 'fa-solid fa-check' : 'fas fa-plus');
+                previewItem.find('.add-btn i').toggleClass('fa-solid fa-check', isInWatchlist).toggleClass('fas fa-plus', !isInWatchlist);
             });
 
             container.append(previewItem);
@@ -381,7 +382,7 @@ $(document).ready(() => {
     const loadLibrary = async () => {
         selectors.watchlistSlider.empty();
         if (!state.watchlist.length) {
-            selectors.watchlistSlider.append('<div class="empty-message-container"><p class="message">Your watchlist is empty.</p></div>');
+            selectors.watchlistSlider.append('<div class="empty-message-container"><p class="empty-message">Your watchlist is empty.</p></div>');
         } else {
             for (const item of state.watchlist) {
                 await renderItem(item, selectors.watchlistSlider, 'slider', true);
@@ -390,7 +391,7 @@ $(document).ready(() => {
 
         selectors.historySlider.empty();
         if (!state.history.length) {
-            selectors.historySlider.append('<div class="empty-message-container"><p class="message">Your history is empty.</p></div>');
+            selectors.historySlider.append('<div class="empty-message-container"><p class="empty-message">Your history is empty.</p></div>');
         } else {
             state.history.sort((a, b) => b.timestamp - a.timestamp);
             const seen = new Set();
@@ -451,7 +452,7 @@ $(document).ready(() => {
                         </button>
                     `);
                     btn.on('click', () => {
-                        $('.btn-default').removeClass('active');
+                        $('.episode-btn').removeClass('active');
                         btn.addClass('active');
                         state.season = season.season_number;
                         state.episode = ep.episode_number;
@@ -784,10 +785,10 @@ $(document).ready(() => {
         const filter = selectors.searchFilter.val();
         try {
             const data = await fetchWithRetry(`https://api.themoviedb.org/3/search/multi?api_key=${config.apiKey}&query=${encodeURIComponent(query)}&page=1`);
-            const results = data.results.filter(item => 
+            const results = data.results?.filter(item => 
                 (item.media_type === filter || filter === 'all') &&
                 item.id && (item.title || item.name) && item.poster_path && item.vote_average
-            ).slice(0, 20);
+            ).slice(0, 20) || [];
             selectors.searchResults.empty();
             if (!results.length) {
                 selectors.searchResults.append('<p class="text-center" style="color: #ccc;">No results found.</p>');
