@@ -358,7 +358,7 @@ $(document).ready(() => {
             if (isLibrary) {
                 attachClickHandler(poster.find('.delete-badge'), () => {
                     const listType = container.attr('id') === 'watchlistSlider' ? 'watchlist' : 'history';
-                    state[listType] = state[listType].filter(i => i.id !== item.id);
+                    state[listType] = state[listType].filter(i => i.id !== item.id || i.season !== item.season || i.episode !== item.episode);
                     localStorage.setItem(listType, JSON.stringify(state[listType]));
                     loadLibrary();
                 });
@@ -405,16 +405,15 @@ $(document).ready(() => {
         if (!state.history.length) {
             selectors.historySlider.html('<div class="empty-message-container"><p class="empty-message">Your history is empty.</p></div>');
         } else {
-            state.history.sort((a, b) => b.timestamp - a.timestamp);
-            const uniqueHistory = [];
-            const seen = new Set();
+            // Deduplicate history, keeping the most recent entry
+            const historyMap = new Map();
             for (const item of state.history) {
                 const key = `${item.id}_${item.type}_${item.season || ''}_${item.episode || ''}`;
-                if (!seen.has(key)) {
-                    seen.add(key);
-                    uniqueHistory.push(item);
+                if (!historyMap.has(key) || historyMap.get(key).timestamp < item.timestamp) {
+                    historyMap.set(key, item);
                 }
             }
+            const uniqueHistory = Array.from(historyMap.values()).sort((a, b) => b.timestamp - a.timestamp);
             for (const item of uniqueHistory) {
                 await renderItem(item, selectors.historySlider, 'slider', true);
             }
@@ -587,20 +586,13 @@ $(document).ready(() => {
             return;
         }
 
-        try {
-            await fetchWithRetry(`https://api.themoviedb.org/3/${type}/${id}?api_key=${config.apiKey}`);
-        } catch (error) {
-            console.error(`Media not found: ID=${id}, Type=${type}`, error);
-            loadHomepage();
-            return;
-        }
-
         state.mediaId = id;
         state.mediaType = type;
         state.season = season;
         state.episode = episode;
         state.previousSection = section || state.previousSection;
 
+        // Only include season/episode in URL if they are defined
         let url = `/${type}/${id}`;
         if (type === 'tv' && season && episode) {
             url = `/${type}/${id}/${season}/${episode}`;
@@ -635,7 +627,6 @@ $(document).ready(() => {
         };
 
         if (cachedData) {
-            console.log(`Using cached data for ${title} (ID: ${id}, Type: ${type})`);
             updateUI(cachedData);
         } else {
             selectors.mediaPoster.attr('src', poster || '').attr('alt', `${title} Poster`);
@@ -645,26 +636,24 @@ $(document).ready(() => {
             selectors.mediaPlot.text('Loading media details...');
         }
 
-        fetchWithRetry(`https://api.themoviedb.org/3/${type}/${id}?api_key=${config.apiKey}`)
-            .then(data => {
-                console.log(`Successfully fetched details for ${title} (ID: ${id}, Type: ${type})`, data);
-                mediaCache.set(id, type, data);
-                updateUI(data);
-            })
-            .catch(error => {
-                console.error(`Failed to fetch media details for ${title} (ID: ${id}, Type: ${type})`, error);
-                if (!cachedData) {
-                    selectors.mediaDetailsTitle.text('Error loading details');
-                    selectors.mediaYearGenre.text('');
-                    selectors.mediaPlot.html('Failed to load media details. <button class="retry-button">Retry</button>');
-                    $('.retry-button').on('click', () => navigateToMedia(id, type, title, poster, year, season, episode, section));
-                }
-            });
+        try {
+            const data = await fetchWithRetry(`https://api.themoviedb.org/3/${type}/${id}?api_key=${config.apiKey}`);
+            mediaCache.set(id, type, data);
+            updateUI(data);
+        } catch (error) {
+            console.error(`Failed to fetch media details for ${title} (ID: ${id}, Type: ${type})`, error);
+            if (!cachedData) {
+                selectors.mediaDetailsTitle.text('Error loading details');
+                selectors.mediaYearGenre.text('');
+                selectors.mediaPlot.html('Failed to load media details. <button class="retry-button">Retry</button>');
+                $('.retry-button').on('click', () => navigateToMedia(id, type, title, poster, year, season, episode, section));
+            }
+        }
 
         if (type === 'movie') {
             embedVideo();
         } else {
-            loadSeasonEpisodeAccordion();
+            await loadSeasonEpisodeAccordion();
             if (season && episode) {
                 $(`.episode-btn[data-season="${season}"][data-episode="${episode}"]`).addClass('active');
                 embedVideo();
@@ -795,7 +784,7 @@ $(document).ready(() => {
     $(window).on('popstate', event => {
         const s = event.originalEvent.state;
         if (s && s.id && s.type) {
-            navigateToMedia(s.id, s.type, s.title, s.poster, s.year, s.season, s.episode, s.section);
+            navigateToMedia(s.id, s.type, s.title || 'Loading...', s.poster, s.year || 'N/A', s.season, s.episode, s.section);
         } else if (s && s.section) {
             navigateToSection(s.section);
         } else {
@@ -826,19 +815,47 @@ $(document).ready(() => {
         }, 200);
     });
 
-    const handleInitialLoad = () => {
+    const handleInitialLoad = async () => {
         const path = window.location.pathname;
         const movieMatch = path.match(/^\/movie\/(\d+)$/);
         const tvMatch = path.match(/^\/tv\/(\d+)(?:\/(\d+)\/(\d+))?$/);
         
         if (movieMatch) {
             const id = movieMatch[1];
-            navigateToMedia(id, 'movie', 'Loading...', '', 'N/A', null, null, 'home');
+            const stateData = history.state || {};
+            let title = stateData.title || 'Loading...';
+            let year = stateData.year || 'N/A';
+            let poster = stateData.poster || '';
+            if (!stateData.title) {
+                try {
+                    const data = await fetchWithRetry(`https://api.themoviedb.org/3/movie/${id}?api_key=${config.apiKey}`);
+                    title = data.title || 'Unknown';
+                    year = data.release_date?.split('-')[0] || 'N/A';
+                    poster = getImageUrl(data.poster_path) || '';
+                } catch (error) {
+                    console.error('Failed to fetch movie details for initial load', error);
+                }
+            }
+            navigateToMedia(id, 'movie', title, poster, year, null, null, 'home');
         } else if (tvMatch) {
             const id = tvMatch[1];
             const season = tvMatch[2] ? parseInt(tvMatch[2]) : null;
             const episode = tvMatch[3] ? parseInt(tvMatch[3]) : null;
-            navigateToMedia(id, 'tv', 'Loading...', '', 'N/A', season, episode, 'home');
+            const stateData = history.state || {};
+            let title = stateData.title || 'Loading...';
+            let year = stateData.year || 'N/A';
+            let poster = stateData.poster || '';
+            if (!stateData.title) {
+                try {
+                    const data = await fetchWithRetry(`https://api.themoviedb.org/3/tv/${id}?api_key=${config.apiKey}`);
+                    title = data.name || 'Unknown';
+                    year = data.first_air_date?.split('-')[0] || 'N/A';
+                    poster = getImageUrl(data.poster_path) || '';
+                } catch (error) {
+                    console.error('Failed to fetch TV details for initial load', error);
+                }
+            }
+            navigateToMedia(id, 'tv', title, poster, year, season, episode, 'home');
         } else {
             window.history.replaceState({ section: 'home' }, '', '/home');
             loadHomepage();
