@@ -48,7 +48,7 @@ $(document).ready(function() {
         history: JSON.parse(localStorage.getItem('history')) || [],
         previousSection: 'home',
         lastBreakpoint: window.matchMedia("(max-width: 767px)").matches ? 'mobile' : 'desktop',
-        renderedSections: { // Cache for rendered content
+        renderedSections: {
             preview: false,
             movies: false,
             tv: false,
@@ -376,8 +376,12 @@ $(document).ready(function() {
             if (isLibrary) {
                 attachClickHandler(poster.find('.delete-badge'), () => {
                     const listType = container.attr('id') === 'watchlistSlider' ? 'watchlist' : 'history';
-                    state[listType] = state[listType].filter(i => i.id !== item.id || i.season !== item.season || i.episode !== item.episode);
+                    state[listType] = state[listType].filter(i => 
+                        !(i.id === item.id && i.type === item.type && i.season === item.season && i.episode === item.episode)
+                    );
                     localStorage.setItem(listType, JSON.stringify(state[listType]));
+                    // Instantly reload library page
+                    state.renderedSections.library = false; // Force reload
                     loadLibrary();
                 });
             }
@@ -409,11 +413,8 @@ $(document).ready(function() {
 
     // Load Library
     const loadLibrary = async () => {
-        if (state.renderedSections.library) {
-            selectors.watchlistSlider.show();
-            selectors.historySlider.show();
-            return;
-        }
+        // Reset renderedSections.library to ensure fresh load
+        state.renderedSections.library = false;
 
         selectors.watchlistSlider.empty().show();
         if (!state.watchlist.length) {
@@ -433,9 +434,10 @@ $(document).ready(function() {
         if (!state.history.length) {
             selectors.historySlider.html('<div class="empty-message-container"><p class="empty-message">Your history is empty.</p></div>');
         } else {
+            // Group history by id and type, keeping only the most recent entry
             const historyMap = new Map();
             for (const item of state.history) {
-                const key = `${item.id}_${item.type}_${item.season || ''}_${item.episode || ''}`;
+                const key = `${item.id}_${item.type}`;
                 if (!historyMap.has(key) || historyMap.get(key).timestamp < item.timestamp) {
                     historyMap.set(key, item);
                 }
@@ -582,7 +584,6 @@ $(document).ready(function() {
         if (!state.renderedSections.preview) {
             observeElement(selectors.previewItemsContainer, () => {
                 loadSection(selectors.previewItemsContainer, 'trending', true);
-                // Initialize preview index after content is loaded
                 state.previewIndex = Math.min(state.previewIndex, selectors.previewItemsContainer.children().length - 1);
                 state.previewIndex = Math.max(state.previewIndex, 0);
                 selectors.previewItemsContainer.css('transform', `translateX(${-state.previewIndex * 100}%)`);
@@ -757,7 +758,8 @@ $(document).ready(function() {
             selectors.librarySection.show();
             selectors.searchSection.hide();
             stopPreviewSlideshow();
-            observeElement(selectors.librarySection, loadLibrary);
+            // Load library immediately
+            loadLibrary();
             window.history.replaceState({ section: 'library' }, '', '/library');
         }
     };
@@ -798,11 +800,11 @@ $(document).ready(function() {
             }
             localStorage.setItem('previewIndex', state.previewIndex);
             selectors.previewItemsContainer.css('transition', 'transform 0.5s ease');
-            selectors.previewItemsContainer.css('transform', `translateX(${-state.previewIndex * 100}%)`);
+            selectors.previewItemsContainer.css('transform(${-state.previewIndex * 100}%)');
             setTimeout(() => {
                 selectors.previewItemsContainer.css('transition', '');
                 startPreviewSlideshow();
-            }, 500);
+            });
         });
     };
 
@@ -886,7 +888,7 @@ $(document).ready(function() {
 
     selectors.searchInput.on('input', () => {
         clearTimeout(searchTimeout);
-        searchTimeout = setTimeout(performSearch, 500); // Increased to 500ms for better performance
+        searchTimeout = setTimeout(performSearch, 500);
     });
 
     selectors.searchFilter.on('change', () => {
@@ -896,7 +898,7 @@ $(document).ready(function() {
     $(window).on('popstate', event => {
         const s = event.originalEvent.state;
         if (s && s.id && s.type) {
-            navigateToMedia(s.id, s.type, s.title || 'Unknown', s.poster || '', s.year || 'N/A', s.season, s.episode, s.section, s.rating || 'N/A');
+            navigateToMedia(s.id, s.type, s.title || 'Unknown', s.poster || '', s.year, s.season, s.episode, s.section, s.rating || 'N/A');
         } else if (s && s.section) {
             navigateToSection(s.section);
         } else {
