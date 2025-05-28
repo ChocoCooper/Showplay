@@ -61,7 +61,7 @@ $(document).ready(function() {
 
     // Configuration
     const config = {
-        apiKey: 'ea118e768e75a1fe3b53dc99c9e4de09',
+        apiKey: 'ea118e768e75a1fe3b53dc99c9e4de09', // Note: Should be moved to server-side for security
         servers: [
             { 
                 name: 'Server 1', 
@@ -248,6 +248,10 @@ $(document).ready(function() {
             let items = [], page = 1, maxPages = isPreview ? 5 : 2, desiredCount = isPreview ? 10 : 12;
             while (items.length < desiredCount && page <= maxPages) {
                 const data = await fetchWithRetry(`${url}&page=${page}`);
+                if (!data?.results) {
+                    console.error(`No results for ${type} on page ${page}`);
+                    return items;
+                }
                 let validItems = data.results
                     .filter(item => item.id && (item.title || item.name) && item.poster_path && item.vote_average)
                     .map(item => ({ ...item, type: isPreview ? item.media_type : mediaType }));
@@ -350,7 +354,7 @@ $(document).ready(function() {
 
             try {
                 await loadImage(imageUrl);
-                const img = $('<img class="poster-img loaded" />').attr('src', imageUrl).attrTJ('alt', title).attr('role', 'button').attr('aria-label', `Play ${title}`);
+                const img = $('<img class="poster-img loaded" />').attr('src', imageUrl).attr('alt', title).attr('role', 'button').attr('aria-label', `Play ${title}`);
                 poster.append(img);
                 poster.removeClass('skeleton');
             } catch (error) {
@@ -386,7 +390,7 @@ $(document).ready(function() {
     const addToHistory = item => {
         const key = `${item.id}_${item.type}_${item.season || ''}_${item.episode || ''}`;
         state.history = state.history.filter(h => `${h.id}_${h.type}_${h.season || ''}_${h.episode || ''}` !== key);
-        state.history.unshift({ ...item, timestamp: Date.now() });
+        state.history.unshift({ ...item, rating: item.rating || 'N/A', timestamp: Date.now() });
         state.history = state.history.slice(0, 20);
         localStorage.setItem('history', JSON.stringify(state.history));
     };
@@ -579,11 +583,15 @@ $(document).ready(function() {
             observeElement(selectors.previewItemsContainer, () => {
                 loadSection(selectors.previewItemsContainer, 'trending', true);
                 // Initialize preview index after content is loaded
+                state.previewIndex = Math.min(state.previewIndex, selectors.previewItemsContainer.children().length - 1);
+                state.previewIndex = Math.max(state.previewIndex, 0);
                 selectors.previewItemsContainer.css('transform', `translateX(${-state.previewIndex * 100}%)`);
                 startPreviewSlideshow();
             });
         } else {
             selectors.previewItemsContainer.show();
+            state.previewIndex = Math.min(state.previewIndex, selectors.previewItemsContainer.children().length - 1);
+            state.previewIndex = Math.max(state.previewIndex, 0);
             selectors.previewItemsContainer.css('transform', `translateX(${-state.previewIndex * 100}%)`);
             startPreviewSlideshow();
         }
@@ -656,7 +664,7 @@ $(document).ready(function() {
         selectors.videoPage.data({ id, type, title, poster, year });
 
         selectors.watchlistBtn.html(`Add to Watchlist <i class="${state.watchlist.some(w => w.id === id) ? 'fa-solid fa-check' : 'fas fa-plus'}"></i>`);
-        selectors.downloadBtn.attr('href', type === 'movie' ? `https://dl.vidsrc.vip/movie/${id}` : `https://dl.vidsrc.vip/tv/${id}/${state.season || 1}/${state.episode || 1}`);
+        selectors.downloadBtn.attr('href', type === 'movie' ? `https://dl.vidsrc.vip/movie/${id}` : (state.season && state.episode ? `https://dl.vidsrc.vip/tv/${id}/${state.season}/${state.episode}` : '#'));
 
         selectors.videoPage.show();
         selectors.homepage.hide();
@@ -768,7 +776,10 @@ $(document).ready(function() {
             const currentX = e.originalEvent.touches[0].clientX;
             const diff = startX - currentX;
             const totalItems = selectors.previewItemsContainer.children().length;
-            if (totalItems === 0) return;
+            if (totalItems <= 0) {
+                isSwiping = false;
+                return;
+            }
             const translateX = -state.previewIndex * 100 + (diff / selectors.previewSection.width()) * 100;
             selectors.previewItemsContainer.css('transform', `translateX(${translateX}%)`);
         });
@@ -850,26 +861,32 @@ $(document).ready(function() {
         const query = selectors.searchInput.val().trim();
         if (query.length < 3) {
             selectors.searchResults.empty();
+            selectors.searchTrending.show();
             return;
         }
         selectors.searchTrending.hide();
         const filter = selectors.searchFilter.val();
-        const data = await fetchWithRetry(`https://api.themoviedb.org/3/search/multi?api_key=${config.apiKey}&query=${encodeURIComponent(query)}&page=1`);
-        const results = data.results?.filter(item => 
-            (item.media_type === filter || filter === 'all') &&
-            item.id && (item.title || item.name) && item.poster_path && item.vote_average
-        ).slice(0, 20) || [];
-        selectors.searchResults.empty();
-        if (!results.length) {
-            selectors.searchResults.html('<p class="text-center" style="color: #ccc;">No results found.</p>');
-        } else {
-            results.forEach(item => renderItem(item, selectors.searchResults));
+        try {
+            const data = await fetchWithRetry(`https://api.themoviedb.org/3/search/multi?api_key=${config.apiKey}&query=${encodeURIComponent(query)}&page=1`);
+            const results = data.results?.filter(item => 
+                (item.media_type === filter || filter === 'all') &&
+                item.id && (item.title || item.name) && item.poster_path && item.vote_average
+            ).slice(0, 20) || [];
+            selectors.searchResults.empty();
+            if (!results.length) {
+                selectors.searchResults.html('<p class="text-center" style="color: #ccc;">No results found.</p>');
+            } else {
+                results.forEach(item => renderItem(item, selectors.searchResults));
+            }
+        } catch (error) {
+            console.error('Search failed', error);
+            selectors.searchResults.html('<p class="text-center" style="color: #ccc;">Failed to load search results.</p>');
         }
     };
 
     selectors.searchInput.on('input', () => {
         clearTimeout(searchTimeout);
-        searchTimeout = setTimeout(performSearch, 300);
+        searchTimeout = setTimeout(performSearch, 500); // Increased to 500ms for better performance
     });
 
     selectors.searchFilter.on('change', () => {
