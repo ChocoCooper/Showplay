@@ -13,6 +13,7 @@ $(document).ready(function() {
         serverGrid: $('#serverGrid'),
         mediaDetails: $('#mediaDetails'),
         mediaPoster: $('#mediaPoster'),
+        mediaDetailsPoster: $('.media-details-poster'),
         mediaRatingBadge: $('#mediaRatingBadge'),
         mediaDetailsTitle: $('#mediaDetailsTitle'),
         mediaYearGenre: $('#mediaYearGenre'),
@@ -46,7 +47,16 @@ $(document).ready(function() {
         watchlist: JSON.parse(localStorage.getItem('watchlist')) || [],
         history: JSON.parse(localStorage.getItem('history')) || [],
         previousSection: 'home',
-        lastBreakpoint: window.matchMedia("(max-width: 767px)").matches ? 'mobile' : 'desktop'
+        lastBreakpoint: window.matchMedia("(max-width: 767px)").matches ? 'mobile' : 'desktop',
+        renderedSections: { // Cache for rendered content
+            preview: false,
+            movies: false,
+            tv: false,
+            anime: false,
+            kdrama: false,
+            search: false,
+            library: false
+        }
     };
 
     // Configuration
@@ -156,12 +166,6 @@ $(document).ready(function() {
     };
 
     // Lazy Loading with IntersectionObserver
-    const observerOptions = {
-        root: null,
-        rootMargin: '100px',
-        threshold: 0.1
-    };
-
     const observeElement = (element, callback) => {
         const observer = new IntersectionObserver((entries, observer) => {
             entries.forEach(entry => {
@@ -170,7 +174,7 @@ $(document).ready(function() {
                     observer.unobserve(entry.target);
                 }
             });
-        }, observerOptions);
+        }, { root: null, rootMargin: '100px', threshold: 0.1 });
         observer.observe(element[0]);
     };
 
@@ -346,7 +350,7 @@ $(document).ready(function() {
 
             try {
                 await loadImage(imageUrl);
-                const img = $('<img class="poster-img loaded" />').attr('src', imageUrl).attr('alt', title).attr('role', 'button').attr('aria-label', `Play ${title}`);
+                const img = $('<img class="poster-img loaded" />').attr('src', imageUrl).attrTJ('alt', title).attr('role', 'button').attr('aria-label', `Play ${title}`);
                 poster.append(img);
                 poster.removeClass('skeleton');
             } catch (error) {
@@ -380,7 +384,8 @@ $(document).ready(function() {
 
     // Add to History
     const addToHistory = item => {
-        state.history = state.history.filter(h => !(h.id === item.id && h.type === item.type));
+        const key = `${item.id}_${item.type}_${item.season || ''}_${item.episode || ''}`;
+        state.history = state.history.filter(h => `${h.id}_${h.type}_${h.season || ''}_${h.episode || ''}` !== key);
         state.history.unshift({ ...item, timestamp: Date.now() });
         state.history = state.history.slice(0, 20);
         localStorage.setItem('history', JSON.stringify(state.history));
@@ -400,7 +405,13 @@ $(document).ready(function() {
 
     // Load Library
     const loadLibrary = async () => {
-        selectors.watchlistSlider.empty();
+        if (state.renderedSections.library) {
+            selectors.watchlistSlider.show();
+            selectors.historySlider.show();
+            return;
+        }
+
+        selectors.watchlistSlider.empty().show();
         if (!state.watchlist.length) {
             selectors.watchlistSlider.html('<div class="empty-message-container"><p class="empty-message">Your watchlist is empty.</p></div>');
         } else {
@@ -414,13 +425,13 @@ $(document).ready(function() {
             }
         }
 
-        selectors.historySlider.empty();
+        selectors.historySlider.empty().show();
         if (!state.history.length) {
             selectors.historySlider.html('<div class="empty-message-container"><p class="empty-message">Your history is empty.</p></div>');
         } else {
             const historyMap = new Map();
             for (const item of state.history) {
-                const key = `${item.id}_${item.type}`;
+                const key = `${item.id}_${item.type}_${item.season || ''}_${item.episode || ''}`;
                 if (!historyMap.has(key) || historyMap.get(key).timestamp < item.timestamp) {
                     historyMap.set(key, item);
                 }
@@ -435,6 +446,8 @@ $(document).ready(function() {
                 await renderItem(item, selectors.historySlider, 'slider', true);
             }
         }
+
+        state.renderedSections.library = true;
     };
 
     // Load Season and Episode Accordion
@@ -523,7 +536,8 @@ $(document).ready(function() {
         state.episode = null;
         selectors.videoFrame.attr('src', '');
         selectors.videoMediaTitle.text('');
-        selectors.mediaPoster.attr('src', '').attr('alt', '');
+        selectors.mediaPoster.attr('src', '').attr('alt', '').removeClass('loaded');
+        selectors.mediaDetailsPoster.addClass('skeleton');
         selectors.mediaRatingBadge.find('.rating-value').text('');
         selectors.mediaDetailsTitle.text('');
         selectors.mediaYearGenre.text('');
@@ -549,21 +563,35 @@ $(document).ready(function() {
         window.history.replaceState({ section: 'home' }, '', '/home');
 
         const loadSection = async (container, type, isPreview = false) => {
-            container.empty();
+            if (state.renderedSections[type] && !isPreview) {
+                container.show();
+                return;
+            }
+            container.empty().show();
             const items = await fetchMedia(type, isPreview);
             for (const item of items) {
                 await renderItem(item, container, isPreview ? 'preview' : 'slider');
             }
+            if (!isPreview) state.renderedSections[type] = true;
         };
 
-        observeElement(selectors.previewItemsContainer, () => loadSection(selectors.previewItemsContainer, 'trending', true));
+        if (!state.renderedSections.preview) {
+            observeElement(selectors.previewItemsContainer, () => {
+                loadSection(selectors.previewItemsContainer, 'trending', true);
+                // Initialize preview index after content is loaded
+                selectors.previewItemsContainer.css('transform', `translateX(${-state.previewIndex * 100}%)`);
+                startPreviewSlideshow();
+            });
+        } else {
+            selectors.previewItemsContainer.show();
+            selectors.previewItemsContainer.css('transform', `translateX(${-state.previewIndex * 100}%)`);
+            startPreviewSlideshow();
+        }
+
         observeElement(selectors.moviesSlider, () => loadSection(selectors.moviesSlider, 'movie'));
         observeElement(selectors.tvSlider, () => loadSection(selectors.tvSlider, 'tv'));
         observeElement(selectors.animeSlider, () => loadSection(selectors.animeSlider, 'anime'));
         observeElement(selectors.kdramaSlider, () => loadSection(selectors.kdramaSlider, 'kdrama'));
-
-        setupPreviewTouch();
-        startPreviewSlideshow();
     };
 
     // Load Search Section
@@ -580,13 +608,19 @@ $(document).ready(function() {
         selectors.searchInput.focus();
         stopPreviewSlideshow();
 
-        selectors.searchResults.empty();
-        selectors.searchTrending.empty();
-        observeElement(selectors.searchTrending, () => {
-            const filter = selectors.searchFilter.val();
-            const trending = filter === 'movie' ? fetchMedia('movie') : fetchMedia('tv');
-            trending.then(items => items.forEach(item => renderItem(item, selectors.searchTrending)));
-        });
+        if (!state.renderedSections.search) {
+            selectors.searchResults.empty();
+            selectors.searchTrending.empty();
+            observeElement(selectors.searchTrending, () => {
+                const filter = selectors.searchFilter.val();
+                const trending = filter === 'movie' ? fetchMedia('movie') : fetchMedia('tv');
+                trending.then(items => items.forEach(item => renderItem(item, selectors.searchTrending)));
+            });
+            state.renderedSections.search = true;
+        } else {
+            selectors.searchResults.show();
+            selectors.searchTrending.show();
+        }
     };
 
     // Navigate to Media
@@ -635,7 +669,16 @@ $(document).ready(function() {
         const cachedData = mediaCache.get(id, type);
         const updateUI = (data) => {
             const genres = data.genres?.slice(0, 2).map(g => g.name.split(' ')[0]) || ['N/A'];
-            selectors.mediaPoster.attr('src', getImageUrl(data.poster_path) || poster).attr('alt', `${title} Poster`);
+            const posterUrl = getImageUrl(data.poster_path) || poster;
+            selectors.mediaPoster.attr('src', posterUrl).attr('alt', `${title} Poster`).removeClass('loaded');
+            selectors.mediaDetailsPoster.addClass('skeleton');
+            loadImage(posterUrl).then(() => {
+                selectors.mediaPoster.addClass('loaded');
+                selectors.mediaDetailsPoster.removeClass('skeleton');
+            }).catch(() => {
+                selectors.mediaPoster.attr('src', '').attr('alt', 'Poster unavailable');
+                selectors.mediaDetailsPoster.removeClass('skeleton');
+            });
             selectors.mediaRatingBadge.find('.rating-value').text(data.vote_average?.toFixed(1) || rating || 'N/A');
             selectors.mediaDetailsTitle.text(title);
             selectors.mediaYearGenre.text(`${type.toUpperCase()} • ${year || 'N/A'} • ${genres.join(', ')}`);
@@ -645,7 +688,15 @@ $(document).ready(function() {
         if (cachedData) {
             updateUI(cachedData);
         } else {
-            selectors.mediaPoster.attr('src', poster || '').attr('alt', `${title} Poster`);
+            selectors.mediaPoster.attr('src', poster || '').attr('alt', `${title} Poster`).removeClass('loaded');
+            selectors.mediaDetailsPoster.addClass('skeleton');
+            loadImage(poster).then(() => {
+                selectors.mediaPoster.addClass('loaded');
+                selectors.mediaDetailsPoster.removeClass('skeleton');
+            }).catch(() => {
+                selectors.mediaPoster.attr('src', '').attr('alt', 'Poster unavailable');
+                selectors.mediaDetailsPoster.removeClass('skeleton');
+            });
             selectors.mediaRatingBadge.find('.rating-value').text(rating || 'N/A');
             selectors.mediaDetailsTitle.text(title);
             selectors.mediaYearGenre.text(`${type.toUpperCase()} • ${year || 'N/A'} • N/A`);
@@ -706,25 +757,55 @@ $(document).ready(function() {
     // Setup Preview Touch
     const setupPreviewTouch = () => {
         let startX = 0;
-        selectors.previewSection.on('touchstart', e => startX = e.originalEvent.touches[0].clientX);
+        let isSwiping = false;
+        selectors.previewSection.on('touchstart', e => {
+            startX = e.originalEvent.touches[0].clientX;
+            isSwiping = true;
+            stopPreviewSlideshow();
+        });
+        selectors.previewSection.on('touchmove', e => {
+            if (!isSwiping) return;
+            const currentX = e.originalEvent.touches[0].clientX;
+            const diff = startX - currentX;
+            const totalItems = selectors.previewItemsContainer.children().length;
+            if (totalItems === 0) return;
+            const translateX = -state.previewIndex * 100 + (diff / selectors.previewSection.width()) * 100;
+            selectors.previewItemsContainer.css('transform', `translateX(${translateX}%)`);
+        });
         selectors.previewSection.on('touchend', e => {
+            if (!isSwiping) return;
+            isSwiping = false;
             const endX = e.originalEvent.changedTouches[0].clientX;
-            if (Math.abs(startX - endX) > 50) {
-                stopPreviewSlideshow();
-                state.previewIndex += startX > endX ? 1 : -1;
-                if (state.previewIndex < 0) state.previewIndex = selectors.previewItemsContainer.children().length - 1;
-                if (state.previewIndex >= selectors.previewItemsContainer.children().length) state.previewIndex = 0;
-                localStorage.setItem('previewIndex', state.previewIndex);
-                selectors.previewItemsContainer.css('transform', `translateX(${-state.previewIndex * 100}%)`);
-                startPreviewSlideshow();
+            const diff = startX - endX;
+            const totalItems = selectors.previewItemsContainer.children().length;
+            if (Math.abs(diff) > 50 && totalItems > 0) {
+                if (diff > 0) {
+                    state.previewIndex = Math.min(state.previewIndex + 1, totalItems - 1);
+                } else {
+                    state.previewIndex = Math.max(state.previewIndex - 1, 0);
+                }
             }
+            localStorage.setItem('previewIndex', state.previewIndex);
+            selectors.previewItemsContainer.css('transition', 'transform 0.5s ease');
+            selectors.previewItemsContainer.css('transform', `translateX(${-state.previewIndex * 100}%)`);
+            setTimeout(() => {
+                selectors.previewItemsContainer.css('transition', '');
+                startPreviewSlideshow();
+            }, 500);
         });
     };
 
     // Start Preview Slideshow
     const startPreviewSlideshow = () => {
-        if (state.previewInterval || selectors.videoPage.is(':visible')) return;
+        if (state.previewInterval || selectors.videoPage.is(':visible') || !selectors.previewSection.is(':visible') || selectors.previewItemsContainer.children().length === 0) return;
+        state.previewIndex = Math.min(state.previewIndex, selectors.previewItemsContainer.children().length - 1);
+        state.previewIndex = Math.max(state.previewIndex, 0);
+        selectors.previewItemsContainer.css('transform', `translateX(${-state.previewIndex * 100}%)`);
         state.previewInterval = setInterval(() => {
+            if (!selectors.previewSection.is(':visible')) {
+                stopPreviewSlideshow();
+                return;
+            }
             state.previewIndex = (state.previewIndex + 1) % selectors.previewItemsContainer.children().length;
             localStorage.setItem('previewIndex', state.previewIndex);
             selectors.previewItemsContainer.css('transform', `translateX(${-state.previewIndex * 100}%)`);
@@ -769,10 +850,9 @@ $(document).ready(function() {
         const query = selectors.searchInput.val().trim();
         if (query.length < 3) {
             selectors.searchResults.empty();
-            loadSearchSection();
             return;
         }
-        selectors.searchTrending.empty();
+        selectors.searchTrending.hide();
         const filter = selectors.searchFilter.val();
         const data = await fetchWithRetry(`https://api.themoviedb.org/3/search/multi?api_key=${config.apiKey}&query=${encodeURIComponent(query)}&page=1`);
         const results = data.results?.filter(item => 
@@ -783,9 +863,7 @@ $(document).ready(function() {
         if (!results.length) {
             selectors.searchResults.html('<p class="text-center" style="color: #ccc;">No results found.</p>');
         } else {
-            observeElement(selectors.searchResults, () => {
-                results.forEach(item => renderItem(item, selectors.searchResults));
-            });
+            results.forEach(item => renderItem(item, selectors.searchResults));
         }
     };
 
@@ -886,5 +964,6 @@ $(document).ready(function() {
 
     // Initialize
     initializeServers();
+    setupPreviewTouch();
     handleInitialLoad();
 });
