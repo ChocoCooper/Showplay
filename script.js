@@ -33,8 +33,7 @@ $(document).ready(function() {
         searchFilter: $('#searchFilter'),
         searchResults: $('#searchResults'),
         searchTrending: $('#searchTrending'),
-        sidebarNavItems: $('.sidebar-nav li'),
-        mainTitle: $('#mainTitle')
+        sidebarNavItems: $('.sidebar-nav li')
     };
 
     // Application State
@@ -62,8 +61,7 @@ $(document).ready(function() {
 
     // Configuration
     const config = {
-        apiKey: 'ea118e768e75a1fe3d53dc99c9e4de09', // Should be server-side in production
-        homepageUrl: 'https://showplay.netlify.app', // Updated for TV shows without episode
+        apiKey: 'ea118e768e75a1fe3b53dc99c9e4de09', // Note: Should be moved to server-side for security
         servers: [
             { 
                 name: 'Server 1', 
@@ -101,10 +99,15 @@ $(document).ready(function() {
     };
 
     // Utility: Get Image URL
-    const getImageUrl = (path, type = 'poster') => {
+    const getImageUrl = (path, type = 'poster', isLibrary = false) => {
         if (!path) return null;
         const isMobile = window.matchMedia("(max-width: 767px)").matches;
-        const size = type === 'backdrop' ? (isMobile ? 'w1280' : 'original') : (isMobile ? 'w185' : 'w500');
+        let size;
+        if (isLibrary) {
+            size = isMobile ? 'w92' : 'w154';
+        } else {
+            size = type === 'backdrop' ? (isMobile ? 'w1280' : 'original') : (isMobile ? 'w185' : 'w500');
+        }
         return `https://image.tmdb.org/t/p/${size}${path.startsWith('/') ? path : '/' + path}`;
     };
 
@@ -197,10 +200,12 @@ $(document).ready(function() {
     // Embed Video
     const embedVideo = () => {
         if (!state.mediaId) {
+            console.error('Cannot embed video: mediaId is not set');
             selectors.videoFrame.attr('src', '');
             return;
         }
         if (state.mediaType === 'tv' && (!state.season || !state.episode)) {
+            console.error('Cannot embed TV video: season or episode is not set');
             selectors.videoFrame.attr('src', '');
             return;
         }
@@ -243,7 +248,10 @@ $(document).ready(function() {
             let items = [], page = 1, maxPages = isPreview ? 5 : 2, desiredCount = isPreview ? 10 : 12;
             while (items.length < desiredCount && page <= maxPages) {
                 const data = await fetchWithRetry(`${url}&page=${page}`);
-                if (!data?.results) return items;
+                if (!data?.results) {
+                    console.error(`No results for ${type} on page ${page}`);
+                    return items;
+                }
                 let validItems = data.results
                     .filter(item => item.id && (item.title || item.name) && item.poster_path && item.vote_average)
                     .map(item => ({ ...item, type: isPreview ? item.media_type : mediaType }));
@@ -264,6 +272,7 @@ $(document).ready(function() {
             }
             return items.slice(0, desiredCount);
         } catch (error) {
+            console.error(`Failed to load ${type} content`, error);
             return [];
         }
     };
@@ -273,7 +282,7 @@ $(document).ready(function() {
         const title = item.title || item.name || 'Unknown';
         const posterPath = item.poster_path || item.poster || '';
         const rating = (item.vote_average || item.rating || 0).toFixed(1) || 'N/A';
-        const imageUrl = getImageUrl(posterPath, 'poster');
+        const imageUrl = getImageUrl(posterPath, 'poster', isLibrary);
         if (!imageUrl) return;
 
         const createElement = (html) => $(html);
@@ -313,7 +322,7 @@ $(document).ready(function() {
                 await loadImage(backdropUrl);
                 const img = $('<img class="preview-background loaded" />').attr('src', backdropUrl).attr('alt', title);
                 previewItem.find('.preview-background').replaceWith(img);
-            } catch {
+            } catch (error) {
                 previewItem.remove();
                 return;
             }
@@ -348,7 +357,7 @@ $(document).ready(function() {
                 const img = $('<img class="poster-img loaded" />').attr('src', imageUrl).attr('alt', title).attr('role', 'button').attr('aria-label', `Play ${title}`);
                 poster.append(img);
                 poster.removeClass('skeleton');
-            } catch {
+            } catch (error) {
                 poster.remove();
                 return;
             }
@@ -371,7 +380,8 @@ $(document).ready(function() {
                         !(i.id === item.id && i.type === item.type && i.season === item.season && i.episode === item.episode)
                     );
                     localStorage.setItem(listType, JSON.stringify(state[listType]));
-                    state.renderedSections.library = false;
+                    // Instantly reload library page
+                    state.renderedSections.library = false; // Force reload
                     loadLibrary();
                 });
             }
@@ -403,13 +413,14 @@ $(document).ready(function() {
 
     // Load Library
     const loadLibrary = async () => {
+        // Reset renderedSections.library to ensure fresh load
         state.renderedSections.library = false;
 
         selectors.watchlistSlider.empty().show();
         if (!state.watchlist.length) {
             selectors.watchlistSlider.html('<div class="empty-message-container"><p class="empty-message">Your watchlist is empty.</p></div>');
         } else {
-            const watchlistItems = state.watchlist.map(item => ({ ...item, imageUrl: getImageUrl(item.poster, 'poster') }));
+            const watchlistItems = state.watchlist.map(item => ({ ...item, imageUrl: getImageUrl(item.poster, 'poster', true) }));
             const loadPromises = watchlistItems.map(item => 
                 item.imageUrl ? loadImage(item.imageUrl).then(() => item).catch(() => null) : Promise.resolve(null)
             );
@@ -423,6 +434,7 @@ $(document).ready(function() {
         if (!state.history.length) {
             selectors.historySlider.html('<div class="empty-message-container"><p class="empty-message">Your history is empty.</p></div>');
         } else {
+            // Group history by id and type, keeping only the most recent entry
             const historyMap = new Map();
             for (const item of state.history) {
                 const key = `${item.id}_${item.type}`;
@@ -431,7 +443,7 @@ $(document).ready(function() {
                 }
             }
             const uniqueHistory = Array.from(historyMap.values()).sort((a, b) => b.timestamp - a.timestamp);
-            const historyItems = uniqueHistory.map(item => ({ ...item, imageUrl: getImageUrl(item.poster, 'poster') }));
+            const historyItems = uniqueHistory.map(item => ({ ...item, imageUrl: getImageUrl(item.poster, 'poster', true) }));
             const loadPromises = historyItems.map(item => 
                 item.imageUrl ? loadImage(item.imageUrl).then(() => item).catch(() => null) : Promise.resolve(null)
             );
@@ -492,7 +504,6 @@ $(document).ready(function() {
                         state.season = season.season_number;
                         state.episode = ep.episode_number;
                         embedVideo();
-                        selectors.downloadBtn.attr('href', `https://dl.vidsrc.vip/tv/${state.mediaId}/${state.season}/${state.episode}`);
                         addToHistory({ 
                             id: state.mediaId, 
                             type: state.mediaType, 
@@ -517,7 +528,8 @@ $(document).ready(function() {
                 const parentDetails = $(this).parent('details');
                 selectors.seasonEpisodeAccordion.find('details').not(parentDetails).removeAttr('open');
             });
-        } catch {
+        } catch (error) {
+            console.error('Failed to load seasons/episodes', error);
             selectors.seasonEpisodeAccordion.html('<p class="empty-message">Failed to load seasons/episodes.</p>');
         }
     };
@@ -539,7 +551,7 @@ $(document).ready(function() {
         selectors.seasonEpisodeSelector.hide();
         selectors.seasonEpisodeAccordion.empty();
         selectors.watchlistBtn.html('Add to Watchlist <i class="fas fa-plus"></i>');
-        selectors.downloadBtn.attr('href', config.homepageUrl);
+        selectors.downloadBtn.attr('href', '#');
     };
 
     // Load Homepage
@@ -626,6 +638,7 @@ $(document).ready(function() {
         resetVideoPlayerState();
 
         if (!id || !type || !['movie', 'tv'].includes(type)) {
+            console.error(`Invalid media parameters: ID=${id}, Type=${type}`);
             selectors.mediaDetailsTitle.text('Invalid Media');
             selectors.mediaYearGenre.text('');
             selectors.mediaPlot.text('The selected media is invalid. Please try another title.');
@@ -652,11 +665,7 @@ $(document).ready(function() {
         selectors.videoPage.data({ id, type, title, poster, year });
 
         selectors.watchlistBtn.html(`Add to Watchlist <i class="${state.watchlist.some(w => w.id === id) ? 'fa-solid fa-check' : 'fas fa-plus'}"></i>`);
-        selectors.downloadBtn.attr('href',
-            type === 'movie' ? `https://dl.vidsrc.vip/movie/${id}` :
-            type === 'tv' && state.season && state.episode ? `https://dl.vidsrc.vip/tv/${id}/${state.season}/${state.episode}` :
-            config.homepageUrl
-        );
+        selectors.downloadBtn.attr('href', type === 'movie' ? `https://dl.vidsrc.vip/movie/${id}` : (state.season && state.episode ? `https://dl.vidsrc.vip/tv/${id}/${state.season}/${state.episode}` : '#'));
 
         selectors.videoPage.show();
         selectors.homepage.hide();
@@ -707,7 +716,8 @@ $(document).ready(function() {
             const data = await fetchWithRetry(`https://api.themoviedb.org/3/${type}/${id}?api_key=${config.apiKey}`);
             mediaCache.set(id, type, data);
             updateUI(data);
-        } catch {
+        } catch (error) {
+            console.error(`Failed to fetch media details for ${title} (ID: ${id}, Type: ${type})`, error);
             if (!cachedData) {
                 selectors.mediaDetailsTitle.text('Error loading details');
                 selectors.mediaYearGenre.text('');
@@ -748,6 +758,7 @@ $(document).ready(function() {
             selectors.librarySection.show();
             selectors.searchSection.hide();
             stopPreviewSlideshow();
+            // Load library immediately
             loadLibrary();
             window.history.replaceState({ section: 'library' }, '', '/library');
         }
@@ -789,11 +800,11 @@ $(document).ready(function() {
             }
             localStorage.setItem('previewIndex', state.previewIndex);
             selectors.previewItemsContainer.css('transition', 'transform 0.5s ease');
-            selectors.previewItemsContainer.css('transform', `translateX(${-state.previewIndex * 100}%)`);
+            selectors.previewItemsContainer.css('transform(${-state.previewIndex * 100}%)');
             setTimeout(() => {
                 selectors.previewItemsContainer.css('transition', '');
                 startPreviewSlideshow();
-            }, 500);
+            });
         });
     };
 
@@ -847,11 +858,6 @@ $(document).ready(function() {
         navigateToSection($(this).data('section')); 
     });
 
-    selectors.mainTitle.wrap('<a href="/home" style="text-decoration: none;"></a>').on('click', function(e) {
-        e.preventDefault();
-        navigateToSection('home');
-    });
-
     let searchTimeout = null;
     const performSearch = async () => {
         const query = selectors.searchInput.val().trim();
@@ -874,7 +880,8 @@ $(document).ready(function() {
             } else {
                 results.forEach(item => renderItem(item, selectors.searchResults));
             }
-        } catch {
+        } catch (error) {
+            console.error('Search failed', error);
             selectors.searchResults.html('<p class="text-center" style="color: #ccc;">Failed to load search results.</p>');
         }
     };
@@ -912,7 +919,8 @@ $(document).ready(function() {
                     if (src) {
                         const path = src.split('/').pop();
                         const type = $(this).hasClass('preview-background') ? 'backdrop' : 'poster';
-                        $(this).attr('src', getImageUrl(path, type));
+                        const isLibrary = $(this).closest('.library-section').length > 0;
+                        $(this).attr('src', getImageUrl(path, type, isLibrary));
                     }
                 });
             }
@@ -941,7 +949,9 @@ $(document).ready(function() {
                     year = data.release_date?.split('-')[0] || 'N/A';
                     poster = getImageUrl(data.poster_path) || '';
                     rating = data.vote_average?.toFixed(1) || 'N/A';
-                } catch { }
+                } catch (error) {
+                    console.error('Failed to fetch movie details for initial load', error);
+                }
             }
             navigateToMedia(id, 'movie', title, poster, year, null, null, 'home', rating);
         } else if (tvMatch) {
@@ -960,7 +970,9 @@ $(document).ready(function() {
                     year = data.first_air_date?.split('-')[0] || 'N/A';
                     poster = getImageUrl(data.poster_path) || '';
                     rating = data.vote_average?.toFixed(1) || 'N/A';
-                } catch { }
+                } catch (error) {
+                    console.error('Failed to fetch TV details for initial load', error);
+                }
             }
             navigateToMedia(id, 'tv', title, poster, year, season, episode, 'home', rating);
         } else {
