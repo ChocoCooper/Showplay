@@ -38,7 +38,7 @@ body {
 
 .sidebar {
     width: 200px;
-    background: var(--secondary-color); /* Fixed: Match dark theme */
+    background: #fff;
     padding: 20px 0;
     position: fixed;
     top: 0;
@@ -126,11 +126,6 @@ body {
     height: 100%;
     object-fit: cover;
     z-index: 1;
-}
-
-.preview-background:not(.loaded) {
-    background: url('https://via.placeholder.com/1280x720?text=Loading...') no-repeat center;
-    background-size: cover;
 }
 
 .preview-background-overlay {
@@ -404,11 +399,6 @@ iframe {
     transition: background 0.3s ease;
 }
 
-.season-episode-accordion summary:hover {
-    background-color: var(--selector-active); /* Added: Hover effect for season buttons */
-    color: #000;
-}
-
 .season-episode-accordion summary::marker,
 .season-episode-accordion summary::-webkit-details-marker {
     color: var(--primary-color);
@@ -491,11 +481,6 @@ iframe {
     object-fit: cover;
     border-radius: 8px;
     display: block;
-}
-
-.media-details-poster img:not(.loaded) {
-    background: url('https://via.placeholder.com/200x300?text=Poster') no-repeat center;
-    background-size: cover;
 }
 
 .media-details-content {
@@ -647,11 +632,6 @@ iframe {
 
 .poster-img.loaded {
     display: block;
-}
-
-.poster-img:not(.loaded) {
-    background: url('https://via.placeholder.com/140x210?text=Poster') no-repeat center;
-    background-size: cover;
 }
 
 .rating-badge, .delete-badge, .episode-info {
@@ -876,11 +856,6 @@ iframe {
     .season-episode-accordion summary {
         padding: 8px;
         font-size: 0.85rem;
-    }
-
-    .season-episode-accordion summary:hover {
-        background-color: var(--selector-active); /* Added: Hover effect for mobile */
-        color: #000;
     }
 
     .season-episode-accordion .episode-list {
