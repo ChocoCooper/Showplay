@@ -15,6 +15,8 @@
     --selector-bg: #333333;
     --selector-active: #2af598;
     --selector-text: #ffffff;
+    --skeleton-bg: #333;
+    --skeleton-highlight: #444;
 }
 
 * {
@@ -126,6 +128,12 @@ body {
     height: 100%;
     object-fit: cover;
     z-index: 1;
+}
+
+.preview-background.skeleton {
+    background: linear-gradient(90deg, var(--skeleton-bg) 25%, var(--skeleton-highlight) 50%, var(--skeleton-bg) 75%);
+    background-size: 200% 100%;
+    animation: skeleton-loading 1.5s infinite;
 }
 
 .preview-background-overlay {
@@ -634,6 +642,12 @@ iframe {
     display: block;
 }
 
+.poster-item.skeleton {
+    background: linear-gradient(90deg, var(--skeleton-bg) 25%, var(--skeleton-highlight) 50%, var(--skeleton-bg) 75%);
+    background-size: 200% 100%;
+    animation: skeleton-loading 1.5s infinite;
+}
+
 .rating-badge, .delete-badge, .episode-info {
     position: absolute;
     background: rgba(0, 0, 0, 0.7);
@@ -678,6 +692,15 @@ iframe {
 
 .delete-badge i {
     font-size: 14px;
+}
+
+@keyframes skeleton-loading {
+    0% {
+        background-position: 200% 0;
+    }
+    100% {
+        background-position: -200% 0;
+    }
 }
 
 @media (max-width: 767px) {
