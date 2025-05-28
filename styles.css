@@ -489,6 +489,18 @@ iframe {
     object-fit: cover;
     border-radius: 8px;
     display: block;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.media-details-poster img.loaded {
+    opacity: 1;
+}
+
+.media-details-poster.skeleton {
+    background: linear-gradient(90deg, var(--skeleton-bg) 25%, var(--skeleton-highlight) 50%, var(--skeleton-bg) 75%);
+    background-size: 200% 100%;
+    animation: skeleton-loading 1.5s infinite;
 }
 
 .media-details-content {
