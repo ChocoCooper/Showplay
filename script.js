@@ -99,15 +99,10 @@ $(document).ready(function() {
     };
 
     // Utility: Get Image URL
-    const getImageUrl = (path, type = 'poster', isLibrary = false) => {
+    const getImageUrl = (path, type = 'poster') => {
         if (!path) return null;
         const isMobile = window.matchMedia("(max-width: 767px)").matches;
-        let size;
-        if (isLibrary) {
-            size = isMobile ? 'w92' : 'w154';
-        } else {
-            size = type === 'backdrop' ? (isMobile ? 'w1280' : 'original') : (isMobile ? 'w185' : 'w500');
-        }
+        const size = type === 'backdrop' ? (isMobile ? 'w1280' : 'original') : (isMobile ? 'w185' : 'w500');
         return `https://image.tmdb.org/t/p/${size}${path.startsWith('/') ? path : '/' + path}`;
     };
 
@@ -282,7 +277,7 @@ $(document).ready(function() {
         const title = item.title || item.name || 'Unknown';
         const posterPath = item.poster_path || item.poster || '';
         const rating = (item.vote_average || item.rating || 0).toFixed(1) || 'N/A';
-        const imageUrl = getImageUrl(posterPath, 'poster', isLibrary);
+        const imageUrl = getImageUrl(posterPath, 'poster');
         if (!imageUrl) return;
 
         const createElement = (html) => $(html);
@@ -380,8 +375,7 @@ $(document).ready(function() {
                         !(i.id === item.id && i.type === item.type && i.season === item.season && i.episode === item.episode)
                     );
                     localStorage.setItem(listType, JSON.stringify(state[listType]));
-                    // Instantly reload library page
-                    state.renderedSections.library = false; // Force reload
+                    state.renderedSections.library = false;
                     loadLibrary();
                 });
             }
@@ -413,14 +407,13 @@ $(document).ready(function() {
 
     // Load Library
     const loadLibrary = async () => {
-        // Reset renderedSections.library to ensure fresh load
         state.renderedSections.library = false;
 
         selectors.watchlistSlider.empty().show();
         if (!state.watchlist.length) {
             selectors.watchlistSlider.html('<div class="empty-message-container"><p class="empty-message">Your watchlist is empty.</p></div>');
         } else {
-            const watchlistItems = state.watchlist.map(item => ({ ...item, imageUrl: getImageUrl(item.poster, 'poster', true) }));
+            const watchlistItems = state.watchlist.map(item => ({ ...item, imageUrl: getImageUrl(item.poster, 'poster') }));
             const loadPromises = watchlistItems.map(item => 
                 item.imageUrl ? loadImage(item.imageUrl).then(() => item).catch(() => null) : Promise.resolve(null)
             );
@@ -434,7 +427,6 @@ $(document).ready(function() {
         if (!state.history.length) {
             selectors.historySlider.html('<div class="empty-message-container"><p class="empty-message">Your history is empty.</p></div>');
         } else {
-            // Group history by id and type, keeping only the most recent entry
             const historyMap = new Map();
             for (const item of state.history) {
                 const key = `${item.id}_${item.type}`;
@@ -443,7 +435,7 @@ $(document).ready(function() {
                 }
             }
             const uniqueHistory = Array.from(historyMap.values()).sort((a, b) => b.timestamp - a.timestamp);
-            const historyItems = uniqueHistory.map(item => ({ ...item, imageUrl: getImageUrl(item.poster, 'poster', true) }));
+            const historyItems = uniqueHistory.map(item => ({ ...item, imageUrl: getImageUrl(item.poster, 'poster') }));
             const loadPromises = historyItems.map(item => 
                 item.imageUrl ? loadImage(item.imageUrl).then(() => item).catch(() => null) : Promise.resolve(null)
             );
@@ -460,11 +452,13 @@ $(document).ready(function() {
     const loadSeasonEpisodeAccordion = async () => {
         if (state.mediaType !== 'tv') {
             selectors.seasonEpisodeSelector.hide();
+            selectors.downloadBtn.attr('href', '#');
             return;
         }
 
         selectors.seasonEpisodeSelector.show();
         selectors.seasonEpisodeAccordion.empty();
+        selectors.downloadBtn.attr('href', '#');
 
         try {
             const data = await fetchWithRetry(`https://api.themoviedb.org/3/tv/${state.mediaId}?api_key=${config.apiKey}`);
@@ -504,6 +498,7 @@ $(document).ready(function() {
                         state.season = season.season_number;
                         state.episode = ep.episode_number;
                         embedVideo();
+                        selectors.downloadBtn.attr('href', `https://dl.vidsrc.vip/tv/${state.mediaId}/${state.season}/${state.episode}`);
                         addToHistory({ 
                             id: state.mediaId, 
                             type: state.mediaType, 
@@ -665,7 +660,7 @@ $(document).ready(function() {
         selectors.videoPage.data({ id, type, title, poster, year });
 
         selectors.watchlistBtn.html(`Add to Watchlist <i class="${state.watchlist.some(w => w.id === id) ? 'fa-solid fa-check' : 'fas fa-plus'}"></i>`);
-        selectors.downloadBtn.attr('href', type === 'movie' ? `https://dl.vidsrc.vip/movie/${id}` : (state.season && state.episode ? `https://dl.vidsrc.vip/tv/${id}/${state.season}/${state.episode}` : '#'));
+        selectors.downloadBtn.attr('href', type === 'movie' ? `https://dl.vidsrc.vip/movie/${id}` : '#');
 
         selectors.videoPage.show();
         selectors.homepage.hide();
@@ -733,6 +728,7 @@ $(document).ready(function() {
             if (season && episode) {
                 $(`.episode-btn[data-season="${season}"][data-episode="${episode}"]`).addClass('active');
                 embedVideo();
+                selectors.downloadBtn.attr('href', `https://dl.vidsrc.vip/tv/${id}/${season}/${episode}`);
             }
         }
     };
@@ -758,7 +754,6 @@ $(document).ready(function() {
             selectors.librarySection.show();
             selectors.searchSection.hide();
             stopPreviewSlideshow();
-            // Load library immediately
             loadLibrary();
             window.history.replaceState({ section: 'library' }, '', '/library');
         }
@@ -800,11 +795,11 @@ $(document).ready(function() {
             }
             localStorage.setItem('previewIndex', state.previewIndex);
             selectors.previewItemsContainer.css('transition', 'transform 0.5s ease');
-            selectors.previewItemsContainer.css('transform(${-state.previewIndex * 100}%)');
+            selectors.previewItemsContainer.css('transform', `translateX(${-state.previewIndex * 100}%)`);
             setTimeout(() => {
                 selectors.previewItemsContainer.css('transition', '');
                 startPreviewSlideshow();
-            });
+            }, 500);
         });
     };
 
@@ -919,8 +914,7 @@ $(document).ready(function() {
                     if (src) {
                         const path = src.split('/').pop();
                         const type = $(this).hasClass('preview-background') ? 'backdrop' : 'poster';
-                        const isLibrary = $(this).closest('.library-section').length > 0;
-                        $(this).attr('src', getImageUrl(path, type, isLibrary));
+                        $(this).attr('src', getImageUrl(path, type));
                     }
                 });
             }
