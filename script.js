@@ -124,12 +124,29 @@ $(document).ready(() => {
         }
     };
 
-    const loadImage = (src) => {
+    const loadImage = (src, retries = 3, delay = 500) => {
         return new Promise((resolve, reject) => {
+            let attempt = 0;
             const img = new Image();
             img.src = src;
-            img.onload = () => resolve(img);
-            img.onerror = () => reject(new Error(`Failed to load image: ${src}`));
+            if (img.complete) {
+                resolve(img);
+                return;
+            }
+            const tryLoad = () => {
+                img.onload = () => resolve(img);
+                img.onerror = () => {
+                    if (attempt < retries - 1) {
+                        attempt++;
+                        setTimeout(tryLoad, delay * Math.pow(2, attempt));
+                    } else {
+                        img.src = config.fallbackImage;
+                        resolve(img);
+                    }
+                };
+                img.src = src;
+            };
+            tryLoad();
         });
     };
 
@@ -144,7 +161,8 @@ $(document).ready(() => {
             season: mediaType === 'tv' ? (state.currentPlayingSeason || item.season || null) : null,
             episode: mediaType === 'tv' ? (state.currentPlayingEpisode || item.episode || null) : null
         };
-        state.history = state.history.filter(h => h.id !== item.id || h.season !== historyItem.season || h.episode !== historyItem.episode);
+        const key = `${item.id}_${mediaType}_${historyItem.season || ''}_${historyItem.episode || ''}`;
+        state.history = state.history.filter(h => `${h.id}_${h.type}_${h.season || ''}_${h.episode || ''}` !== key);
         state.history.unshift(historyItem);
         state.history = state.history.slice(0, 20);
         localStorage.setItem('history', JSON.stringify(state.history));
@@ -587,6 +605,15 @@ $(document).ready(() => {
         }
     };
 
+    // Pause slideshow when window is not in focus
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            stopPreviewSlideshow();
+        } else if (state.currentSection === 'home' && !selectors.videoPage.is(':visible')) {
+            startPreviewSlideshow();
+        }
+    });
+
     const loadInitialContent = async () => {
         try {
             const [previewMovies, movieItems, tvItems, animeItems, kdramaItems] = await Promise.all([
@@ -697,21 +724,21 @@ $(document).ready(() => {
         state.previousSection = section || state.previousSection || 'home';
 
         const path = type === 'movie' ? `/movie/${id}` : `/tv/${id}${season && episode ? `?season=${season}&episode=${episode}` : ''}`;
-        window.history.pushState({ id, type, title, poster, year, season, episode, section: state.previousSection }, '', `${config.baseUrl}${path}`);
+        window.history.pushState({ id, type, title, poster, year, season, section: state.previousSection }, '', `${config.baseUrl}${path}`);
 
         selectors.videoPage.data({ id, type, title, poster, year });
 
         const isInWatchlist = state.watchlist.some(w => w.id === id);
         selectors.watchlistBtn.html(`Add to Watchlist <i class="${isInWatchlist ? 'fa-solid fa-check' : 'fas fa-plus'}"></i>`);
 
-        let downloadUrl = type === 'movie'
-            ? `https://dl.vidsrc.vip/movie/${id}`
-            : `https://dl.vidsrc.vip/tv/${id}${season && episode ? `/${season}/${episode}` : '/1/1'}`;
+        const downloadUrl = type === 'movie'
+            ? `https://dl.vidsrc.vip/show/${id}`
+            : `https://dl.vidsrc.vip/tv/${id}/${season || 1}/${episode || 1}`;
         selectors.downloadBtn.attr('href', downloadUrl);
 
-        handleMediaClick(title, poster, year);
+        handleMediaDetails(title, poster, year);
         state.currentSection = 'video';
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        window.scrollTo({ top: 0, selector: 'smooth' });
     };
 
     const navigateBack = () => {
@@ -724,9 +751,9 @@ $(document).ready(() => {
         }
     };
 
-    const handleMediaClick = async (title, poster, year) => {
+    const handleMediaDetails = async (title, year) => {
         selectors.videoFrame.attr('src', '');
-        selectors.videoPage.data({ id: state.mediaId, type: state.mediaType, title, poster, year });
+        selectors.videoPage.data({ id: state.mediaId, type: state.mediaType, title, year });
 
         selectors.videoPage.addClass('active').show();
         selectors.homepage.hide();
@@ -742,7 +769,7 @@ $(document).ready(() => {
             if (state.mediaType === 'movie') {
                 embedVideo();
             } else {
-                await loadSeasons();
+                await loadEpisodes();
                 if (state.currentPlayingSeason && state.currentPlayingEpisode) {
                     embedVideo();
                     await loadEpisodes(state.currentPlayingSeason);
@@ -754,10 +781,12 @@ $(document).ready(() => {
     };
 
     const fetchMediaDetails = async () => {
+        const isMobile = window.matchMedia("(max-width: 767px)").matches;
+        const posterSize = isMobile ? 'w185' : 'w500';
         const url = `https://api.themoviedb.org/3/${state.mediaType}/${state.mediaId}?api_key=${config.apiKey}`;
         try {
             const data = await fetchWithRetry(url);
-            const posterUrl = data.poster_path ? `https://image.tmdb.org/t/p/w500${data.poster_path}` : config.fallbackImage;
+            const posterUrl = data.poster_path ? `https://image.tmdb.org/t/p/${posterSize}${data.poster_path}` : config.fallbackImage;
             const rating = data.vote_average ? data.vote_average.toFixed(1) : 'N/A';
             const year = (data.release_date || data.first_air_date || '').split('-')[0] || 'N/A';
             const genres = data.genres ? data.genres.map(g => g.name).join(', ') : 'N/A';
@@ -773,7 +802,7 @@ $(document).ready(() => {
         }
     };
 
-    const loadSeasons = async () => {
+    const loadEpisodes = async () => {
         selectors.seasonGrid.empty();
         const cacheKey = `${state.mediaId}_seasons`;
         if (state.seasonCache[cacheKey]) {
@@ -800,13 +829,14 @@ $(document).ready(() => {
                 btn.addClass('active');
             }
             btn.on('click', async () => {
-                $('.season-btn').removeClass('active');
+                $('.btn').removeClass('active');
                 btn.addClass('active');
                 state.currentPlayingSeason = s.season_number;
                 state.currentPlayingEpisode = state.selectedEpisodes[state.currentPlayingSeason] || 1;
                 await loadEpisodes(s.season_number);
                 embedVideo();
                 updateHistoryWithEpisode();
+                updateDownloadLink();
             });
             selectors.seasonGrid.append(btn);
         });
@@ -845,6 +875,7 @@ $(document).ready(() => {
                 state.selectedEpisodes[seasonNumber] = e.episode_number;
                 embedVideo();
                 updateHistoryWithEpisode();
+                updateDownloadLink();
             });
             selectors.episodeGrid.append(btn);
         });
@@ -863,11 +894,18 @@ $(document).ready(() => {
         addToHistory(item, state.mediaType, state.previousSection);
     };
 
+    const updateDownloadLink = () => {
+        if (state.mediaType === 'tv') {
+            const downloadUrl = `https://dl.vidsrc.vip/tv/${state.mediaId}/${state.currentPlayingSeason || 1}/${state.currentPlayingEpisode || 1}`;
+            selectors.downloadBtn.attr('href', downloadUrl);
+        }
+    };
+
     const embedVideo = () => {
         let videoUrl;
         const serverUrl = getServerUrl();
         if (state.mediaType === 'movie') {
-            videoUrl = `${serverUrl}/embed/movie/${state.mediaId}`;
+            videoUrl = `${serverUrl}/embed/show/${state.mediaId}`;
         } else {
             videoUrl = `${serverUrl}/embed/tv/${state.mediaId}/${state.currentPlayingSeason}/${state.currentPlayingEpisode}`;
         }
@@ -932,6 +970,7 @@ $(document).ready(() => {
     });
 
     selectors.searchFilter.on('change', () => {
+        selectors.searchResults.empty();
         selectors.searchTrending.empty();
         const filter = selectors.searchFilter.val();
         if (filter === 'movie') {
