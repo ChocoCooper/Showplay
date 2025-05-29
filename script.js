@@ -579,25 +579,52 @@ $(document).ready(function() {
         if (!state.renderedSections.preview) {
             observeElement(selectors.previewItemsContainer, () => {
                 loadSection(selectors.previewItemsContainer, 'trending', true);
-                state.previewIndex = Math.min(state.previewIndex, Math.max(0, selectors.previewItemsContainer.children().length - 1));
+                state.previewIndex = Math.min(state.previewIndex, selectors.previewItemsContainer.children().length - 1);
+                state.previewIndex = Math.max(state.previewIndex, 0);
                 selectors.previewItemsContainer.css('transform', `translateX(${-state.previewIndex * 100}%)`);
                 startPreviewSlideshow();
             });
         } else {
             selectors.previewItemsContainer.show();
-            state.previewIndex = Math.min(state.previewIndex, Math.max(0, selectors.previewItemsContainer.children().length - 1));
-            selectors.previewItemsContainer.css('transition', 'none');
+            state.previewIndex = Math.min(state.previewIndex, selectors.previewItemsContainer.children().length - 1);
+            state.previewIndex = Math.max(state.previewIndex, 0);
             selectors.previewItemsContainer.css('transform', `translateX(${-state.previewIndex * 100}%)`);
-            setTimeout(() => {
-                selectors.previewItemsContainer.css('transition', 'transform 0.5s ease');
-                startPreviewSlideshow();
-            }, 0);
+            startPreviewSlideshow();
         }
 
         observeElement(selectors.moviesSlider, () => loadSection(selectors.moviesSlider, 'movie'));
         observeElement(selectors.tvSlider, () => loadSection(selectors.tvSlider, 'tv'));
         observeElement(selectors.animeSlider, () => loadSection(selectors.animeSlider, 'anime'));
         observeElement(selectors.kdramaSlider, () => loadSection(selectors.kdramaSlider, 'kdrama'));
+    };
+
+    // Load Search Section
+    const loadSearchSection = () => {
+        selectors.homepage.show();
+        selectors.videoPage.hide();
+        selectors.previewSection.hide();
+        selectors.moviesSlider.parent().hide();
+        selectors.tvSlider.parent().hide();
+        selectors.animeSlider.parent().hide();
+        selectors.kdramaSlider.parent().hide();
+        selectors.librarySection.hide();
+        selectors.searchSection.show();
+        selectors.searchInput.focus();
+        stopPreviewSlideshow();
+
+        if (!state.renderedSections.search) {
+            selectors.searchResults.empty();
+            selectors.searchTrending.empty();
+            observeElement(selectors.searchTrending, () => {
+                const filter = selectors.searchFilter.val();
+                const trending = filter === 'movie' ? fetchMedia('movie') : fetchMedia('tv');
+                trending.then(items => items.forEach(item => renderItem(item, selectors.searchTrending)));
+            });
+            state.renderedSections.search = true;
+        } else {
+            selectors.searchResults.show();
+            selectors.searchTrending.show();
+        }
     };
 
     // Navigate to Media
@@ -737,81 +764,59 @@ $(document).ready(function() {
         let startX = 0;
         let isSwiping = false;
         selectors.previewSection.on('touchstart', e => {
-            const totalItems = selectors.previewItemsContainer.children().length;
-            if (totalItems <= 0) return;
             startX = e.originalEvent.touches[0].clientX;
             isSwiping = true;
             stopPreviewSlideshow();
-            selectors.previewItemsContainer.css('transition', 'none');
         });
         selectors.previewSection.on('touchmove', e => {
             if (!isSwiping) return;
+            const currentX = e.originalEvent.touches[0].clientX;
+            const diff = startX - currentX;
             const totalItems = selectors.previewItemsContainer.children().length;
             if (totalItems <= 0) {
                 isSwiping = false;
                 return;
             }
-            const currentX = e.originalEvent.touches[0].clientX;
-            const diff = startX - currentX;
             const translateX = -state.previewIndex * 100 + (diff / selectors.previewSection.width()) * 100;
             selectors.previewItemsContainer.css('transform', `translateX(${translateX}%)`);
         });
         selectors.previewSection.on('touchend', e => {
             if (!isSwiping) return;
             isSwiping = false;
-            const totalItems = selectors.previewItemsContainer.children().length;
-            if (totalItems <= 0) return;
-
             const endX = e.originalEvent.changedTouches[0].clientX;
             const diff = startX - endX;
-            const threshold = selectors.previewSection.width() * 0.2; // 20% of section width
-
-            if (Math.abs(diff) > threshold) {
+            const totalItems = selectors.previewItemsContainer.children().length;
+            if (Math.abs(diff) > 50 && totalItems > 0) {
                 if (diff > 0) {
                     state.previewIndex = Math.min(state.previewIndex + 1, totalItems - 1);
                 } else {
                     state.previewIndex = Math.max(state.previewIndex - 1, 0);
                 }
             }
-
             localStorage.setItem('previewIndex', state.previewIndex);
             selectors.previewItemsContainer.css('transition', 'transform 0.5s ease');
             selectors.previewItemsContainer.css('transform', `translateX(${-state.previewIndex * 100}%)`);
-
             setTimeout(() => {
-                if (selectors.previewSection.is(':visible') && !selectors.videoPage.is(':visible')) {
-                    startPreviewSlideshow();
-                }
+                selectors.previewItemsContainer.css('transition', '');
+                startPreviewSlideshow();
             }, 500);
         });
     };
 
     // Start Preview Slideshow
     const startPreviewSlideshow = () => {
-        const totalItems = selectors.previewItemsContainer.children().length;
-        if (state.previewInterval || selectors.videoPage.is(':visible') || !selectors.previewSection.is(':visible') || totalItems <= 0) return;
-
-        state.previewIndex = Math.min(state.previewIndex, Math.max(0, totalItems - 1));
-        selectors.previewItemsContainer.css('transition', 'none');
+        if (state.previewInterval || selectors.videoPage.is(':visible') || !selectors.previewSection.is(':visible') || selectors.previewItemsContainer.children().length === 0) return;
+        state.previewIndex = Math.min(state.previewIndex, selectors.previewItemsContainer.children().length - 1);
+        state.previewIndex = Math.max(state.previewIndex, 0);
         selectors.previewItemsContainer.css('transform', `translateX(${-state.previewIndex * 100}%)`);
-        setTimeout(() => {
-            selectors.previewItemsContainer.css('transition', 'transform 0.5s ease');
-        }, 0);
-
-        clearInterval(state.previewInterval);
         state.previewInterval = setInterval(() => {
-            if (!selectors.previewSection.is(':visible') || selectors.videoPage.is(':visible')) {
+            if (!selectors.previewSection.is(':visible')) {
                 stopPreviewSlideshow();
                 return;
             }
-            const currentTotalItems = selectors.previewItemsContainer.children().length;
-            if (currentTotalItems <= 0) {
-                stopPreviewSlideshow();
-                return;
-            }
-            state.previewIndex = (state.previewIndex + 1) % currentTotalItems;
+            state.previewIndex = (state.previewIndex + 1) % selectors.previewItemsContainer.children().length;
             localStorage.setItem('previewIndex', state.previewIndex);
-            selectors.previewItemsContainer.css('transform', ` Infants
+            selectors.previewItemsContainer.css('transform', `translateX(${-state.previewIndex * 100}%)`);
         }, 6000);
     };
 
@@ -914,7 +919,6 @@ $(document).ready(function() {
                 });
             }
             if (selectors.previewItemsContainer.children().length) {
-                state.previewIndex = Math.min(state.previewIndex, Math.max(0, selectors.previewItemsContainer.children().length - 1));
                 selectors.previewItemsContainer.css('transform', `translateX(${-state.previewIndex * 100}%)`);
             }
         }, 200);
