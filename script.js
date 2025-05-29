@@ -33,8 +33,7 @@ $(document).ready(function() {
         searchFilter: $('#searchFilter'),
         searchResults: $('#searchResults'),
         searchTrending: $('#searchTrending'),
-        sidebarNavItems: $('.sidebar-nav li'),
-        navbarBrand: $('.navbar-brand, .logo') // Target Showplay title
+        sidebarNavItems: $('.sidebar-nav li')
     };
 
     // Application State
@@ -307,7 +306,7 @@ $(document).ready(function() {
                         </div>
                         <p class="preview-description">${item.overview || 'No description available.'}</p>
                         <div class="preview-buttons">
-                            <button class="preview-btn play-btn" href="/${item.media_type}/${item.id}"><i class="fa-solid fa-play"></i> Watch</button>
+                            <button class="preview-btn play-btn"><i class="fa-solid fa-play"></i> Watch</button>
                             <button class="preview-btn secondary add-btn"><i class="${isInWatchlist ? 'fa-solid fa-check' : 'fas fa-plus'}"></i></button>
                         </div>
                     </div>
@@ -328,16 +327,7 @@ $(document).ready(function() {
                 const year = (item.release_date || item.first_air_date || '').split('-')[0];
                 navigateToMedia(item.id, item.media_type, title, imageUrl, year, null, null, 'home', item.vote_average);
                 if (item.media_type === 'movie') {
-                    addToHistory({ 
-                        id: item.id, 
-                        type: 'movie', 
-                        title, 
-                        poster: posterPath, 
-                        year, 
-                        season: null, 
-                        episode: null, 
-                        rating: item.vote_average 
-                    });
+                    addToHistory({ id: item.id, type: 'movie', title, poster: posterPath, year, season: null, episode: null, rating: item.vote_average });
                 }
             });
 
@@ -359,18 +349,7 @@ $(document).ready(function() {
 
             try {
                 await loadImage(imageUrl);
-                const mediaType = item.media_type || item.type || (container.closest('#animeSliderContainer, #kdramaSliderContainer').length ? 'tv' : 'movie');
-                const href = isLibrary && item.season && item.episode 
-                    ? `/${mediaType}/${item.id}/${item.season}/${item.episode}` 
-                    : `/${mediaType}/${item.id}`;
-                const img = $('<a></a>')
-                    .attr('href', href)
-                    .append($('<img class="poster-img loaded" />')
-                        .attr('src', imageUrl)
-                        .attr('alt', title)
-                        .attr('role', 'button')
-                        .attr('aria-label', `Play ${title}`)
-                    );
+                const img = $('<img class="poster-img loaded" />').attr('src', imageUrl).attr('alt', title).attr('role', 'button').attr('aria-label', `Play ${title}`);
                 poster.append(img);
                 poster.removeClass('skeleton');
             } catch (error) {
@@ -378,24 +357,14 @@ $(document).ready(function() {
                 return;
             }
 
-            attachClickHandler(poster.find('.poster-img'), e => {
-                e.preventDefault();
+            attachClickHandler(poster.find('.poster-img'), () => {
                 const year = (item.year || item.release_date || item.first_air_date || '').split('-')[0] || 'N/A';
                 const section = container.closest('.search-section').length ? 'search' : 
                                container.closest('.library-section').length ? 'library' : 'home';
                 const mediaType = item.media_type || item.type || (container.closest('#animeSliderContainer, #kdramaSliderContainer').length ? 'tv' : 'movie');
                 navigateToMedia(item.id, mediaType, title, imageUrl, year, item.season, item.episode, section, item.rating);
                 if (!isLibrary && mediaType === 'movie') {
-                    addToHistory({ 
-                        id: item.id, 
-                        type: mediaType, 
-                        title, 
-                        poster: posterPath, 
-                        year, 
-                        season: item.season || null, 
-                        episode: item.episode || null, 
-                        rating: item.vote_average 
-                    });
+                    addToHistory({ id: item.id, type: mediaType, title, poster: posterPath, year, season: item.season || null, episode: item.episode || null, rating: item.vote_average });
                 }
             });
 
@@ -460,7 +429,7 @@ $(document).ready(function() {
         } else {
             const historyMap = new Map();
             for (const item of state.history) {
-                const key = item.id + '_' + item.type;
+                const key = `${item.id}_${item.type}`;
                 if (!historyMap.has(key) || historyMap.get(key).timestamp < item.timestamp) {
                     historyMap.set(key, item);
                 }
@@ -556,12 +525,12 @@ $(document).ready(function() {
             });
         } catch (error) {
             console.error('Failed to load seasons/episodes', error);
-            selectors.seasonEpisodeAccordion.html('<p class="empty-message">Failed to load episodes.</p>');
+            selectors.seasonEpisodeAccordion.html('<p class="empty-message">Failed to load seasons/episodes.</p>');
         }
     };
 
     // Reset Video Player State
-    const resetVideoPage = () => {
+    const resetVideoPlayerState = () => {
         state.mediaId = null;
         state.mediaType = 'movie';
         state.season = null;
@@ -569,7 +538,7 @@ $(document).ready(function() {
         selectors.videoFrame.attr('src', '');
         selectors.videoMediaTitle.text('');
         selectors.mediaPoster.attr('src', '').attr('alt', '').removeClass('loaded');
-        selectors.mediaDetailsPoster.addClass(');
+        selectors.mediaDetailsPoster.addClass('skeleton');
         selectors.mediaRatingBadge.find('.rating-value').text('');
         selectors.mediaDetailsTitle.text('');
         selectors.mediaYearGenre.text('');
@@ -631,39 +600,10 @@ $(document).ready(function() {
         observeElement(selectors.kdramaSlider, () => loadSection(selectors.kdramaSlider, 'kdrama'));
     };
 
-    // Load Search Section
-    const loadSearchSection = () => {
-        selectors.homepage.show();
-        selectors.videoPage.hide();
-        selectors.previewSection.hide();
-        selectors.moviesSlider.parent().hide();
-        selectors.tvSlider.parent().hide();
-        selectors.animeSlider.parent().hide();
-        selectors.kdramaSlider.parent().hide();
-        selectors.librarySection.hide();
-        selectors.searchSection.show();
-        selectors.searchInput.focus();
-        stopPreviewSlideshow();
-
-        if (!state.renderedSections.search) {
-            selectors.searchResults.empty();
-            selectors.searchTrending.show();
-            observeElement(selectors.searchTrending, () => {
-                const filter = selectors.searchFilter.val();
-                const trending = fetchMedia(filter === 'movie' ? 'movie' : 'tv');
-                trending.then(items => items.forEach(item => renderItem(item, selectors.searchTrending)));
-            });
-            state.renderedSections.search = true;
-        } else {
-            selectors.searchResults.show();
-            selectors.searchTrending.show();
-        }
-    };
-
     // Navigate to Media
     const navigateToMedia = async (id, type, title, poster, year, season = null, episode = null, section = null, rating = 'N/A') => {
         stopPreviewSlideshow();
-        resetVideoPlayer();
+        resetVideoPlayerState();
 
         if (!id || !type || !['movie', 'tv'].includes(type)) {
             console.error(`Invalid media parameters: ID=${id}, Type=${type}`);
@@ -697,7 +637,7 @@ $(document).ready(function() {
 
         selectors.videoPage.show();
         selectors.homepage.hide();
-        selectors.videoMediaTitle.show().text(`${title}\n(${year} || 'N/A')}`);
+        selectors.videoMediaTitle.show().text(`${title}\n(${year || 'N/A'})`);
         selectors.selectorContainer.show();
         selectors.mediaDetails.show();
 
@@ -736,12 +676,12 @@ $(document).ready(function() {
             });
             selectors.mediaRatingBadge.find('.rating-value').text(rating || 'N/A');
             selectors.mediaDetailsTitle.text(title);
-            selectors.mediaYearGenre.text(`${type.toUpperCase()} • ${year || 'N/A'} • N/A');
+            selectors.mediaYearGenre.text(`${type.toUpperCase()} • ${year || 'N/A'} • N/A`);
             selectors.mediaPlot.text('No description available.');
         }
 
         try {
-            const data = await fetchWithRetry(`https://api.themoviedb.org/3${type}/${id}?api_key=${config.apiKey}`);
+            const data = await fetchWithRetry(`https://api.themoviedb.org/3/${type}/${id}?api_key=${config.apiKey}`);
             mediaCache.set(id, type, data);
             updateUI(data);
         } catch (error) {
@@ -782,7 +722,7 @@ $(document).ready(function() {
             selectors.previewSection.hide();
             selectors.moviesSlider.parent().hide();
             selectors.tvSlider.parent().hide();
-            selectors.animeSlider.hide();
+            selectors.animeSlider.parent().hide();
             selectors.kdramaSlider.parent().hide();
             selectors.librarySection.show();
             selectors.searchSection.hide();
@@ -794,10 +734,10 @@ $(document).ready(function() {
 
     // Setup Preview Touch
     const setupPreviewTouch = () => {
-        let startX = null;
+        let startX = 0;
         let isSwiping = false;
         selectors.previewSection.on('touchstart', e => {
-            const totalItems = selectors.previewItemsContainer().children().length;
+            const totalItems = selectors.previewItemsContainer.children().length;
             if (totalItems <= 0) return;
             startX = e.originalEvent.touches[0].clientX;
             isSwiping = true;
@@ -806,7 +746,7 @@ $(document).ready(function() {
         });
         selectors.previewSection.on('touchmove', e => {
             if (!isSwiping) return;
-            const totalItems = selectors.previewItemsContainer().children().length;
+            const totalItems = selectors.previewItemsContainer.children().length;
             if (totalItems <= 0) {
                 isSwiping = false;
                 return;
@@ -814,9 +754,9 @@ $(document).ready(function() {
             const currentX = e.originalEvent.touches[0].clientX;
             const diff = startX - currentX;
             const translateX = -state.previewIndex * 100 + (diff / selectors.previewSection.width()) * 100;
-            selectors.previewItemsContainer.css('transform', `translateX(${translateX}%)`)%);
+            selectors.previewItemsContainer.css('transform', `translateX(${translateX}%)`);
         });
-        selectors.previewSection.on('touchend', function() {
+        selectors.previewSection.on('touchend', e => {
             if (!isSwiping) return;
             isSwiping = false;
             const totalItems = selectors.previewItemsContainer.children().length;
@@ -836,7 +776,7 @@ $(document).ready(function() {
 
             localStorage.setItem('previewIndex', state.previewIndex);
             selectors.previewItemsContainer.css('transition', 'transform 0.5s ease');
-            selectors.previewItemsContainer.css('transform', `translateX(${-state.previewIndex} * 100%)`);
+            selectors.previewItemsContainer.css('transform', `translateX(${-state.previewIndex * 100}%)`);
 
             setTimeout(() => {
                 if (selectors.previewSection.is(':visible') && !selectors.videoPage.is(':visible')) {
@@ -847,7 +787,7 @@ $(document).ready(function() {
     };
 
     // Start Preview Slideshow
-    function startPreviewSlideshow() {
+    const startPreviewSlideshow = () => {
         const totalItems = selectors.previewItemsContainer.children().length;
         if (state.previewInterval || selectors.videoPage.is(':visible') || !selectors.previewSection.is(':visible') || totalItems <= 0) return;
 
@@ -871,41 +811,41 @@ $(document).ready(function() {
             }
             state.previewIndex = (state.previewIndex + 1) % currentTotalItems;
             localStorage.setItem('previewIndex', state.previewIndex);
-            selectors.previewItemsContainer.css('transform', `translateX(${-state.previewIndex * 100}%)`);
+            selectors.previewItemsContainer.css('transform', ` Infants
         }, 6000);
-    }
+    };
 
     // Stop Preview Slideshow
-    function stopPreviewSlideshow() {
+    const stopPreviewSlideshow = () => {
         if (state.previewInterval) {
             clearInterval(state.previewInterval);
             state.previewInterval = null;
         }
-    }
+    };
 
     // Resume Preview Slideshow
     const resumePreviewSlideshow = () => {
         if (!selectors.videoPage.is(':visible')) {
             startPreviewSlideshow();
         }
-    }
+    };
 
     // Event Handlers
     selectors.watchlistBtn.on('click', () => {
         const { id, type, title, poster, year } = selectors.videoPage.data();
         const rating = selectors.mediaRatingBadge.find('.rating-value').text() || '0';
-        toggleWatchlist({ id, type懮, title, poster, rating: parseFloat(rating), year });
-        selectors.watchlistBtn.html(`Add to Watchlist <i class="${state.watchlist.some(w => w.id === id) ? 'fa-solid fa-check' : 'fas fa-plus'}"></i>`).html;
-        });
+        toggleWatchlist({ id, type, title, poster, rating: parseFloat(rating), year });
+        selectors.watchlistBtn.html(`Add to Watchlist <i class="${state.watchlist.some(w => w.id === id) ? 'fa-solid fa-check' : 'fas fa-plus'}"></i>`);
+    });
 
     selectors.backBtn.on('click', () => {
-        resetVideoPage();
+        resetVideoPlayerState();
         navigateToSection(state.previousSection);
         resumePreviewSlideshow();
     });
 
-    selectors.sidebarNavItems.on('click', function() => {
-        navigateToSection($(this).data('section);
+    selectors.sidebarNavItems.on('click', function() { 
+        navigateToSection($(this).data('section')); 
     });
 
     let searchTimeout = null;
@@ -916,24 +856,23 @@ $(document).ready(function() {
             selectors.searchTrending.show();
             return;
         }
-
         selectors.searchTrending.hide();
         const filter = selectors.searchFilter.val();
         try {
-            const data = await fetchWithRetry(`https://api.themoviedb.org/3/search/multi?api_key=${encodeURIComponent(query)}&page=1`);
+            const data = await fetchWithRetry(`https://api.themoviedb.org/3/search/multi?api_key=${config.apiKey}&query=${encodeURIComponent(query)}&page=1`);
             const results = data.results?.filter(item => 
                 (item.media_type === filter || filter === 'all') &&
                 item.id && (item.title || item.name) && item.poster_path && item.vote_average
             ).slice(0, 20) || [];
             selectors.searchResults.empty();
             if (!results.length) {
-                selectors.searchResults.html('<p class="text-center" style="color: #ccc;">No results found.</p>').text;
+                selectors.searchResults.html('<p class="text-center" style="color: #ccc;">No results found.</p>');
             } else {
                 results.forEach(item => renderItem(item, selectors.searchResults));
             }
         } catch (error) {
             console.error('Search failed', error);
-            selectors.searchResults.html('<p class="text-center" style="color: #ccc;">Search failed. Try again.</p>').text;
+            selectors.searchResults.html('<p class="text-center" style="color: #ccc;">Failed to load search results.</p>');
         }
     };
 
@@ -957,28 +896,28 @@ $(document).ready(function() {
         }
     });
 
+    let resizeTimeout;
     $(window).on('resize', () => {
-        clearTimeout(resizeTimeout => {
-            let timeout = setTimeout(() => {
-                const isMobile = window.matchMedia("(max-width: 767px)").matches;
-                const currentBreakpoint = isMobile ? 'mobile' : 'desktop';
-                if (currentBreakpoint !== state.lastBreakpoint) {
-                    state.lastBreakpoint = currentBreakpoint;
-                    $('.poster-img.loaded, .preview-background.loaded').each(function() {
-                        const src = $(this).attr('src');
-                        if (src) {
-                            const path = src.split('/').pop();
-                            const type = $(this).hasClass('preview-background') ? 'backdrop' : 'poster';
-                            $(this).attr('src', getImageUrl(path, type));
-                        }
-                    });
-                }
-                if (selectors.previewItemsContainer.children().length) {
-                    state.previewIndex = Math.min(state.previewIndex, Math.max(0, selectors.previewItemsContainer.children().length - 1));
-                    selectors.previewItemsContainer.css('transform', `translateX(${-state.previewIndex * 100}%)`);
-                }
-            }, 200);
-        });
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(() => {
+            const isMobile = window.matchMedia("(max-width: 767px)").matches;
+            const currentBreakpoint = isMobile ? 'mobile' : 'desktop';
+            if (currentBreakpoint !== state.lastBreakpoint) {
+                state.lastBreakpoint = currentBreakpoint;
+                $('.poster-img.loaded, .preview-background.loaded').each(function() {
+                    const src = $(this).attr('src');
+                    if (src) {
+                        const path = src.split('/').pop();
+                        const type = $(this).hasClass('preview-background') ? 'backdrop' : 'poster';
+                        $(this).attr('src', getImageUrl(path, type));
+                    }
+                });
+            }
+            if (selectors.previewItemsContainer.children().length) {
+                state.previewIndex = Math.min(state.previewIndex, Math.max(0, selectors.previewItemsContainer.children().length - 1));
+                selectors.previewItemsContainer.css('transform', `translateX(${-state.previewIndex * 100}%)`);
+            }
+        }, 200);
     });
 
     const handleInitialLoad = async () => {
@@ -1001,7 +940,7 @@ $(document).ready(function() {
                     poster = getImageUrl(data.poster_path) || '';
                     rating = data.vote_average?.toFixed(1) || 'N/A';
                 } catch (error) {
-                    console.error('Failed to fetch media details', error);
+                    console.error('Failed to fetch movie details for initial load', error);
                 }
             }
             navigateToMedia(id, 'movie', title, poster, year, null, null, 'home', rating);
@@ -1022,7 +961,7 @@ $(document).ready(function() {
                     poster = getImageUrl(data.poster_path) || '';
                     rating = data.vote_average?.toFixed(1) || 'N/A';
                 } catch (error) {
-                    console.error('Failed to fetch TV details', error);
+                    console.error('Failed to fetch TV details for initial load', error);
                 }
             }
             navigateToMedia(id, 'tv', title, poster, year, season, episode, 'home', rating);
@@ -1032,99 +971,8 @@ $(document).ready(function() {
         }
     };
 
-    // Initialize Navbar Brand
-    const initializeNavbarBrand = () => {
-        selectors.navbarBrand.attr('href', '/home');
-        selectors.navbarBrand.on('click', e => {
-            e.preventDefault();
-            navigateToSection('home');
-        });
-    };
-
     // Initialize
     initializeServers();
-    initializeNavbarBrand();
     setupPreviewTouch();
     handleInitialLoad();
 });
-</script>
-```
-
----
-
-### **Explanation of Changes**
-
-1. **Poster Images `href`**:
-   - In `renderItem` for `renderType === 'slider'`, wrapped the `<img class="poster-img">` in an `<a>` tag with an `href` attribute.
-   - The `href` is set to `../${mediaType}/${item.id}` for movies and TV without episodes, or `../${mediaType}/${item.id}/${item.season}/${item.episode}` for TV history items with season and episode data.
-   - The click handler prevents default behavior (`e.preventDefault()`) to maintain client-side navigation via `navigateToMedia`.
-   - The video player page poster (`#mediaPoster`) is not affected, as it’s handled separately in `navigateToMedia` without an `href`.
-
-2. **Watch Button `href` in Preview**:
-   - In `renderItem` for `renderType === 'preview'`, added `href="/${item.media_type}/${item.id}"` to the `.play-btn` button in the preview section.
-   - The click handler uses `e.preventDefault()` to ensure client-side navigation via `navigateToMedia`, but the `href` is available for direct navigation or SEO purposes.
-
-3. **Showplay Title `href`**:
-   - Added `initializeNavbarBrand` to set `href="/home"` on the `.navbar-brand` or `.logo` element.
-   - Added a click handler to call `navigateToSection('home')` with `e.preventDefault()` for client-side routing.
-   - The selector targets `.navbar-brand, .logo` to cover common classes. If the HTML uses a different class or ID, please share it, and I’ll adjust the selector.
-
-4. **Typo and Syntax Fixes**:
-   - **Fixed `addToHistory` in `renderItem`**:
-     - Completed the incomplete call in the `play-btn` handler, adding all required fields: `{ id: item.id, type: 'movie', title, poster: posterPath, year, season: null, episode: null, rating: item.vote_average }`.
-   - **Fixed `startPreviewSlideshow`**:
-     - Removed the erroneous `Infants` string and completed the `setInterval` block with proper syntax: `selectors.previewItemsContainer.css('transform', `translateX(${-state.previewIndex * 100}%)`)`.
-   - **Other Typos**:
-     - Corrected `state.previewItems` to `selectors.previewItemsContainer` in `setupPreviewTouch`.
-     - Fixed `isPlaying` to `isSwiping` in `setupPreviewTouch`.
-     - Removed redundant `.html` in `selectors.watchlistBtn.html(...).html;`.
-     - Corrected `clearInterval` to `clearInterval` in `stopPreviewSlideshow`.
-     - Fixed `parseFloat` to `parseFloat` in the `watchlistBtn` handler.
-     - Corrected selector syntax in `loadSeasonEpisodeAccordion` (`seasonEpisodeSection` → `seasonEpisodeSelector`).
-     - Fixed string concatenation in `navigateToMedia` (`${title} (ID: ${id}, Type: ${mediaType})` → `type: ${type}`).
-   - **Consistency**:
-     - Standardized variable names (e.g., `mediaType` instead of mixing with `item.type`).
-     - Ensured consistent use of `selectors` for DOM elements (e.g., `selectors.searchResults` instead of `selectors.search`).
-     - Fixed indentation and removed trailing spaces.
-
-5. **Preservation of Previous Requirements**:
-   - **Poster Image Quality**: The `getImageUrl` function remains unchanged, using `w185` for mobile and `w500` for desktop across all pages.
-   - **Download Button**: The logic for `downloadBtn` remains unchanged, setting `href="#"` for TV media until an episode is selected, then updating to `https://dl.vidsrc.vip/tv/${state.mediaId}/${state.season}/${state.episode}`.
-   - **Preview Section**: The `loadHomepage` function checks `state.renderedSections.preview` to avoid reloading the preview content.
-   - **Slideshow Fix**: The `setupPreviewTouch` and `startPreviewSlideshow` functions retain the fix for the swipe issue, ensuring all preview items are shown correctly.
-
----
-
-### **Testing Notes**
-- **Poster `href`**:
-  - Check that all posters on the homepage, search, and library pages have `href` attributes (e.g., `/movie/123`, `/tv/456`, `/tv/456/1/2` for history TV items).
-  - Verify that clicking posters still navigates correctly via `navigateToMedia`.
-  - Confirm that `#mediaPoster` on the video player page has no `href`.
-- **Watch Button `href`**:
-  - Inspect the “Watch” button (`.play-btn`) in the preview section to ensure it has `href="/movie/123"` or `href="/tv/456"`.
-  - Test clicking to confirm client-side navigation works.
-- **Showplay Title `href`**:
-  - Verify that the “Showplay” title (`.navbar-brand`) has `href="/home"` and navigates to the homepage when clicked.
-  - If the HTML element differs, update `selectors.navbarBrand` to match (e.g., `$('.header-title')`).
-- **Typos**:
-  - Test the application to ensure no JavaScript errors occur in the console.
-  - Confirm that the preview slideshow, navigation, and library/history sections function correctly.
-- **Responsive Behavior**:
-  - Test on mobile and desktop to verify poster image quality consistency.
-  - Verify swipe behavior on mobile for the preview section.
-
----
-
-### **Additional Notes**
-- **Artifact ID**: Reused `d073c4bc-5699-41b4-b63c-6e81dd9b7dc3be` as this updates the previous `script.js`.
-- **HTML/CSS**: No changes needed, but the “Showplay” title assumes a `.navbar-brand` or `.logo` element. If the HTML is provided, I can confirm the selector. Example HTML snippet for the title:
-  ```html
-  <nav>
-    <span class="navbar-brand">Showplay</span>
-  </nav>
-  ```
-  If it’s an `<a>`, the JavaScript already handles it.
-- **Security**: The TMDb API key remains exposed. Move to a server-side proxy for production.
-- **Potential Issues**: If the `href` attributes cause unexpected navigation (e.g., full page reloads), ensure all click handlers use `e.preventDefault()`. Let me know if this occurs.
-
-If you have the HTML file or notice issues, please share details, and I’ll refine the solution!
