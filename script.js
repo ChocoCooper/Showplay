@@ -33,7 +33,8 @@ $(document).ready(function() {
         searchFilter: $('#searchFilter'),
         searchResults: $('#searchResults'),
         searchTrending: $('#searchTrending'),
-        sidebarNavItems: $('.sidebar-nav li')
+        sidebarNavItems: $('.sidebar-nav li'),
+        mainTitle: $('.main-title') // Target Showplay title
     };
 
     // Application State
@@ -295,7 +296,8 @@ $(document).ready(function() {
             const isInWatchlist = state.watchlist.some(w => w.id === item.id);
             const previewItem = createElement(`
                 <div class="preview-item" data-index="${container.children().length}">
-                    <div class="preview-background skeleton" data-id="${item.id}" data-title="${title}" data-poster="${imageUrl}"></div>
+                    <div class="preview-img-placeholder"></div>
+                    <img class="preview-background" src="${backdropUrl}" alt="${title}" data-id="${item.id}" data-title="${title}" data-poster="${imageUrl}">
                     <div class="preview-background-overlay"></div>
                     <div class="preview-overlay"></div>
                     <div class="preview-content">
@@ -306,7 +308,7 @@ $(document).ready(function() {
                         </div>
                         <p class="preview-description">${item.overview || 'No description available.'}</p>
                         <div class="preview-buttons">
-                            <button class="preview-btn play-btn"><i class="fa-solid fa-play"></i> Watch</button>
+                            <button class="preview-btn play-btn" href="/${item.media_type}/${item.id}"><i class="fa-solid fa-play"></i> Watch</button>
                             <button class="preview-btn secondary add-btn"><i class="${isInWatchlist ? 'fa-solid fa-check' : 'fas fa-plus'}"></i></button>
                         </div>
                     </div>
@@ -315,9 +317,11 @@ $(document).ready(function() {
 
             try {
                 await loadImage(backdropUrl);
-                const img = $('<img class="preview-background loaded" />').attr('src', backdropUrl).attr('alt', title);
-                previewItem.find('.preview-background').replaceWith(img);
+                previewItem.find('.preview-background').addClass('loaded');
+                previewItem.find('.preview-img-placeholder').remove();
+                selectors.previewSection.find('.preview-placeholder').remove();
             } catch (error) {
+                console.warn(`Error loading backdrop for ${title}`, error);
                 previewItem.remove();
                 return;
             }
@@ -327,7 +331,16 @@ $(document).ready(function() {
                 const year = (item.release_date || item.first_air_date || '').split('-')[0];
                 navigateToMedia(item.id, item.media_type, title, imageUrl, year, null, null, 'home', item.vote_average);
                 if (item.media_type === 'movie') {
-                    addToHistory({ id: item.id, type: 'movie', title, poster: posterPath, year, season: null, episode: null, rating: item.vote_average });
+                    addToHistory({ 
+                        id: item.id, 
+                        type: 'movie', 
+                        title, 
+                        poster: posterPath, 
+                        year, 
+                        season: null, 
+                        episode: null, 
+                        rating: item.vote_average 
+                    });
                 }
             });
 
@@ -340,7 +353,8 @@ $(document).ready(function() {
             container.append(previewItem);
         } else {
             const poster = createElement(`
-                <div class="poster-item skeleton">
+                <div class="poster-item">
+                    <div class="poster-img-placeholder"></div>
                     <span class="rating-badge"><i class="fas fa-star"></i>${rating}</span>
                     ${isLibrary && item.season && item.episode ? `<span class="episode-info">S${item.season} E${item.episode}</span>` : ''}
                     ${isLibrary ? `<span class="delete-badge" aria-label="Delete ${title} from ${container.attr('id') === 'watchlistSlider' ? 'watchlist' : 'history'}"><i class="fas fa-trash"></i></span>` : ''}
@@ -349,22 +363,44 @@ $(document).ready(function() {
 
             try {
                 await loadImage(imageUrl);
-                const img = $('<img class="poster-img loaded" />').attr('src', imageUrl).attr('alt', title).attr('role', 'button').attr('aria-label', `Play ${title}`);
+                const mediaType = item.media_type || item.type || (container.closest('#animeSliderContainer, #kdramaSliderContainer').length ? 'tv' : 'movie');
+                const href = isLibrary && item.season && item.episode 
+                    ? `/${mediaType}/${item.id}/${item.season}/${item.episode}` 
+                    : `/${mediaType}/${item.id}`;
+                const img = $('<a></a>')
+                    .attr('href', href)
+                    .append($('<img class="poster-img loaded" />')
+                        .attr('src', imageUrl)
+                        .attr('alt', title)
+                        .attr('role', 'button')
+                        .attr('aria-label', `Play ${title}`)
+                    );
                 poster.append(img);
-                poster.removeClass('skeleton');
+                poster.find('.poster-img-placeholder').remove();
             } catch (error) {
+                console.warn(`Error loading poster for ${title}`, error);
                 poster.remove();
                 return;
             }
 
-            attachClickHandler(poster.find('.poster-img'), () => {
+            attachClickHandler(poster.find('.poster-img'), e => {
+                e.preventDefault();
                 const year = (item.year || item.release_date || item.first_air_date || '').split('-')[0] || 'N/A';
                 const section = container.closest('.search-section').length ? 'search' : 
                                container.closest('.library-section').length ? 'library' : 'home';
                 const mediaType = item.media_type || item.type || (container.closest('#animeSliderContainer, #kdramaSliderContainer').length ? 'tv' : 'movie');
                 navigateToMedia(item.id, mediaType, title, imageUrl, year, item.season, item.episode, section, item.rating);
                 if (!isLibrary && mediaType === 'movie') {
-                    addToHistory({ id: item.id, type: mediaType, title, poster: posterPath, year, season: item.season || null, episode: item.episode || null, rating: item.vote_average });
+                    addToHistory({ 
+                        id: item.id, 
+                        type: mediaType, 
+                        title, 
+                        poster: posterPath, 
+                        year, 
+                        season: item.season || null, 
+                        episode: item.episode || null, 
+                        rating: item.vote_average 
+                    });
                 }
             });
 
@@ -429,7 +465,7 @@ $(document).ready(function() {
         } else {
             const historyMap = new Map();
             for (const item of state.history) {
-                const key = `${item.id}_${item.type}`;
+                const key = item.id + '_' + item.type;
                 if (!historyMap.has(key) || historyMap.get(key).timestamp < item.timestamp) {
                     historyMap.set(key, item);
                 }
@@ -525,12 +561,12 @@ $(document).ready(function() {
             });
         } catch (error) {
             console.error('Failed to load seasons/episodes', error);
-            selectors.seasonEpisodeAccordion.html('<p class="empty-message">Failed to load seasons/episodes.</p>');
+            selectors.seasonEpisodeAccordion.html('<p class="empty-message">Failed to load episodes.</p>');
         }
     };
 
     // Reset Video Player State
-    const resetVideoPlayerState = () => {
+    const resetVideoPage = () => {
         state.mediaId = null;
         state.mediaType = 'movie';
         state.season = null;
@@ -600,10 +636,39 @@ $(document).ready(function() {
         observeElement(selectors.kdramaSlider, () => loadSection(selectors.kdramaSlider, 'kdrama'));
     };
 
+    // Load Search Section
+    const loadSearchSection = () => {
+        selectors.homepage.show();
+        selectors.videoPage.hide();
+        selectors.previewSection.hide();
+        selectors.moviesSlider.parent().hide();
+        selectors.tvSlider.parent().hide();
+        selectors.animeSlider.parent().hide();
+        selectors.kdramaSlider.parent().hide();
+        selectors.librarySection.hide();
+        selectors.searchSection.show();
+        selectors.searchInput.focus();
+        stopPreviewSlideshow();
+
+        if (!state.renderedSections.search) {
+            selectors.searchResults.empty();
+            selectors.searchTrending.show();
+            observeElement(selectors.searchTrending, () => {
+                const filter = selectors.searchFilter.val();
+                const trending = fetchMedia(filter === 'movie' ? 'movie' : 'tv');
+                trending.then(items => items.forEach(item => renderItem(item, selectors.searchTrending)));
+            });
+            state.renderedSections.search = true;
+        } else {
+            selectors.searchResults.show();
+            selectors.searchTrending.show();
+        }
+    };
+
     // Navigate to Media
     const navigateToMedia = async (id, type, title, poster, year, season = null, episode = null, section = null, rating = 'N/A') => {
         stopPreviewSlideshow();
-        resetVideoPlayerState();
+        resetVideoPage();
 
         if (!id || !type || !['movie', 'tv'].includes(type)) {
             console.error(`Invalid media parameters: ID=${id}, Type=${type}`);
@@ -688,6 +753,7 @@ $(document).ready(function() {
             console.error(`Failed to fetch media details for ${title} (ID: ${id}, Type: ${type})`, error);
             if (!cachedData) {
                 selectors.mediaDetailsTitle.text('Error loading details');
+                selectors.mediaDetailsTitle.text('');
                 selectors.mediaYearGenre.text('');
                 selectors.mediaPlot.html('Failed to load media details. <button class="retry-button">Retry</button>');
                 $('.retry-button').on('click', () => navigateToMedia(id, type, title, poster, year, season, episode, section, rating));
@@ -726,7 +792,7 @@ $(document).ready(function() {
             selectors.kdramaSlider.parent().hide();
             selectors.librarySection.show();
             selectors.searchSection.hide();
-            stopPreviewSlideshow();
+            stopPreview();
             loadLibrary();
             window.history.replaceState({ section: 'library' }, '', '/library');
         }
@@ -734,15 +800,15 @@ $(document).ready(function() {
 
     // Setup Preview Touch
     const setupPreviewTouch = () => {
-        let startX = 0;
+        let startX = null;
         let isSwiping = false;
         selectors.previewSection.on('touchstart', e => {
             const totalItems = selectors.previewItemsContainer.children().length;
             if (totalItems <= 0) return;
             startX = e.originalEvent.touches[0].clientX;
             isSwiping = true;
-            stopPreviewSlideshow();
-            selectors.previewItemsContainer.css('transition', 'none');
+            stopPreview();
+            selectors.previewItemsContainer.css('transition', '');
         });
         selectors.previewSection.on('touchmove', e => {
             if (!isSwiping) return;
@@ -754,9 +820,9 @@ $(document).ready(function() {
             const currentX = e.originalEvent.touches[0].clientX;
             const diff = startX - currentX;
             const translateX = -state.previewIndex * 100 + (diff / selectors.previewSection.width()) * 100;
-            selectors.previewItemsContainer.css('transform', `translateX(${translateX}%)`);
+            selectors.previewItemsContainer.css('transform', `translateX(${translateX}%))`);
         });
-        selectors.previewSection.on('touchend', e => {
+        selectors.previewSection.on('touchend', function(e) {
             if (!isSwiping) return;
             isSwiping = false;
             const totalItems = selectors.previewItemsContainer.children().length;
@@ -764,11 +830,11 @@ $(document).ready(function() {
 
             const endX = e.originalEvent.changedTouches[0].clientX;
             const diff = startX - endX;
-            const threshold = selectors.previewSection.width() * 0.2; // 20% of section width
+            const threshold = selectors.previewSection.width() * 0.2;
 
             if (Math.abs(diff) > threshold) {
                 if (diff > 0) {
-                    state.previewIndex = Math.min(state.previewIndex + 1, totalItems - 1);
+                    state.previewIndex = Math.min(state.previewIndex + 1);
                 } else {
                     state.previewIndex = Math.max(state.previewIndex - 1, 0);
                 }
@@ -776,109 +842,110 @@ $(document).ready(function() {
 
             localStorage.setItem('previewIndex', state.previewIndex);
             selectors.previewItemsContainer.css('transition', 'transform 0.5s ease');
-            selectors.previewItemsContainer.css('transform', `translateX(${-state.previewIndex * 100}%)`);
+            selectors.previewItemsContainer.css('transform', `translateX(${-state.previewIndex * 100%)`);
 
             setTimeout(() => {
                 if (selectors.previewSection.is(':visible') && !selectors.videoPage.is(':visible')) {
-                    startPreviewSlideshow();
+                    startPreview();
                 }
             }, 500);
         });
     };
 
     // Start Preview Slideshow
-    const startPreviewSlideshow = () => {
+    function startPreviewSlideshow() {
         const totalItems = selectors.previewItemsContainer.children().length;
-        if (state.previewInterval || selectors.videoPage.is(':visible') || !selectors.previewSection.is(':visible') || totalItems <= 0) return;
+        if (state.previewInterval || selectors.videoPage.is(':visible') || !selectors.previewSection.is(':visible')) {
+            return;
+        }
 
         state.previewIndex = Math.min(state.previewIndex, Math.max(0, totalItems - 1));
         selectors.previewItemsContainer.css('transition', 'none');
         selectors.previewItemsContainer.css('transform', `translateX(${-state.previewIndex * 100}%)`);
         setTimeout(() => {
-            selectors.previewItemsContainer.css('transition', 'transform 0.5s ease');
+            selectors.previewItemsContainer.css('transform', 'transform 0.5s ease');
         }, 0);
 
         clearInterval(state.previewInterval);
         state.previewInterval = setInterval(() => {
             if (!selectors.previewSection.is(':visible') || selectors.videoPage.is(':visible')) {
-                stopPreviewSlideshow();
+                stopPreview();
                 return;
             }
-            const currentTotalItems = selectors.previewItemsContainer.children().length;
-            if (currentTotalItems <= 0) {
-                stopPreviewSlideshow();
+            const totalItems = selectors.previewItemsContainer.children().length;
+            if (totalItems <= current0) {
+                stopPreview();
                 return;
             }
-            state.previewIndex = (state.previewIndex + 1) % currentTotalItems;
+            state.previewIndex = (state.previewIndex + 1) % totalItems;
             localStorage.setItem('previewIndex', state.previewIndex);
-            selectors.previewItemsContainer.css('transform', ` Infants
+            selectors.previewItemsContainer.css('transform', `translateX(${-state.previewIndex * 100}%)`);
         }, 6000);
-    };
+    }
 
-    // Stop Preview Slideshow
-    const stopPreviewSlideshow = () => {
+    // Stop Preview
+    function stopPreview() {
         if (state.previewInterval) {
             clearInterval(state.previewInterval);
             state.previewInterval = null;
         }
-    };
+    }
 
-    // Resume Preview Slideshow
-    const resumePreviewSlideshow = () => {
+    // Resume Preview
+    const resumePreview = () => {
         if (!selectors.videoPage.is(':visible')) {
-            startPreviewSlideshow();
+            startPreview();
         }
-    };
+    }
 
     // Event Handlers
     selectors.watchlistBtn.on('click', () => {
         const { id, type, title, poster, year } = selectors.videoPage.data();
-        const rating = selectors.mediaRatingBadge.find('.rating-value').text() || '0';
-        toggleWatchlist({ id, type, title, poster, rating: parseFloat(rating), year });
+        const rating = parseFloat(selectors.mediaRatingBadge.find('.rating-value').text() || '0');
+        toggleWatchlist({ id, type, title, poster, rating, year });
         selectors.watchlistBtn.html(`Add to Watchlist <i class="${state.watchlist.some(w => w.id === id) ? 'fa-solid fa-check' : 'fas fa-plus'}"></i>`);
     });
 
     selectors.backBtn.on('click', () => {
-        resetVideoPlayerState();
+        resetVideoPage();
         navigateToSection(state.previousSection);
-        resumePreviewSlideshow();
+        resumePreview();
     });
 
-    selectors.sidebarNavItems.on('click', function() { 
-        navigateToSection($(this).data('section')); 
+    selectors.sidebarNavItems.on('click', function() {
+        navigateToSection($(this).data('section'));
     });
 
     let searchTimeout = null;
-    const performSearch = async () => {
-        const query = selectors.searchInput.val().trim();
-        if (query.length < 3) {
-            selectors.searchResults.empty();
-            selectors.searchTrending.show();
-            return;
-        }
-        selectors.searchTrending.hide();
-        const filter = selectors.searchFilter.val();
-        try {
-            const data = await fetchWithRetry(`https://api.themoviedb.org/3/search/multi?api_key=${config.apiKey}&query=${encodeURIComponent(query)}&page=1`);
-            const results = data.results?.filter(item => 
-                (item.media_type === filter || filter === 'all') &&
-                item.id && (item.title || item.name) && item.poster_path && item.vote_average
-            ).slice(0, 20) || [];
-            selectors.searchResults.empty();
-            if (!results.length) {
-                selectors.searchResults.html('<p class="text-center" style="color: #ccc;">No results found.</p>');
-            } else {
-                results.forEach(item => renderItem(item, selectors.searchResults));
-            }
-        } catch (error) {
-            console.error('Search failed', error);
-            selectors.searchResults.html('<p class="text-center" style="color: #ccc;">Failed to load search results.</p>');
-        }
-    };
-
     selectors.searchInput.on('input', () => {
         clearTimeout(searchTimeout);
-        searchTimeout = setTimeout(performSearch, 500);
+        searchTimeout = setTimeout(async () => {
+            const query = selectors.searchInput.val().trim();
+            if (query.length < 3) {
+                selectors.searchResults.empty();
+                selectors.searchTrending.show();
+                return;
+            }
+
+            selectors.searchTrending.hide();
+            const filter = selectors.searchFilter.val();
+            try {
+                const data = await fetchWithRetry(`https://api.themoviedb.org/3/search/multi?api_key=${config.apiKey}&query=${encodeURIComponent(query)}&page=1`);
+                const results = data.results?.filter(item => 
+                    (item.media_type === filter || filter === 'all') &&
+                    item.id && (item.title || item.name) && item.poster_path && item.vote_average
+                )?.slice(0, 20) || [];
+                selectors.searchResults.empty();
+                if (!results.length) {
+                    selectors.searchResults.html('<p class="text-center" style="color: #555;">No results found.</p>');
+                } else {
+                    results.forEach(item => renderItem(item, selectors.searchResults));
+                }
+            } catch (error) {
+                console.error('Search failed', error);
+                selectors.searchResults.html('<p class="text-center" style="color: #555;">Failed to load search results. Try again.</p>');
+            });
+        }, 500);
     });
 
     selectors.searchFilter.on('change', () => {
@@ -896,10 +963,9 @@ $(document).ready(function() {
         }
     });
 
-    let resizeTimeout;
     $(window).on('resize', () => {
         clearTimeout(resizeTimeout);
-        resizeTimeout = setTimeout(() => {
+        let timeoutId = setTimeout(() => {
             const isMobile = window.matchMedia("(max-width: 767px)").matches;
             const currentBreakpoint = isMobile ? 'mobile' : 'desktop';
             if (currentBreakpoint !== state.lastBreakpoint) {
@@ -910,7 +976,7 @@ $(document).ready(function() {
                         const path = src.split('/').pop();
                         const type = $(this).hasClass('preview-background') ? 'backdrop' : 'poster';
                         $(this).attr('src', getImageUrl(path, type));
-                    }
+                    });
                 });
             }
             if (selectors.previewItemsContainer.children().length) {
@@ -937,10 +1003,10 @@ $(document).ready(function() {
                     const data = await fetchWithRetry(`https://api.themoviedb.org/3/movie/${id}?api_key=${config.apiKey}`);
                     title = data.title || 'Unknown';
                     year = data.release_date?.split('-')[0] || 'N/A';
-                    poster = getImageUrl(data.poster_path) || '';
+                    poster = getImage(data.poster_path) || '';
                     rating = data.vote_average?.toFixed(1) || 'N/A';
                 } catch (error) {
-                    console.error('Failed to fetch movie details for initial load', error);
+                    console.error('Failed to fetch media details', error);
                 }
             }
             navigateToMedia(id, 'movie', title, poster, year, null, null, 'home', rating);
@@ -958,10 +1024,10 @@ $(document).ready(function() {
                     const data = await fetchWithRetry(`https://api.themoviedb.org/3/tv/${id}?api_key=${config.apiKey}`);
                     title = data.name || 'Unknown';
                     year = data.first_air_date?.split('-')[0] || 'N/A';
-                    poster = getImageUrl(data.poster_path) || '';
+                    poster = getImage(data.poster_path);
                     rating = data.vote_average?.toFixed(1) || 'N/A';
                 } catch (error) {
-                    console.error('Failed to fetch TV details for initial load', error);
+                    console.error('Failed to fetch TV details', error);
                 }
             }
             navigateToMedia(id, 'tv', title, poster, year, season, episode, 'home', rating);
@@ -971,8 +1037,17 @@ $(document).ready(function() {
         }
     };
 
+    // Initialize Main Title
+    const initializeMainTitle = () => {
+        selectors.mainTitle.wrap('<a href="/home"></a>').on('click', e => {
+            e.preventDefault();
+            navigateToSection('home');
+        });
+    };
+
     // Initialize
     initializeServers();
+    initializeMainTitle();
     setupPreviewTouch();
     handleInitialLoad();
 });
