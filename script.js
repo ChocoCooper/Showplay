@@ -303,7 +303,7 @@ $(document).ready(function() {
                     <div class="preview-content">
                         <img class="preview-title" src="${item.logo_path}" alt="${title}">
                         <div class="preview-meta">
-                            <span class="media-type">${mediaType} • ${genres.join(', ')}</span>
+                            <span class="media-type">${mediaType} • ${item.release_date?.split('-')[0] || item.first_air_date?.split('-')[0] || 'N/A'} • ${genres.join(', ')}</span>
                             <span class="rating"><i class="fas fa-star"></i>${rating}</span>
                         </div>
                         <p class="preview-description">${item.overview || 'No description available.'}</p>
@@ -792,7 +792,7 @@ $(document).ready(function() {
             selectors.kdramaSlider.parent().hide();
             selectors.librarySection.show();
             selectors.searchSection.hide();
-            stopPreview();
+            stopPreviewSlideshow();
             loadLibrary();
             window.history.replaceState({ section: 'library' }, '', '/library');
         }
@@ -807,7 +807,7 @@ $(document).ready(function() {
             if (totalItems <= 0) return;
             startX = e.originalEvent.touches[0].clientX;
             isSwiping = true;
-            stopPreview();
+            stopPreviewSlideshow();
             selectors.previewItemsContainer.css('transition', '');
         });
         selectors.previewSection.on('touchmove', e => {
@@ -820,7 +820,7 @@ $(document).ready(function() {
             const currentX = e.originalEvent.touches[0].clientX;
             const diff = startX - currentX;
             const translateX = -state.previewIndex * 100 + (diff / selectors.previewSection.width()) * 100;
-            selectors.previewItemsContainer.css('transform', `translateX(${translateX}%))`);
+            selectors.previewItemsContainer.css('transform', `translateX(${translateX}%)`);
         });
         selectors.previewSection.on('touchend', function(e) {
             if (!isSwiping) return;
@@ -834,7 +834,7 @@ $(document).ready(function() {
 
             if (Math.abs(diff) > threshold) {
                 if (diff > 0) {
-                    state.previewIndex = Math.min(state.previewIndex + 1);
+                    state.previewIndex = Math.min(state.previewIndex + 1, totalItems - 1);
                 } else {
                     state.previewIndex = Math.max(state.previewIndex - 1, 0);
                 }
@@ -842,11 +842,11 @@ $(document).ready(function() {
 
             localStorage.setItem('previewIndex', state.previewIndex);
             selectors.previewItemsContainer.css('transition', 'transform 0.5s ease');
-            selectors.previewItemsContainer.css('transform', `translateX(${-state.previewIndex * 100%)`);
+            selectors.previewItemsContainer.css('transform', `translateX(${-state.previewIndex * 100}%)`);
 
             setTimeout(() => {
                 if (selectors.previewSection.is(':visible') && !selectors.videoPage.is(':visible')) {
-                    startPreview();
+                    startPreviewSlideshow();
                 }
             }, 500);
         });
@@ -863,18 +863,18 @@ $(document).ready(function() {
         selectors.previewItemsContainer.css('transition', 'none');
         selectors.previewItemsContainer.css('transform', `translateX(${-state.previewIndex * 100}%)`);
         setTimeout(() => {
-            selectors.previewItemsContainer.css('transform', 'transform 0.5s ease');
+            selectors.previewItemsContainer.css('transition', 'transform 0.5s ease');
         }, 0);
 
         clearInterval(state.previewInterval);
         state.previewInterval = setInterval(() => {
             if (!selectors.previewSection.is(':visible') || selectors.videoPage.is(':visible')) {
-                stopPreview();
+                stopPreviewSlideshow();
                 return;
             }
             const totalItems = selectors.previewItemsContainer.children().length;
-            if (totalItems <= current0) {
-                stopPreview();
+            if (totalItems <= 0) {
+                stopPreviewSlideshow();
                 return;
             }
             state.previewIndex = (state.previewIndex + 1) % totalItems;
@@ -883,8 +883,8 @@ $(document).ready(function() {
         }, 6000);
     }
 
-    // Stop Preview
-    function stopPreview() {
+    // Stop Preview Slideshow
+    function stopPreviewSlideshow() {
         if (state.previewInterval) {
             clearInterval(state.previewInterval);
             state.previewInterval = null;
@@ -894,7 +894,7 @@ $(document).ready(function() {
     // Resume Preview
     const resumePreview = () => {
         if (!selectors.videoPage.is(':visible')) {
-            startPreview();
+            startPreviewSlideshow();
         }
     }
 
@@ -930,7 +930,7 @@ $(document).ready(function() {
             selectors.searchTrending.hide();
             const filter = selectors.searchFilter.val();
             try {
-                const data = await fetchWithRetry(`https://api.themoviedb.org/3/search/multi?api_key=${config.apiKey}&query=${encodeURIComponent(query)}&page=1`);
+                const data = await fetchWithRetry(`https://api.themoviedb.org/3/search/multi?api_key=${config.apiKey}&query=${encodeURIComponent(query)}`);
                 const results = data.results?.filter(item => 
                     (item.media_type === filter || filter === 'all') &&
                     item.id && (item.title || item.name) && item.poster_path && item.vote_average
@@ -944,12 +944,12 @@ $(document).ready(function() {
             } catch (error) {
                 console.error('Search failed', error);
                 selectors.searchResults.html('<p class="text-center" style="color: #555;">Failed to load search results. Try again.</p>');
-            });
+            }
         }, 500);
     });
 
     selectors.searchFilter.on('change', () => {
-        performSearch();
+        selectors.searchInput.trigger('input');
     });
 
     $(window).on('popstate', event => {
@@ -963,48 +963,56 @@ $(document).ready(function() {
         }
     });
 
+    let resizeTimeout;
     $(window).on('resize', () => {
         clearTimeout(resizeTimeout);
-        let timeoutId = setTimeout(() => {
+        resizeTimeout = setTimeout(() => {
             const isMobile = window.matchMedia("(max-width: 767px)").matches;
             const currentBreakpoint = isMobile ? 'mobile' : 'desktop';
             if (currentBreakpoint !== state.lastBreakpoint) {
                 state.lastBreakpoint = currentBreakpoint;
-                $('.poster-img.loaded, .preview-background.loaded').each(function() {
+                $('.poster-img').each(function() {
                     const src = $(this).attr('src');
                     if (src) {
                         const path = src.split('/').pop();
-                        const type = $(this).hasClass('preview-background') ? 'backdrop' : 'poster';
-                        $(this).attr('src', getImageUrl(path, type));
+                        $(this).attr('src', getImageUrl(path, 'poster'));
+                    }
+                });
+                $('.preview-background.loaded').each(function() {
+                    const src = $(this).attr('src');
+                    if (src) {
+                        const path = src.split('/').pop();
+                        $(this).attr('src', getImageUrl(path, 'backdrop'));
                     });
                 });
             }
-            if (selectors.previewItemsContainer.children().length) {
+            if (selectors.previewItemsContainer.children().length > 0) {
                 state.previewIndex = Math.min(state.previewIndex, Math.max(0, selectors.previewItemsContainer.children().length - 1));
                 selectors.previewItemsContainer.css('transform', `translateX(${-state.previewIndex * 100}%)`);
             }
         }, 200);
     });
 
+    // Handle initial page load
     const handleInitialLoad = async () => {
         const path = window.location.pathname;
         const movieMatch = path.match(/^\/movie\/(\d+)$/);
-        const tvMatch = path.match(/^\/tv\/(\d+)(?:\/(\d+)\/(\d+))?$/);
+        const tvMatch = path.match(/^\/tv\/(\d+)(?:\/(\\d+)\\/(\\d+))?$/);
         
         if (movieMatch) {
             const id = movieMatch[1];
             const stateData = history.state || {};
-            let title = stateData.title || 'Unknown';
-            let year = stateData.year || 'N/A';
-            let poster = stateData.poster || '';
-            let rating = stateData.rating || 'N/A';
-            if (!stateData.title) {
+            let title = stateData?.title || 'Unknown';
+            let year = stateData?.year || 'N/A';
+            let poster = stateData?.poster || '';
+            let rating = stateData?.rating || 'N/A';
+            if (!stateData.id) {
                 try {
                     const data = await fetchWithRetry(`https://api.themoviedb.org/3/movie/${id}?api_key=${config.apiKey}`);
-                    title = data.title || 'Unknown';
-                    year = data.release_date?.split('-')[0] || 'N/A';
-                    poster = getImage(data.poster_path) || '';
-                    rating = data.vote_average?.toFixed(1) || 'N/A';
+                    title = data?.title || 'Unknown';
+                    year = data?.release_date?.split('-')[0] || 'N/A';
+                    poster = getImageUrl(data?.poster_path) || '';
+                    rating = data?.vote_average?.toFixed(1) || 'N/A';
                 } catch (error) {
                     console.error('Failed to fetch media details', error);
                 }
@@ -1012,26 +1020,27 @@ $(document).ready(function() {
             navigateToMedia(id, 'movie', title, poster, year, null, null, 'home', rating);
         } else if (tvMatch) {
             const id = tvMatch[1];
-            const season = tvMatch[2] ? parseInt(tvMatch[2]) : null;
-            const episode = tvMatch[3] ? parseInt(tvMatch[3]) : null;
+            const season = tvMatch[2]? parseInt(tvMatch[2]) : null;
+            const episode = tvMatch[3]? parseInt(tvMatch[3]) : null;
             const stateData = history.state || {};
-            let title = stateData.title || 'Unknown';
-            let year = stateData.year || 'N/A';
-            let poster = stateData.poster || '';
-            let rating = stateData.rating || 'N/A';
+            let title = stateData?.title || 'Unknown';
+            let year = stateData?.year || 'N/A';
+            let poster = stateData?.poster || '';
+            let rating = stateData?.rating || 'N/A';
             if (!stateData.title) {
                 try {
                     const data = await fetchWithRetry(`https://api.themoviedb.org/3/tv/${id}?api_key=${config.apiKey}`);
-                    title = data.name || 'Unknown';
-                    year = data.first_air_date?.split('-')[0] || 'N/A';
-                    poster = getImage(data.poster_path);
-                    rating = data.vote_average?.toFixed(1) || 'N/A';
+                    title = data?.name || 'Unknown';
+                    year = data?.first_air_date?.split('-')[0] || 'N/A';
+                    poster = getImageUrl(data?.poster_path);
+                    rating = data?.vote_average?.toFixed(1) || 'N/A';
                 } catch (error) {
                     console.error('Failed to fetch TV details', error);
                 }
             }
             navigateToMedia(id, 'tv', title, poster, year, season, episode, 'home', rating);
         } else {
+            // Handle invalid or root URL by loading the Homepage
             window.history.replaceState({ section: 'home' }, '', '/home');
             loadHomepage();
         }
@@ -1047,7 +1056,7 @@ $(document).ready(function() {
 
     // Initialize
     initializeServers();
-    initializeMainTitle();
     setupPreviewTouch();
+    initializeMainTitle();
     handleInitialLoad();
 });
