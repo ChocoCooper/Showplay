@@ -15,8 +15,6 @@
     --selector-bg: #333333;
     --selector-active: #2af598;
     --selector-text: #ffffff;
-    --skeleton-bg: #333;
-    --skeleton-highlight: #444;
 }
 
 * {
@@ -102,6 +100,17 @@ body {
     border-radius: 10px;
 }
 
+.preview-placeholder {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: #333;
+    z-index: 3;
+    animation: shimmer 1.5s infinite;
+}
+
 .preview-items-container {
     position: absolute;
     top: 0;
@@ -128,12 +137,6 @@ body {
     height: 100%;
     object-fit: cover;
     z-index: 1;
-}
-
-.preview-background.skeleton {
-    background: linear-gradient(90deg, var(--skeleton-bg) 25%, var(--skeleton-highlight) 50%, var(--skeleton-bg) 75%);
-    background-size: 200% 100%;
-    animation: skeleton-loading 1.5s infinite;
 }
 
 .preview-background-overlay {
@@ -320,7 +323,7 @@ iframe {
     font-weight: 700;
 }
 
-.server-buttons {
+.server-buttons, .season-buttons, .episode-buttons {
     display: flex;
     flex-wrap: wrap;
     margin-left: 11px;
@@ -348,7 +351,7 @@ iframe {
     color: white;
     border: none;
     border-radius: 10px;
-    padding: 6px 20px;
+    padding: 8px 16px;
     font-size: 0.9rem;
     font-weight: 700;
     cursor: pointer;
@@ -357,11 +360,20 @@ iframe {
     justify-content: center;
     gap: 8px;
     flex: 1;
-    max-width: 200px;
-    text-decoration: none;
+    max-width: 180px;
 }
 
-.server-btn {
+.season-buttons {
+    max-height: 66px;
+    overflow-y: auto;
+}
+
+.episode-buttons {
+    max-height: 118px;
+    overflow-y: auto;
+}
+
+.server-btn, .season-btn, .episode-btn {
     background-color: var(--selector-bg);
     color: var(--selector-text);
     border: none;
@@ -375,80 +387,35 @@ iframe {
     text-overflow: ellipsis;
 }
 
-.server-btn:hover {
-    background-color: var(--selector-active);
-    color: #000;
-}
-
-.server-btn.active {
-    background-color: var(--selector-active);
-    color: #000;
-}
-
-.season-episode-selector {
-    margin-left: 11px;
-    margin-bottom: 25px;
-}
-
-.season-episode-accordion details {
-    margin-bottom: 10px;
-    background: var(--selector-bg);
-    border-radius: 8px;
-    overflow: hidden;
-}
-
-.season-episode-accordion summary {
-    padding: 10px;
-    font-size: 0.9rem;
-    font-weight: 700;
-    color: var(--selector-text);
-    cursor: pointer;
-    background: var(--selector-bg);
-    transition: background 0.3s ease;
-}
-
-.season-episode-accordion summary::marker,
-.season-episode-accordion summary::-webkit-details-marker {
-    color: var(--primary-color);
-}
-
-.season-episode-accordion .episode-list {
-    padding: 10px;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    background: #222;
-    max-height: 200px;
-    overflow-y: auto;
-}
-
-.season-episode-accordion .episode-btn {
-    background-color: var(--selector-bg);
-    color: var(--selector-text);
-    border: none;
-    border-radius: 8px;
-    padding: 8px;
-    font-size: 0.8rem;
-    cursor: pointer;
-    transition: all 0.3s ease;
+.season-btn, .episode-btn {
+    width: 76.5px;
+    height: 30px;
+    min-width: 76.5px;
+    min-height: 30px;
+    font-size: 0.85rem;
+    border-radius: 5px;
     display: flex;
     align-items: center;
-    gap: 8px;
-    width: 100%;
+    justify-content: center;
 }
 
-.season-episode-accordion .episode-btn:hover,
-.season-episode-accordion .episode-btn.active {
+.episode-btn {
+    width: 35px;
+    height: 35px;
+    min-width: 35px;
+    min-height: 35px;
+    font-size: 1rem;
+    border-radius: 6px;
+}
+
+.server-btn:hover, .season-btn:hover, .episode-btn:hover {
     background-color: var(--selector-active);
     color: #000;
 }
 
-.season-episode-accordion .episode-btn span {
-    flex: 1;
-    text-align: left;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+.server-btn.active, .season-btn.active, .episode-btn.active {
+    background-color: var(--selector-active);
+    color: #000;
 }
 
 .media-details {
@@ -489,18 +456,6 @@ iframe {
     object-fit: cover;
     border-radius: 8px;
     display: block;
-    opacity: 0;
-    transition: opacity 0.3s ease;
-}
-
-.media-details-poster img.loaded {
-    opacity: 1;
-}
-
-.media-details-poster.skeleton {
-    background: linear-gradient(90deg, var(--skeleton-bg) 25%, var(--skeleton-highlight) 50%, var(--skeleton-bg) 75%);
-    background-size: 200% 100%;
-    animation: skeleton-loading 1.5s infinite;
 }
 
 .media-details-content {
@@ -654,13 +609,18 @@ iframe {
     display: block;
 }
 
-.poster-item.skeleton {
-    background: linear-gradient(90deg, var(--skeleton-bg) 25%, var(--skeleton-highlight) 50%, var(--skeleton-bg) 75%);
-    background-size: 200% 100%;
-    animation: skeleton-loading 1.5s infinite;
+.poster-img-placeholder {
+    width: 100%;
+    height: 100%;
+    background: #333;
+    border-radius: 6px;
+    position: absolute;
+    top: 0;
+    left: 0;
+    animation: shimmer 1.5s infinite;
 }
 
-.rating-badge, .delete-badge, .episode-info {
+.rating-badge, .delete-badge {
     position: absolute;
     background: rgba(0, 0, 0, 0.7);
     color: #ffffff;
@@ -689,14 +649,6 @@ iframe {
     height: 30px;
 }
 
-.episode-info {
-    bottom: 5px;
-    left: 5px;
-    font-size: 12px;
-    padding: 2px 6px;
-    background: rgba(0, 0, 0, 0.8);
-}
-
 .rating-badge i {
     color: #ffd700;
     font-size: 12px;
@@ -704,15 +656,6 @@ iframe {
 
 .delete-badge i {
     font-size: 14px;
-}
-
-@keyframes skeleton-loading {
-    0% {
-        background-position: 200% 0;
-    }
-    100% {
-        background-position: -200% 0;
-    }
 }
 
 @media (max-width: 767px) {
@@ -861,7 +804,7 @@ iframe {
         margin-bottom: 8px;
     }
 
-    .server-buttons {
+    .server-buttons, .season-buttons, .episode-buttons {
         gap: 6px;
         margin-bottom: 15px;
     }
@@ -874,33 +817,26 @@ iframe {
     }
 
     .watchlist-btn, .download-btn {
-        padding: 4px 16px;
+        padding: 6px 12px;
         font-size: 0.85rem;
         flex: 1;
-        max-width: 160px;
+        max-width: 140px;
     }
 
-    .season-episode-selector {
-        margin-left: 0;
-    }
-
-    .season-episode-accordion details {
-        margin-bottom: 8px;
-    }
-
-    .season-episode-accordion summary {
-        padding: 8px;
-        font-size: 0.85rem;
-    }
-
-    .season-episode-accordion .episode-list {
-        padding: 8px;
-        gap: 6px;
-    }
-
-    .season-episode-accordion .episode-btn {
-        padding: 6px;
+    .season-btn, .episode-btn {
+        width: 70px;
+        height: 28px;
+        min-width: 70px;
+        min-height: 28px;
         font-size: 0.75rem;
+    }
+
+    .episode-btn {
+        width: 32px;
+        height: 32px;
+        min-width: 32px;
+        min-height: 32px;
+        font-size:0.9rem;
     }
 
     .media-details-poster {
@@ -932,7 +868,7 @@ iframe {
         height: 157.5px;
     }
 
-    .rating-badge, .delete-badge, .episode-info {
+    .rating-badge, .delete-badge {
         border-radius: 6px;
     }
 
@@ -948,22 +884,12 @@ iframe {
     .delete-badge {
         width: 24px;
         height: 24px;
-        font-size: 12px;
-        top: 5px;
         left: 5px;
+        top: 5px;
     }
 
-    .episode-info {
+    .rating-badge i, .delete-badge i {
         font-size: 10px;
-        padding: 2px 4px;
-    }
-
-    .rating-badge i {
-        font-size: 10px;
-    }
-
-    .delete-badge i {
-        font-size: 12px;
     }
 
     .search-container {
@@ -1015,4 +941,15 @@ iframe {
     .preview-section {
         height: 220px;
     }
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes shimmer {
+    0% { background: #333; }
+    50% { background: #444; }
+    100% { background: #333; }
 }
