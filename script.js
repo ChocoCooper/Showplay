@@ -605,7 +605,6 @@ $(document).ready(() => {
         }
     };
 
-    // Pause slideshow when window is not in focus
     document.addEventListener('visibilitychange', () => {
         if (document.hidden) {
             stopPreviewSlideshow();
@@ -724,7 +723,7 @@ $(document).ready(() => {
         state.previousSection = section || state.previousSection || 'home';
 
         const path = type === 'movie' ? `/movie/${id}` : `/tv/${id}${season && episode ? `?season=${season}&episode=${episode}` : ''}`;
-        window.history.pushState({ id, type, title, poster, year, season, section: state.previousSection }, '', `${config.baseUrl}${path}`);
+        window.history.pushState({ id, type, title, poster, year, season, episode, section: state.previousSection }, '', `${config.baseUrl}${path}`);
 
         selectors.videoPage.data({ id, type, title, poster, year });
 
@@ -732,13 +731,13 @@ $(document).ready(() => {
         selectors.watchlistBtn.html(`Add to Watchlist <i class="${isInWatchlist ? 'fa-solid fa-check' : 'fas fa-plus'}"></i>`);
 
         const downloadUrl = type === 'movie'
-            ? `https://dl.vidsrc.vip/show/${id}`
+            ? `https://dl.vidsrc.vip/movie/${id}`
             : `https://dl.vidsrc.vip/tv/${id}/${season || 1}/${episode || 1}`;
         selectors.downloadBtn.attr('href', downloadUrl);
 
         handleMediaDetails(title, poster, year);
         state.currentSection = 'video';
-        window.scrollTo({ top: 0, selector: 'smooth' });
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
     const navigateBack = () => {
@@ -751,9 +750,9 @@ $(document).ready(() => {
         }
     };
 
-    const handleMediaDetails = async (title, year) => {
+    const handleMediaDetails = async (title, poster, year) => {
         selectors.videoFrame.attr('src', '');
-        selectors.videoPage.data({ id: state.mediaId, type: state.mediaType, title, year });
+        selectors.videoPage.data({ id: state.mediaId, type: state.mediaType, title, poster, year });
 
         selectors.videoPage.addClass('active').show();
         selectors.homepage.hide();
@@ -769,7 +768,7 @@ $(document).ready(() => {
             if (state.mediaType === 'movie') {
                 embedVideo();
             } else {
-                await loadEpisodes();
+                await loadSeasons();
                 if (state.currentPlayingSeason && state.currentPlayingEpisode) {
                     embedVideo();
                     await loadEpisodes(state.currentPlayingSeason);
@@ -791,6 +790,15 @@ $(document).ready(() => {
             const year = (data.release_date || data.first_air_date || '').split('-')[0] || 'N/A';
             const genres = data.genres ? data.genres.map(g => g.name).join(', ') : 'N/A';
             selectors.mediaPoster.attr('src', posterUrl);
+            try {
+                await loadImage(posterUrl);
+                selectors.mediaPoster.addClass('loaded');
+                selectors.mediaPoster.parent().find('.poster-img-placeholder').remove();
+            } catch (error) {
+                console.warn(`Error loading poster for ${data.title || data.name}`, error);
+                selectors.mediaPoster.attr('src', config.fallbackImage).addClass('loaded');
+                selectors.mediaPoster.parent().find('.poster-img-placeholder').remove();
+            }
             selectors.mediaRatingBadge.find('.rating-value').text(rating);
             selectors.mediaDetailsTitle.text(data.title || data.name || 'Unknown');
             selectors.mediaYearGenre.text(`${year} • ${genres}`);
@@ -802,7 +810,7 @@ $(document).ready(() => {
         }
     };
 
-    const loadEpisodes = async () => {
+    const loadSeasons = async () => {
         selectors.seasonGrid.empty();
         const cacheKey = `${state.mediaId}_seasons`;
         if (state.seasonCache[cacheKey]) {
@@ -829,7 +837,7 @@ $(document).ready(() => {
                 btn.addClass('active');
             }
             btn.on('click', async () => {
-                $('.btn').removeClass('active');
+                $('.season-btn').removeClass('active');
                 btn.addClass('active');
                 state.currentPlayingSeason = s.season_number;
                 state.currentPlayingEpisode = state.selectedEpisodes[state.currentPlayingSeason] || 1;
@@ -905,7 +913,7 @@ $(document).ready(() => {
         let videoUrl;
         const serverUrl = getServerUrl();
         if (state.mediaType === 'movie') {
-            videoUrl = `${serverUrl}/embed/show/${state.mediaId}`;
+            videoUrl = `${serverUrl}/embed/movie/${state.mediaId}`;
         } else {
             videoUrl = `${serverUrl}/embed/tv/${state.mediaId}/${state.currentPlayingSeason}/${state.currentPlayingEpisode}`;
         }
