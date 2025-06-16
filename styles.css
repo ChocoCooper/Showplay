@@ -39,14 +39,15 @@ body {
 }
 
 .sidebar {
-    width: 200px;
-    background: #fff;
-    padding: 20px 0;
+    width: 250px;
+    background: linear-gradient(to bottom, #1a1a1a, #2a2a2a);
+    padding: 30px 0;
     position: fixed;
     top: 0;
     bottom: 0;
     z-index: 30;
     overflow-y: auto;
+    box-shadow: 2px 0 5px rgba(0, 0, 0, 0.3);
 }
 
 .sidebar-nav {
@@ -55,22 +56,30 @@ body {
 }
 
 .sidebar-nav li {
-    padding: 10px 20px;
+    padding: 15px 30px;
     display: flex;
     align-items: center;
     cursor: pointer;
-    transition: background 0.3s ease;
+    transition: background 0.3s ease, color 0.3s ease;
+}
+
+.sidebar-nav li:hover {
+    background: rgba(255, 255, 255, 0.1);
 }
 
 .sidebar-nav li i {
-    margin-right: 10px;
-    font-size: 1.2rem;
+    margin-right: 15px;
+    font-size: 1.4rem;
     color: var(--text-color);
 }
 
 .sidebar-nav li span {
-    font-size: 1rem;
+    font-size: 1.1rem;
     color: var(--text-color);
+}
+
+.sidebar-nav li.active {
+    background: rgba(var(--primary-color-rgb, 42, 245, 152), 0.2);
 }
 
 .sidebar-nav li.active i,
@@ -80,26 +89,32 @@ body {
 
 .main-content {
     flex: 1;
-    margin-left: 200px;
-    padding: 20px;
+    margin-left: 250px;
+    padding: 30px;
+}
+
+.main-container {
+    max-width: 1400px;
+    margin: 0 auto;
 }
 
 .main-title {
     font-family: 'Sevarothz', sans-serif;
-    font-size: 2.5rem;
+    font-size: 3rem;
     color: var(--primary-color);
     text-align: center;
-    margin: 25px 0px 20px;
+    margin: 30px 0 25px;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
 }
 
 .preview-section {
     position: relative;
     width: 100%;
-    height: 500px;
-    margin-bottom: 25px;
+    height: 600px;
+    margin-bottom: 30px;
     overflow: hidden;
     z-index: 10;
-    border-radius: 10px;
+    border-radius: 12px;
 }
 
 .preview-items-container {
@@ -142,7 +157,7 @@ body {
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.25);
+    background: rgba(0, 0, 0, 0.3);
     z-index: 2;
 }
 
@@ -158,44 +173,44 @@ body {
 
 .preview-content {
     position: absolute;
-    bottom: 20px;
-    left: 20px;
-    width: calc(100% - 40px);
+    bottom: 30px;
+    left: 30px;
+    width: calc(100% - 60px);
     z-index: 4;
     max-width: none;
 }
 
 .preview-title {
     display: block;
-    max-width: 400px;
-    max-height: 100px;
+    max-width: 500px;
+    max-height: 120px;
     object-fit: contain;
-    margin-bottom: 10px;
+    margin-bottom: 15px;
 }
 
 .preview-meta {
-    font-size: 0.9rem;
+    font-size: 1rem;
     color: #ccc;
-    margin-bottom: 10px;
+    margin-bottom: 15px;
     display: flex;
     align-items: center;
 }
 
 .preview-meta .rating {
-    margin-left: 10px;
+    margin-left: 15px;
     color: #ccc;
 }
 
 .preview-meta .rating i {
-    margin-right: 5px;
+    margin-right: 8px;
 }
 
 .preview-description {
-    font-size: 0.8rem;
+    font-size: 0.9rem;
     color: #ccc;
-    margin-bottom: 10px;
+    margin-bottom: 15px;
     display: -webkit-box;
-    -webkit-line-clamp: 2;
+    -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -203,27 +218,32 @@ body {
 
 .preview-buttons {
     display: flex;
-    gap: 10px;
+    gap: 15px;
 }
 
 .preview-btn {
-    padding: 10px 20px;
-    border-radius: 20px;
-    background-color: rgba(255, 255, 255, 0.1);
+    padding: 12px 25px;
+    border-radius: 25px;
+    background-color: rgba(255, 255, 255, 0.15);
     color: white;
     border: none;
-    font-size: 0.9rem;
+    font-size: 1rem;
     font-weight: 700;
     cursor: pointer;
     transition: background 0.3s ease;
+}
+
+.preview-btn:hover {
+    background-color: var(--primary-color);
+    color: #000;
 }
 
 .preview-btn.secondary {
     background-color: rgba(255, 255, 255, 0.1);
     border-radius: 50%;
     color: white;
-    width: 40px;
-    height: 40px;
+    width: 45px;
+    height: 45px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -243,20 +263,22 @@ body {
 .video-header {
     display: flex;
     align-items: center;
-    padding: 15px 10px;
+    padding: 20px;
     background: rgba(0, 0, 0, 0.9);
     z-index: 20;
     width: 100%;
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    max-width: 1200px;
+    margin: 0 auto;
 }
 
 .back-btn {
     background: transparent;
     border: none;
     color: var(--primary-color);
-    font-size: 1.4rem;
+    font-size: 1.6rem;
     cursor: pointer;
-    margin-right: 10px;
+    margin-right: 15px;
     padding: 10px;
     display: flex;
     align-items: center;
@@ -271,7 +293,7 @@ body {
 .media-title {
     font-family: 'Lexend', sans-serif;
     color: var(--text-color);
-    font-size: 1.3rem;
+    font-size: 1.5rem;
     margin: 0;
     white-space: pre-wrap;
     overflow: hidden;
@@ -281,12 +303,13 @@ body {
 
 .video-wrapper {
     position: relative;
-    padding-bottom: 56.25%;
+    padding-bottom: 60%;
     height: 0;
     overflow: hidden;
     background: #000;
-    border-radius: 0;
-    margin: 0;
+    border-radius: 8px;
+    margin: 0 auto;
+    max-width: 1200px;
 }
 
 iframe {
@@ -297,15 +320,31 @@ iframe {
     height: 100%;
     border: none;
     background: #000;
-    border-radius: 0;
+    border-radius: 8px;
+}
+
+.video-error {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #ff5555;
+    font-size: 1rem;
+    text-align: center;
+    padding: 20px;
+    background: rgba(0, 0, 0, 0.8);
+    border-radius: 8px;
+    max-width: 80%;
 }
 
 .selector-container {
     position: relative;
     width: 100%;
     background: transparent;
-    padding: 10px 15px;
+    padding: 20px;
     display: none;
+    max-width: 1200px;
+    margin: 0 auto;
 }
 
 .selector-container.active {
@@ -314,60 +353,62 @@ iframe {
 
 .selector-title {
     color: var(--primary-color);
-    font-size: 1.1rem;
+    font-size: 1.2rem;
     margin-left: 10px;
-    margin-bottom: 12px;
+    margin-bottom: 15px;
     font-weight: 700;
 }
 
 .server-buttons {
     display: flex;
     flex-wrap: wrap;
-    margin-left: 11px;
-    margin-bottom: 25px;
-    gap: 8px;
-}
-
-.server-buttons {
+    margin-left: 10px;
+    margin-bottom: 30px;
+    gap: 10px;
     justify-content: center;
-    margin-top: 8px;
 }
 
 .watchlist-btn-container {
     margin: 0 auto;
-    margin-bottom: 25px;
+    margin-bottom: 30px;
     display: flex;
     justify-content: center;
-    gap: 20px;
+    gap: 25px;
     width: 100%;
-    max-width: 400px;
+    max-width: 450px;
 }
 
 .watchlist-btn, .download-btn {
-    background-color: rgba(255, 255, 255, 0.1);
+    background-color: rgba(255, 255, 255, 0.15);
     color: white;
     border: none;
-    border-radius: 10px;
-    padding: 6px 20px;
-    font-size: 0.9rem;
+    border-radius: 12px;
+    padding: 8px 25px;
+    font-size: 1rem;
     font-weight: 700;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: 10px;
     flex: 1;
-    max-width: 200px;
+    max-width: 220px;
     text-decoration: none;
+    transition: background 0.3s ease;
+}
+
+.watchlist-btn:hover, .download-btn:hover {
+    background-color: var(--primary-color);
+    color: #000;
 }
 
 .server-btn {
     background-color: var(--selector-bg);
     color: var(--selector-text);
     border: none;
-    border-radius: 12px;
-    padding: 4px 12px;
-    font-size: 0.8rem;
+    border-radius: 14px;
+    padding: 6px 15px;
+    font-size: 0.9rem;
     cursor: pointer;
     transition: all 0.3s ease;
     white-space: nowrap;
@@ -386,20 +427,20 @@ iframe {
 }
 
 .season-episode-selector {
-    margin-left: 11px;
-    margin-bottom: 25px;
+    margin-left: 10px;
+    margin-bottom: 30px;
 }
 
 .season-episode-accordion details {
-    margin-bottom: 10px;
+    margin-bottom: 12px;
     background: var(--selector-bg);
-    border-radius: 8px;
+    border-radius: 10px;
     overflow: hidden;
 }
 
 .season-episode-accordion summary {
-    padding: 10px;
-    font-size: 0.9rem;
+    padding: 12px;
+    font-size: 1rem;
     font-weight: 700;
     color: var(--selector-text);
     cursor: pointer;
@@ -413,12 +454,12 @@ iframe {
 }
 
 .season-episode-accordion .episode-list {
-    padding: 10px;
+    padding: 12px;
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: 10px;
     background: #222;
-    max-height: 200px;
+    max-height: 220px;
     overflow-y: auto;
 }
 
@@ -426,14 +467,14 @@ iframe {
     background-color: var(--selector-bg);
     color: var(--selector-text);
     border: none;
-    border-radius: 8px;
-    padding: 8px;
-    font-size: 0.8rem;
+    border-radius: 10px;
+    padding: 10px;
+    font-size: 0.9rem;
     cursor: pointer;
     transition: all 0.3s ease;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
     width: 100%;
 }
 
@@ -453,11 +494,13 @@ iframe {
 
 .media-details {
     background: rgba(0, 0, 0, 0.9);
-    padding: 20px;
+    padding: 25px;
     color: var(--text-color);
     display: none;
     width: 100%;
     overflow: hidden;
+    max-width: 1200px;
+    margin: 0 auto;
 }
 
 .media-details.active {
@@ -468,26 +511,26 @@ iframe {
     display: flex;
     flex-wrap: nowrap;
     align-items: flex-start;
-    max-width: 1200px;
+    max-width: 1000px;
     margin: 0 auto;
     justify-content: flex-start;
 }
 
 .media-details-poster {
     flex: 0 0 auto;
-    margin-right: 20px;
+    margin-right: 25px;
     position: relative;
-    width: 200px;
-    height: 300px;
+    width: 250px;
+    height: 375px;
     overflow: hidden;
-    border-radius: 8px;
+    border-radius: 10px;
 }
 
 .media-details-poster img {
     width: 100%;
     height: 100%;
     object-fit: cover;
-    border-radius: 8px;
+    border-radius: 10px;
     display: block;
     opacity: 0;
     transition: opacity 0.3s ease;
@@ -505,33 +548,33 @@ iframe {
 
 .media-details-content {
     flex: 1;
-    max-height: 750px;
+    max-height: 800px;
     overflow-y: auto;
-    padding-right: 10px;
+    padding-right: 15px;
 }
 
 .media-details-content .title {
-    font-size: 1.5rem;
-    margin-bottom: 10px;
+    font-size: 1.8rem;
+    margin-bottom: 15px;
 }
 
 .media-details-content .year-genre {
-    font-size: 0.8rem;
+    font-size: 0.9rem;
     color: #ccc;
-    margin-bottom: 10px;
+    margin-bottom: 15px;
 }
 
 .media-details-content .plot {
-    font-size: 0.8rem;
+    font-size: 0.9rem;
     color: #ccc;
 }
 
 .library-section, .media-slider-section, .search-section {
     position: relative;
     max-width: 100%;
-    padding: 0 10px;
-    margin-bottom: 28px;
-    margin-top: 24px;
+    padding: 0 15px;
+    margin-bottom: 35px;
+    margin-top: 30px;
 }
 
 .library-section, .search-section {
@@ -545,21 +588,21 @@ iframe {
 .search-container {
     position: relative;
     width: 100%;
-    max-width: 600px;
-    margin: 0 auto 20px;
+    max-width: 800px;
+    margin: 0 auto 25px;
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 15px;
 }
 
 .search-input {
     flex: 1;
-    padding: 10px 40px 10px 15px;
+    padding: 12px 45px 12px 20px;
     background: var(--card-bg);
     border: none;
-    border-radius: 20px;
+    border-radius: 25px;
     color: var(--text-color);
-    font-size: 1rem;
+    font-size: 1.1rem;
     outline: none;
 }
 
@@ -569,52 +612,66 @@ iframe {
 
 .search-icon {
     position: absolute;
-    right: 10px;
+    right: 15px;
     top: 50%;
     transform: translateY(-50%);
     color: #aaa;
-    font-size: 1.2rem;
+    font-size: 1.3rem;
 }
 
 .search-filter {
-    padding: 10px;
+    padding: 12px;
     background: var(--card-bg);
     border: none;
-    border-radius: 20px;
+    border-radius: 25px;
     color: var(--text-color);
     font-size: 1rem;
     outline: none;
     cursor: pointer;
+    width: 120px;
 }
 
 .search-results, .search-trending {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 15px;
     justify-content: center;
+    max-width: 1200px;
+    margin: 0 auto;
 }
 
 .slider-title {
     color: var(--primary-color);
-    font-size: 1.1rem;
-    margin: 0 -10px;
-    margin-bottom: 15px;
+    font-size: 1.3rem;
+    margin: 0 0 20px;
     font-weight: 700;
+    position: relative;
+    padding-bottom: 8px;
+}
+
+.slider-title::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 50px;
+    height: 3px;
+    background: var(--primary-color);
 }
 
 .empty-message-container {
     background: var(--selector-bg);
-    border-radius: 10px;
-    padding: 20px;
+    border-radius: 12px;
+    padding: 25px;
     margin: 0 auto;
-    margin-bottom: 20px;
+    margin-bottom: 25px;
     text-align: center;
-    max-width: 300px;
+    max-width: 400px;
 }
 
 .empty-message {
     color: #ccc;
-    font-size: 0.9rem;
+    font-size: 1rem;
     margin: 0;
 }
 
@@ -623,19 +680,19 @@ iframe {
     overflow-x: auto;
     scroll-behavior: smooth;
     scroll-snap-type: x mandatory;
-    gap: 10px;
-    margin: 0 -10px;
-    padding: 5px 0px;
+    gap: 15px;
+    margin: 0 -15px;
+    padding: 10px 0;
     scrollbar-width: none;
     -ms-overflow-style: none;
 }
 
 .poster-item {
     flex: 0 0 auto;
-    width: 140px;
-    height: 210px;
+    width: 160px;
+    height: 240px;
     scroll-snap-align: start;
-    border-radius: 6px;
+    border-radius: 8px;
     overflow: hidden;
     background: var(--card-bg);
     position: relative;
@@ -645,7 +702,7 @@ iframe {
     width: 100%;
     height: 100%;
     object-fit: cover;
-    border-radius: 6px;
+    border-radius: 8px;
     cursor: pointer;
     display: none;
 }
@@ -664,46 +721,46 @@ iframe {
     position: absolute;
     background: rgba(0, 0, 0, 0.7);
     color: #ffffff;
-    border-radius: 6px;
-    font-size: 14px;
+    border-radius: 8px;
+    font-size: 15px;
     font-weight: bold;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 3px;
+    gap: 4px;
     z-index: 10;
 }
 
 .rating-badge {
-    top: 5px;
-    right: 5px;
-    width: 40px;
-    height: 24px;
+    top: 8px;
+    right: 8px;
+    width: 45px;
+    height: 26px;
 }
 
 .delete-badge {
-    top: 5px;
-    left: 5px;
+    top: 8px;
+    left: 8px;
     color: #ff0000;
-    width: 30px;
-    height: 30px;
+    width: 32px;
+    height: 32px;
 }
 
 .episode-info {
-    bottom: 5px;
-    left: 5px;
-    font-size: 12px;
-    padding: 2px 6px;
+    bottom: 8px;
+    left: 8px;
+    font-size: 13px;
+    padding: 3px 8px;
     background: rgba(0, 0, 0, 0.8);
 }
 
 .rating-badge i {
     color: #ffd700;
-    font-size: 12px;
+    font-size: 13px;
 }
 
 .delete-badge i {
-    font-size: 14px;
+    font-size: 15px;
 }
 
 @keyframes skeleton-loading {
@@ -731,6 +788,7 @@ iframe {
         display: flex;
         z-index: 30;
         overflow-y: hidden;
+        box-shadow: none;
     }
 
     .sidebar-nav {
@@ -747,18 +805,6 @@ iframe {
         flex-direction: column;
         align-items: center;
         text-align: center;
-    }
-
-    .sidebar-nav li[data-section="home"] span {
-        content: "Home";
-    }
-
-    .sidebar-nav li[data-section="search"] span {
-        content: "Search";
-    }
-
-    .sidebar-nav li[data-section="library"] span {
-        content: "Library";
     }
 
     .sidebar-nav li i {
@@ -780,8 +826,13 @@ iframe {
         padding: 0px;
     }
 
+    .main-container {
+        max-width: 100%;
+    }
+
     .main-title {
         font-size: 1.8rem;
+        margin: 20px 0;
     }
 
     .preview-section {
@@ -835,6 +886,7 @@ iframe {
 
     .video-header {
         padding: 10px 5px;
+        max-width: 100%;
     }
 
     .back-btn {
@@ -850,10 +902,18 @@ iframe {
 
     .video-wrapper {
         margin: 0;
+        max-width: 100%;
+        border-radius: 0;
+    }
+
+    .video-error {
+        font-size: 0.8rem;
+        padding: 15px;
     }
 
     .selector-container {
         padding: 5px 10px;
+        max-width: 100%;
     }
 
     .selector-title {
@@ -903,6 +963,11 @@ iframe {
         font-size: 0.75rem;
     }
 
+    .media-details {
+        max-width: 100%;
+        padding: 15px;
+    }
+
     .media-details-poster {
         margin-right: 20px;
         width: 105px;
@@ -912,6 +977,7 @@ iframe {
     .media-details-container {
         flex-wrap: wrap;
         justify-content: flex-start;
+        max-width: 100%;
     }
 
     .media-details-content {
@@ -967,12 +1033,8 @@ iframe {
     }
 
     .search-container {
-        position: relative;
-        width: 100%;
         max-width: 600px;
         margin: 0 auto 20px;
-        display: flex;
-        align-items: center;
         gap: 10px;
     }
 
@@ -995,7 +1057,10 @@ iframe {
     }
 
     .search-results, .search-trending {
+        display: flex;
+        flex-wrap: wrap;
         justify-content: flex-start;
+        max-width: 100%;
     }
 
     .search-results .poster-item, .search-trending .poster-item {
@@ -1004,7 +1069,7 @@ iframe {
     }
 }
 
-@media (min-width: 400px) {         
+@media (min-width: 400px) and (max-width: 767px) {         
     .poster-item {
         width: 116px;
         height: 174px;
