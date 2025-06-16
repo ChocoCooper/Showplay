@@ -20,7 +20,7 @@
             <ul class="sidebar-nav">
                 <li class="active" data-section="home"><i class="fas fa-home"></i><span>Home</span></li>
                 <li data-section="search"><i class="fas fa-search"></i><span>Search</span></li>
-                <li data-section="library"><i class="fas fa-bookmark"></i><span>Library</span></li>
+                <li data-section="library"><i class="fas fa-bookmark"></i><span>Your Library</span></li>
             </ul>
         </nav>
 
@@ -31,7 +31,8 @@
                     <p class="media-title" id="videoMediaTitle"></p>
                 </div>
                 <div class="video-wrapper">
-                    <iframe id="videoFrame" src="" sandbox="allow-scripts allow-same-origin allow-fullscreen" allow="fullscreen" allowfullscreen aria-label="Video Player"></iframe>
+                    <iframe id="videoFrame" src="" sandbox="allow-scripts allow-fullscreen allow-presentation" allow="fullscreen" allowfullscreen aria-label="Video Player"></iframe>
+                    <div class="video-error" id="videoError" style="display: none;">Failed to load video. Please try another server or check your connection.</div>
                 </div>
                 <div class="selector-container" id="selectorContainer">
                     <div class="server-selector">
@@ -61,7 +62,7 @@
                 </div>
             </div>
 
-            <div class="container" id="homepage">
+            <div class="container main-container" id="homepage">
                 <h1 class="main-title">Showplay</h1>
 
                 <div class="search-section" id="searchSection">
