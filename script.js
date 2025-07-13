@@ -295,7 +295,7 @@ $(document).ready(function() {
             const isInWatchlist = state.watchlist.some(w => w.id === item.id);
             const previewItem = createElement(`
                 <div class="preview-item" data-index="${container.children().length}">
-                    <div class="preview-background skeleton" data-id="${item.id}" data-title="${title}" data-poster="${imageUrl}"></div>
+                    <img class="preview-background loaded" src="${backdropUrl}" alt="${title}">
                     <div class="preview-background-overlay"></div>
                     <div class="preview-overlay"></div>
                     <div class="preview-content">
@@ -315,8 +315,6 @@ $(document).ready(function() {
 
             try {
                 await loadImage(backdropUrl);
-                const img = $('<img class="preview-background loaded" />').attr('src', backdropUrl).attr('alt', title);
-                previewItem.find('.preview-background').replaceWith(img);
             } catch (error) {
                 previewItem.remove();
                 return;
@@ -340,18 +338,16 @@ $(document).ready(function() {
             container.append(previewItem);
         } else {
             const poster = createElement(`
-                <div class="poster-item skeleton">
+                <div class="poster-item">
                     <span class="rating-badge"><i class="fas fa-star"></i>${rating}</span>
                     ${isLibrary && item.season && item.episode ? `<span class="episode-info">S${item.season} E${item.episode}</span>` : ''}
                     ${isLibrary ? `<span class="delete-badge" aria-label="Delete ${title} from ${container.attr('id') === 'watchlistSlider' ? 'watchlist' : 'history'}"><i class="fas fa-trash"></i></span>` : ''}
+                    <img class="poster-img loaded" src="${imageUrl}" alt="${title}" role="button" aria-label="Play ${title}">
                 </div>
             `);
 
             try {
                 await loadImage(imageUrl);
-                const img = $('<img class="poster-img loaded" />').attr('src', imageUrl).attr('alt', title).attr('role', 'button').attr('aria-label', `Play ${title}`);
-                poster.append(img);
-                poster.removeClass('skeleton');
             } catch (error) {
                 poster.remove();
                 return;
@@ -538,7 +534,6 @@ $(document).ready(function() {
         selectors.videoFrame.attr('src', '');
         selectors.videoMediaTitle.text('');
         selectors.mediaPoster.attr('src', '').attr('alt', '').removeClass('loaded');
-        selectors.mediaDetailsPoster.addClass('skeleton');
         selectors.mediaRatingBadge.find('.rating-value').text('');
         selectors.mediaDetailsTitle.text('');
         selectors.mediaYearGenre.text('');
@@ -675,13 +670,10 @@ $(document).ready(function() {
             const genres = data.genres?.slice(0, 2).map(g => g.name.split(' ')[0]) || ['N/A'];
             const posterUrl = getImageUrl(data.poster_path) || poster;
             selectors.mediaPoster.attr('src', posterUrl).attr('alt', `${title} Poster`).removeClass('loaded');
-            selectors.mediaDetailsPoster.addClass('skeleton');
             loadImage(posterUrl).then(() => {
                 selectors.mediaPoster.addClass('loaded');
-                selectors.mediaDetailsPoster.removeClass('skeleton');
             }).catch(() => {
                 selectors.mediaPoster.attr('src', '').attr('alt', 'Poster unavailable');
-                selectors.mediaDetailsPoster.removeClass('skeleton');
             });
             selectors.mediaRatingBadge.find('.rating-value').text(data.vote_average?.toFixed(1) || rating || 'N/A');
             selectors.mediaDetailsTitle.text(title);
@@ -693,13 +685,10 @@ $(document).ready(function() {
             updateUI(cachedData);
         } else {
             selectors.mediaPoster.attr('src', poster || '').attr('alt', `${title} Poster`).removeClass('loaded');
-            selectors.mediaDetailsPoster.addClass('skeleton');
             loadImage(poster).then(() => {
                 selectors.mediaPoster.addClass('loaded');
-                selectors.mediaDetailsPoster.removeClass('skeleton');
             }).catch(() => {
                 selectors.mediaPoster.attr('src', '').attr('alt', 'Poster unavailable');
-                selectors.mediaDetailsPoster.removeClass('skeleton');
             });
             selectors.mediaRatingBadge.find('.rating-value').text(rating || 'N/A');
             selectors.mediaDetailsTitle.text(title);
@@ -938,7 +927,8 @@ $(document).ready(function() {
             let rating = stateData.rating || 'N/A';
             if (!stateData.title) {
                 try {
-                    const data = await fetchWithRetry(`https://api.themoviedb.org/3/movie/${id}?api_key=${config.apiKey}`);
+                    const data = await fetchWithRetry(`https://api.themo
+                    viedb.org/3/movie/${id}?api_key=${config.apiKey}`);
                     title = data.title || 'Unknown';
                     year = data.release_date?.split('-')[0] || 'N/A';
                     poster = getImageUrl(data.poster_path) || '';
