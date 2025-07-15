@@ -192,7 +192,7 @@ $(document).ready(function() {
     // Get Active Server
     const getActiveServer = () => $('.server-btn.active').data('server') || config.servers[0];
 
-    // Embed Video
+    // Embed Video with Ad Blocking
     const embedVideo = () => {
         if (!state.mediaId) {
             console.error('Cannot embed video: mediaId is not set');
@@ -215,7 +215,93 @@ $(document).ready(function() {
                 .replace('{season}', state.season)
                 .replace('{episode}', state.episode);
         }
-        selectors.videoFrame.attr('src', src);
+
+        // Add sandbox restrictions to block ads
+        selectors.videoFrame.attr('sandbox', 'allow-same-origin allow-scripts allow-popups');
+        
+        // Create a proxy URL or modify the src to block ads
+        const adBlockUrl = `${src}?noads=1&adblock=1`;
+        
+        // Set the iframe src with our ad-blocking modifications
+        selectors.videoFrame.attr('src', adBlockUrl);
+
+        // Add a mutation observer to detect and remove ad elements
+        const observer = new MutationObserver((mutations) => {
+            mutations.forEach((mutation) => {
+                if (mutation.addedNodes) {
+                    mutation.addedNodes.forEach((node) => {
+                        if (node.nodeType === 1) { // Element node
+                            if (node.classList.contains('ad-container') || 
+                                node.id.includes('ad') || 
+                                node.tagName === 'IFRAME') {
+                                node.remove();
+                            }
+                        }
+                    });
+                }
+            });
+        });
+
+        // Observe the iframe's document if we can access it
+        try {
+            const iframeDoc = selectors.videoFrame[0].contentDocument || selectors.videoFrame[0].contentWindow.document;
+            observer.observe(iframeDoc, {
+                childList: true,
+                subtree: true
+            });
+        } catch (e) {
+            console.log("Could not access iframe document due to CORS");
+        }
+
+        // Fallback: Inject a script to block ads from inside the iframe
+        const adBlockScript = `
+            // Block common ad classes and IDs
+            const adSelectors = [
+                '.ad', '.ads', '.ad-container', '.ad-wrapper',
+                '[id*="ad"]', '[id*="Ad"]', '[class*="ad"]',
+                'iframe[src*="ad"]', 'iframe[src*="doubleclick"]'
+            ];
+            
+            function blockAds() {
+                adSelectors.forEach(selector => {
+                    document.querySelectorAll(selector).forEach(el => el.remove());
+                });
+                
+                // Block ad network scripts
+                document.querySelectorAll('script').forEach(script => {
+                    if (script.src && (
+                        script.src.includes('doubleclick') ||
+                        script.src.includes('adservice') ||
+                        script.src.includes('adsense') ||
+                        script.src.includes('advertising')
+                    )) {
+                        script.remove();
+                    }
+                });
+            }
+            
+            // Run initially and then periodically
+            blockAds();
+            setInterval(blockAds, 1000);
+            
+            // Also block on new elements added
+            new MutationObserver(blockAds).observe(document, {
+                childList: true,
+                subtree: true
+            });
+        `;
+
+        // Try to inject the script
+        try {
+            const iframe = selectors.videoFrame[0];
+            if (iframe.contentWindow) {
+                const script = iframe.contentWindow.document.createElement('script');
+                script.textContent = adBlockScript;
+                iframe.contentWindow.document.head.appendChild(script);
+            }
+        } catch (e) {
+            console.log("Could not inject adblock script due to CORS");
+        }
     };
 
     // Fetch Media
@@ -927,8 +1013,7 @@ $(document).ready(function() {
             let rating = stateData.rating || 'N/A';
             if (!stateData.title) {
                 try {
-                    const data = await fetchWithRetry(`https://api.themo
-                    viedb.org/3/movie/${id}?api_key=${config.apiKey}`);
+                    const data = await fetchWithRetry(`https://api.themoviedb.org/3/movie/${id}?api_key=${config.apiKey}`);
                     title = data.title || 'Unknown';
                     year = data.release_date?.split('-')[0] || 'N/A';
                     poster = getImageUrl(data.poster_path) || '';
