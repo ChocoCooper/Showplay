@@ -299,7 +299,7 @@ body {
     background: #000;
     border-radius: 8px;
     margin: 0 auto;
-    max-width: 1000px;
+    max-width: 1200px;
 }
 
 iframe {
@@ -333,7 +333,7 @@ iframe {
     background: transparent;
     padding: 20px;
     display: none;
-    max-width: 1000px;
+    max-width: 1200px;
     margin: 0 auto;
 }
 
@@ -489,7 +489,7 @@ iframe {
     display: none;
     width: 100%;
     overflow: hidden;
-    max-width: 1000px;
+    max-width: 1200px;
     margin: 0 auto;
 }
 
