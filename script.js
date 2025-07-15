@@ -192,160 +192,30 @@ $(document).ready(function() {
     // Get Active Server
     const getActiveServer = () => $('.server-btn.active').data('server') || config.servers[0];
 
-    // Embed Video with Ad Blocking
-    // Embed Video with Ad Blocking
-const embedVideo = () => {
-    if (!state.mediaId) {
-        console.error('Cannot embed video: mediaId is not set');
-        selectors.videoFrame.attr('src', '');
-        return;
-    }
-    if (state.mediaType === 'tv' && (!state.season || !state.episode)) {
-        console.error('Cannot embed TV video: season or episode is not set');
-        selectors.videoFrame.attr('src', '');
-        return;
-    }
-
-    const server = getActiveServer();
-    let src;
-    if (state.mediaType === 'movie') {
-        src = server.moviePattern.replace('{tmdb_id}', state.mediaId);
-    } else {
-        src = server.tvPattern
-            .replace('{tmdb_id}', state.mediaId)
-            .replace('{season}', state.season)
-            .replace('{episode}', state.episode);
-    }
-
-    // Add ad-blocking parameters to the URL if supported
-    const adBlockUrl = `${src}${src.includes('?') ? '&' : '?'}noads=1&adblock=1&autoplay=1`;
-    
-    // Set the iframe src with our ad-blocking modifications
-    selectors.videoFrame.attr('src', adBlockUrl);
-
-    // Create a container div for the iframe to implement our own sandbox-like restrictions
-    const videoWrapper = selectors.videoFrame.parent();
-    videoWrapper.css({
-        'position': 'relative',
-        'overflow': 'hidden'
-    });
-
-    // Add overlay that can intercept clicks (helps prevent ad interactions)
-    const overlay = $(`<div class="video-overlay"></div>`).css({
-        'position': 'absolute',
-        'top': 0,
-        'left': 0,
-        'width': '100%',
-        'height': '100%',
-        'z-index': 10,
-        'pointer-events': 'none'
-    });
-    videoWrapper.append(overlay);
-
-    // Periodically check for and remove ads
-    const adCheckInterval = setInterval(() => {
-        try {
-            const iframe = selectors.videoFrame[0];
-            if (iframe.contentWindow) {
-                const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
-                
-                // Block common ad elements
-                const adSelectors = [
-                    '.ad', '.ads', '.ad-container', '.ad-wrapper',
-                    '[id*="ad"]', '[id*="Ad"]', '[class*="ad"]',
-                    'iframe', 'div[style*="ad"]'
-                ];
-                
-                adSelectors.forEach(selector => {
-                    iframeDoc.querySelectorAll(selector).forEach(el => {
-                        // Don't remove the video element itself
-                        if (!el.classList.contains('video-js') && 
-                            !el.classList.contains('vjs-tech') &&
-                            !el.classList.contains('vjs-poster')) {
-                            el.remove();
-                        }
-                    });
-                });
-
-                // Block ad network scripts
-                iframeDoc.querySelectorAll('script').forEach(script => {
-                    if (script.src && (
-                        script.src.includes('doubleclick') ||
-                        script.src.includes('adservice') ||
-                        script.src.includes('adsense') ||
-                        script.src.includes('advertising') ||
-                        script.src.includes('googletag') ||
-                        script.src.includes('pubads')
-                    )) {
-                        script.remove();
-                    }
-                });
-            }
-        } catch (e) {
-            // CORS restrictions may prevent access
-            console.log("Could not access iframe content due to CORS");
+    // Embed Video
+    const embedVideo = () => {
+        if (!state.mediaId) {
+            console.error('Cannot embed video: mediaId is not set');
+            selectors.videoFrame.attr('src', '');
+            return;
         }
-    }, 1000);
-
-    // Clear interval when navigating away
-    selectors.videoFrame.on('load', () => {
-        clearInterval(adCheckInterval);
-    });
-
-    // Alternative approach: Use a proxy service if available
-    // This would require server-side implementation
-    // selectors.videoFrame.attr('src', `/proxy?url=${encodeURIComponent(src)}`);
-};
-
-        // Fallback: Inject a script to block ads from inside the iframe
-        const adBlockScript = `
-            // Block common ad classes and IDs
-            const adSelectors = [
-                '.ad', '.ads', '.ad-container', '.ad-wrapper',
-                '[id*="ad"]', '[id*="Ad"]', '[class*="ad"]',
-                'iframe[src*="ad"]', 'iframe[src*="doubleclick"]'
-            ];
-            
-            function blockAds() {
-                adSelectors.forEach(selector => {
-                    document.querySelectorAll(selector).forEach(el => el.remove());
-                });
-                
-                // Block ad network scripts
-                document.querySelectorAll('script').forEach(script => {
-                    if (script.src && (
-                        script.src.includes('doubleclick') ||
-                        script.src.includes('adservice') ||
-                        script.src.includes('adsense') ||
-                        script.src.includes('advertising')
-                    )) {
-                        script.remove();
-                    }
-                });
-            }
-            
-            // Run initially and then periodically
-            blockAds();
-            setInterval(blockAds, 1000);
-            
-            // Also block on new elements added
-            new MutationObserver(blockAds).observe(document, {
-                childList: true,
-                subtree: true
-            });
-        `;
-
-        // Try to inject the script
-        try {
-            const iframe = selectors.videoFrame[0];
-            if (iframe.contentWindow) {
-                const script = iframe.contentWindow.document.createElement('script');
-                script.textContent = adBlockScript;
-                iframe.contentWindow.document.head.appendChild(script);
-            }
-        } catch (e) {
-            console.log("Could not inject adblock script due to CORS");
+        if (state.mediaType === 'tv' && (!state.season || !state.episode)) {
+            console.error('Cannot embed TV video: season or episode is not set');
+            selectors.videoFrame.attr('src', '');
+            return;
         }
+
+        const server = getActiveServer();
+        let src;
+        if (state.mediaType === 'movie') {
+            src = server.moviePattern.replace('{tmdb_id}', state.mediaId);
+        } else {
+            src = server.tvPattern
+                .replace('{tmdb_id}', state.mediaId)
+                .replace('{season}', state.season)
+                .replace('{episode}', state.episode);
+        }
+        selectors.videoFrame.attr('src', src);
     };
 
     // Fetch Media
@@ -1057,7 +927,8 @@ const embedVideo = () => {
             let rating = stateData.rating || 'N/A';
             if (!stateData.title) {
                 try {
-                    const data = await fetchWithRetry(`https://api.themoviedb.org/3/movie/${id}?api_key=${config.apiKey}`);
+                    const data = await fetchWithRetry(`https://api.themo
+                    viedb.org/3/movie/${id}?api_key=${config.apiKey}`);
                     title = data.title || 'Unknown';
                     year = data.release_date?.split('-')[0] || 'N/A';
                     poster = getImageUrl(data.poster_path) || '';
