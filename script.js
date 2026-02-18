@@ -1,88 +1,187 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
-    <title>ShowPlay | Ultimate Cinema</title>
-    <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;600;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
-    <link rel="stylesheet" href="styles.css">
-</head>
-<body>
+const TMDB_CONFIG = {
+    KEY: 'ea118e768e75a1fe3b53dc99c9e4de09',
+    BASE_URL: 'https://api.themoviedb.org/3',
+    IMG: 'https://image.tmdb.org/t/p/w500',
+    BACKDROP: 'https://image.tmdb.org/t/p/original'
+};
 
-    <div class="app-shell">
-        <nav class="side-nav">
-            <div class="nav-item active" data-section="home" tabindex="0"><i class="fas fa-home"></i><span>Home</span></div>
-            <div class="nav-item" data-section="search" tabindex="0"><i class="fas fa-search"></i><span>Search</span></div>
-            <div class="nav-item" data-section="library" tabindex="0"><i class="fas fa-bookmark"></i><span>Library</span></div>
-        </nav>
+const ShowPlay = {
+    state: {
+        watchlist: JSON.parse(localStorage.getItem('sp_watchlist')) || [],
+        history: JSON.parse(localStorage.getItem('sp_history')) || [],
+        activeMedia: null
+    },
 
-        <main class="main-view">
-            <div id="home-view">
-                <div class="hero-slider" id="hero-container"></div>
-                <div class="content-row">
-                    <h2 class="row-title">Trending Movies</h2>
-                    <div class="shelf" id="trending-movies"></div>
-                </div>
-                <div class="content-row">
-                    <h2 class="row-title">Popular Shows</h2>
-                    <div class="shelf" id="popular-shows"></div>
-                </div>
-                <div class="content-row">
-                    <h2 class="row-title">Anime Hits</h2>
-                    <div class="shelf" id="anime-shows"></div>
+    init() {
+        this.loadDiscovery();
+        this.bindEvents();
+        this.renderLibrary();
+    },
+
+    bindEvents() {
+        // Navigation
+        $('.nav-item[data-section]').on('click', (e) => {
+            const section = $(e.currentTarget).data('section');
+            this.navigate(section);
+        });
+
+        // Search
+        $('#main-search').on('input', this.debounce((e) => {
+            this.search(e.target.value);
+        }, 500));
+
+        // Close Player
+        $('#close-player').on('click', () => {
+            $('#player-layer').fadeOut();
+            $('#main-iframe').attr('src', '');
+        });
+
+        // Watchlist Toggle
+        $('#toggle-watchlist').on('click', () => this.toggleWatchlist());
+    },
+
+    async fetchTMDB(endpoint) {
+        const res = await fetch(`${TMDB_CONFIG.BASE_URL}/${endpoint}${endpoint.includes('?') ? '&' : '?'}api_key=${TMDB_CONFIG.KEY}`);
+        return await res.json();
+    },
+
+    async loadDiscovery() {
+        // Hero Slider
+        const trending = await this.fetchTMDB('trending/all/day');
+        const hero = trending.results[0];
+        $('#hero-container').html(`
+            <div class="hero-slide" style="background-image: url(${TMDB_CONFIG.BACKDROP}${hero.backdrop_path})">
+                <div class="hero-info">
+                    <h1>${hero.title || hero.name}</h1>
+                    <p>${hero.overview.slice(0, 180)}...</p>
+                    <button class="nav-item active" onclick="ShowPlay.openPlayer(${hero.id}, '${hero.media_type}')">
+                        <i class="fas fa-play"></i> Watch Now
+                    </button>
                 </div>
             </div>
+        `);
 
-            <div id="search-view" class="search-container">
-                <div class="search-bar">
-                    <i class="fas fa-search"></i>
-                    <input type="text" id="main-search" placeholder="Movies, TV shows or genres...">
-                </div>
-                <div class="shelf" id="search-results" style="flex-wrap: wrap; overflow: visible;"></div>
+        // Rows
+        this.renderRow('trending/movie/week', '#trending-movies', 'movie');
+        this.renderRow('trending/tv/week', '#popular-shows', 'tv');
+        this.renderRow('discover/tv?with_genres=16', '#anime-shows', 'tv');
+    },
+
+    async renderRow(endpoint, containerId, type) {
+        const data = await this.fetchTMDB(endpoint);
+        const container = $(containerId);
+        data.results.forEach(item => {
+            const card = this.createCard(item, type);
+            container.append(card);
+        });
+    },
+
+    createCard(item, type) {
+        const card = $(`
+            <div class="media-card" tabindex="0">
+                <img src="${TMDB_CONFIG.IMG}${item.poster_path}" loading="lazy">
             </div>
+        `);
+        card.on('click', () => this.openPlayer(item.id, type));
+        return card;
+    },
 
-            <div id="library-view" class="search-container">
-                <h2 class="row-title">My Watchlist</h2>
-                <div class="shelf" id="watchlist-grid" style="flex-wrap: wrap;"></div>
-                <h2 class="row-title" style="margin-top:40px">Watch History</h2>
-                <div class="shelf" id="history-grid" style="flex-wrap: wrap;"></div>
-            </div>
-        </main>
-    </div>
-
-    <div class="video-overlay" id="player-layer">
-        <div style="padding: 20px; display: flex; align-items: center; gap: 20px;">
-            <button class="nav-item" id="close-player"><i class="fas fa-arrow-left"></i> Back</button>
-            <h2 id="now-playing-title"></h2>
-        </div>
+    async openPlayer(id, type) {
+        const details = await this.fetchTMDB(`${type}/${id}`);
+        this.state.activeMedia = { ...details, media_type: type };
         
-        <div class="player-wrapper">
-            <iframe id="main-iframe" src="" allowfullscreen></iframe>
-        </div>
+        $('#now-playing-title').text(details.title || details.name);
+        $('#player-desc').text(details.overview);
+        $('#player-layer').fadeIn();
+        
+        if (type === 'tv') {
+            this.loadEpisodes(id, 1);
+            $('#tv-controls').show();
+        } else {
+            $('#tv-controls').hide();
+            this.updateIframe(id, type);
+        }
 
-        <div class="content-row">
-            <div style="display: flex; gap: 20px; margin-bottom: 20px;">
-                <button class="nav-item" id="toggle-watchlist"><i class="fas fa-plus"></i> Watchlist</button>
-                <select id="server-select" class="ep-btn" style="width: 200px;">
-                    <option value="https://vidsrc.cc/v2/embed/">Server 1 (VidSrc)</option>
-                    <option value="https://vidfast.pro/">Server 2 (Fast)</option>
-                </select>
-            </div>
-            
-            <div id="tv-controls" style="display: none;">
-                <h3 class="row-title">Episodes</h3>
-                <div class="episode-grid" id="episode-list"></div>
-            </div>
+        // Save History
+        this.addToHistory(details, type);
+        this.updateWatchlistBtn();
+    },
 
-            <div style="margin-top: 30px;">
-                <h3 class="row-title">Description</h3>
-                <p id="player-desc" style="color: var(--text-dim); line-height: 1.6;"></p>
-            </div>
-        </div>
-    </div>
+    async loadEpisodes(id, seasonNum) {
+        const data = await this.fetchTMDB(`tv/${id}/season/${seasonNum}`);
+        const container = $('#episode-list').empty();
+        data.episodes.forEach(ep => {
+            const btn = $(`<button class="ep-btn">Ep ${ep.episode_number}</button>`);
+            btn.on('click', () => {
+                $('.ep-btn').removeClass('active');
+                btn.addClass('active');
+                this.updateIframe(id, 'tv', seasonNum, ep.episode_number);
+            });
+            container.append(btn);
+        });
+        // Auto play first ep
+        container.find('button:first').click();
+    },
 
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="script.js"></script>
-</body>
-</html>
+    updateIframe(id, type, s=1, e=1) {
+        const baseUrl = $('#server-select').val();
+        const src = type === 'movie' ? `${baseUrl}movie/${id}` : `${baseUrl}tv/${id}/${s}/${e}`;
+        $('#main-iframe').attr('src', src);
+    },
+
+    navigate(view) {
+        $('.main-view > div').hide();
+        $('.nav-item').removeClass('active');
+        $(`.nav-item[data-section="${view}"]`).addClass('active');
+        $(`#${view}-view`).show();
+        if(view === 'library') this.renderLibrary();
+    },
+
+    async search(query) {
+        if(!query) return;
+        const data = await this.fetchTMDB(`search/multi?query=${encodeURIComponent(query)}`);
+        const container = $('#search-results').empty();
+        data.results.forEach(item => {
+            if(item.poster_path) container.append(this.createCard(item, item.media_type));
+        });
+    },
+
+    addToHistory(item, type) {
+        this.state.history = this.state.history.filter(i => i.id !== item.id);
+        this.state.history.unshift({ ...item, media_type: type });
+        localStorage.setItem('sp_history', JSON.stringify(this.state.history.slice(0, 20)));
+    },
+
+    toggleWatchlist() {
+        const item = this.state.activeMedia;
+        const index = this.state.watchlist.findIndex(i => i.id === item.id);
+        if(index > -1) this.state.watchlist.splice(index, 1);
+        else this.state.watchlist.push(item);
+        
+        localStorage.setItem('sp_watchlist', JSON.stringify(this.state.watchlist));
+        this.updateWatchlistBtn();
+    },
+
+    updateWatchlistBtn() {
+        const isIn = this.state.watchlist.some(i => i.id === this.state.activeMedia.id);
+        $('#toggle-watchlist').html(isIn ? '<i class="fas fa-check"></i> Added' : '<i class="fas fa-plus"></i> Watchlist');
+    },
+
+    renderLibrary() {
+        const wGrid = $('#watchlist-grid').empty();
+        this.state.watchlist.forEach(item => wGrid.append(this.createCard(item, item.media_type)));
+        
+        const hGrid = $('#history-grid').empty();
+        this.state.history.forEach(item => hGrid.append(this.createCard(item, item.media_type)));
+    },
+
+    debounce(fn, delay) {
+        let timeout;
+        return (...args) => {
+            clearTimeout(timeout);
+            timeout = setTimeout(() => fn.apply(this, args), delay);
+        };
+    }
+};
+
+$(document).ready(() => ShowPlay.init());
