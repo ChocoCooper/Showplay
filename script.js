@@ -228,10 +228,10 @@ $(document).ready(function() {
             url = `https://api.themoviedb.org/3/trending/tv/week?api_key=${config.apiKey}`;
             mediaType = 'tv';
         } else if (type === 'anime') {
-            url = `https://api.themoviedb.org/3/discover/tv?api_key=${config.apiKey}&with_genres=16&sort_by=popularity.desc&with_original_language=ja&vote_average.gte=8&vote_count.gte=1000`;
+            url = `https://api.themoviedb.org/3/discover/tv?api_key=${config.apiKey}&with_genres=16&sort_by=first_air_date.desc&with_original_language=ja&vote_average.gte=7&vote_count.gte=50`;
             mediaType = 'tv';
         } else if (type === 'kdrama') {
-            url = `https://api.themoviedb.org/3/discover/tv?api_key=${config.apiKey}&with_original_language=ko&sort_by=popularity.desc&vote_average.gte=7&vote_count.gte=100`;
+            url = `https://api.themoviedb.org/3/discover/tv?api_key=${config.apiKey}&with_original_language=ko&sort_by=first_air_date.desc&vote_average.gte=7&vote_count.gte=25`;
             mediaType = 'tv';
         } else if (type === 'trending') {
             url = `https://api.themoviedb.org/3/trending/all/day?api_key=${config.apiKey}`;
