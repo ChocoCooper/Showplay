@@ -236,7 +236,7 @@ $(document).ready(function() {
             url = `https://api.themoviedb.org/3/discover/tv?api_key=${config.apiKey}&with_original_language=ko&sort_by=first_air_date.desc&vote_average.gte=7&vote_count.gte=25`;
             mediaType = 'tv';
         } else if (type === 'cdrama') {
-            url = `https://api.themoviedb.org/3/discover/tv?api_key=${config.apiKey}&with_original_language=zh&sort_by=first_air_date.desc&vote_average.gte=6&vote_count.gte=10&without_genres=16,10759,10765,10768&without_keywords=15060,248451,289844`;
+            url = `https://api.themoviedb.org/3/discover/tv?api_key=${config.apiKey}&with_original_language=zh&sort_by=first_air_date.desc&vote_average.gte=5&vote_count.gte=10&without_genres=16,10759,10765,10768&without_keywords=15060,248451,289844,12995,195013,184656,234890`;
             mediaType = 'tv';
         } else if (type === 'trending') {
             url = `https://api.themoviedb.org/3/trending/all/day?api_key=${config.apiKey}`;
@@ -979,5 +979,6 @@ $(document).ready(function() {
     setupPreviewTouch();
     handleInitialLoad();
 });
+
 
 
