@@ -34,7 +34,7 @@
                     <p class="media-title" id="videoMediaTitle"></p>
                 </div>
                 <div class="video-wrapper">
-                    <iframe id="videoFrame" src="" allowfullscreen aria-label="Video Player" sandbox="allow-forms allow-scripts allow-same-origin"></iframe>
+                    <iframe id="videoFrame" src="" allowfullscreen aria-label="Video Player"></iframe>
                 </div>
                 <div class="selector-container" id="selectorContainer">
                     <div class="server-selector">
@@ -135,32 +135,25 @@
                         <div class="poster-slider" id="historySlider"></div>
                     </div>
                 </div>
-
-                <div class="livetv-section" id="livetvSection">
-                    <div class="livetv-container">
-                        <div class="livetv-player-section">
-                            <video id="liveTvPlayer" controls autoplay></video>
-                            <div id="livetvChannelTitle">Select a channel from the list...</div>
+            </div> <div class="livetv-section" id="livetvSection">
+                <div class="livetv-container">
+                    <div class="livetv-player-section">
+                        <video id="liveTvPlayer" controls autoplay></video>
+                        <div id="livetvChannelTitle">Select a channel from the list...</div>
+                    </div>
+                    <div class="livetv-sidebar">
+                        <div class="livetv-controls">
+                            <input type="text" id="livetvSearch" placeholder="Search channels...">
+                            <select id="livetvGroup">
+                                <option value="All">All Groups</option>
+                            </select>
                         </div>
-                        <div class="livetv-sidebar">
-                            <div class="livetv-controls">
-                                <input type="text" id="livetvSearch" placeholder="Search channels...">
-                                <select id="livetvGroup">
-                                    <option value="All">All Groups</option>
-                                </select>
-                            </div>
-                            <div class="livetv-playlist" id="livetvPlaylist">
-                                <p style="text-align: center; color: #888; padding: 20px;">Loading Live TV...</p>
-                            </div>
+                        <div class="livetv-playlist" id="livetvPlaylist">
+                            <p style="text-align: center; color: #888; padding: 20px;">Loading Live TV...</p>
                         </div>
                     </div>
                 </div>
-
-            </div>
-        </div>
-    </div>
-
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL" crossorigin="anonymous"></script>
+            </div> </div> </div> <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL" crossorigin="anonymous"></script>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js" integrity="sha256-/xUj+3OJU5yExlq6GSYGSHk7tPXikynS7ogEvDej/m4=" crossorigin="anonymous"></script>
     <script src="script.js"></script>
 </body>
