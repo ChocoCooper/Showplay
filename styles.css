@@ -92,15 +92,16 @@ body {
 
 .main-container {
     max-width: 1200px;
-    margin: 0 auto;
+}
+
+.main-title-container {
+    text-align: center;
 }
 
 .main-title {
-    font-family: 'Sevarothz', sans-serif;
-    font-size: 2.5rem;
-    color: var(--primary-color);
-    text-align: center;
-    margin: 25px 0 20px;
+    max-width: 100px;
+    height: auto;
+    display: inline-block;
 }
 
 .preview-section {
@@ -826,9 +827,12 @@ iframe {
         max-width: 100%;
     }
 
-    .main-title {
-        font-size: 1.8rem;
+    .main-title-container {
         margin: 20px 0;
+    }
+
+    .main-title {
+        max-width: 180px;
     }
 
     .preview-section {
@@ -1161,21 +1165,11 @@ iframe {
     }
     
     .main-title-container {
-        background: transparent;
-        width: 100%;
-        max-width: 1200px;
-        margin: 30px auto 25px;
-        display: flex;
-        justify-content: center;
-        align-items: center;
+        margin-bottom: 25px;
     }
 
     .main-title {
-        font-size: 2.5rem;
-        margin-top: 10px;
-        margin-bottom: 30px;
-        text-align: center;
-        width: auto;
+        max-width: 250px;
     }
     
     .media-title {
