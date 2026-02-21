@@ -63,8 +63,8 @@ $(document).ready(function() {
 
     // Configuration
     const config = {
-        apiKey: 'ea118e768e75a1fe3b53dc99c9e4de09', // TMDB API Key
-        omdbApiKey: '7397a243', // OMDb API Key
+        apiKey: 'ea118e768e75a1fe3b53dc99c9e4de09', 
+        omdbApiKey: '7397a243', 
         servers: [
             { 
                 name: 'Server 1', 
@@ -135,7 +135,7 @@ $(document).ready(function() {
         });
     };
 
-    // Utility: OMDb Cache (Protects the 1000/day limit)
+    // Utility: OMDb Cache 
     const omdbCache = {
         get(id) {
             const cached = localStorage.getItem(`imdbRating_${id}`);
@@ -153,6 +153,30 @@ $(document).ready(function() {
                 expires: Date.now() + 7 * 24 * 60 * 60 * 1000 // Cache for 7 days
             }));
         }
+    };
+
+    // Centralized OMDb Fetcher (Gets TMDB External IDs -> OMDb Rating)
+    const getOMDbRating = async (tmdbId, mediaType) => {
+        let cachedRating = omdbCache.get(tmdbId);
+        if (cachedRating) return cachedRating; // Return instantly if cached (even if it's 'N/A')
+
+        try {
+            const details = await fetchWithRetry(`https://api.themoviedb.org/3/${mediaType}/${tmdbId}?api_key=${config.apiKey}&append_to_response=external_ids`);
+            if (details && details.external_ids && details.external_ids.imdb_id) {
+                const omdbRes = await fetchWithRetry(`https://www.omdbapi.com/?apikey=${config.omdbApiKey}&i=${details.external_ids.imdb_id}`);
+                if (omdbRes && omdbRes.imdbRating && omdbRes.imdbRating !== 'N/A') {
+                    const rating = parseFloat(omdbRes.imdbRating).toFixed(1);
+                    omdbCache.set(tmdbId, rating);
+                    return rating;
+                }
+            }
+        } catch (error) {
+            console.error(`Failed to fetch OMDb rating for TMDB ID: ${tmdbId}`, error);
+        }
+
+        // If fetch fails or no rating exists, cache 'N/A' so we don't spam OMDb limits trying again
+        omdbCache.set(tmdbId, 'N/A');
+        return 'N/A';
     };
 
     // Utility: Media Cache
@@ -251,13 +275,13 @@ $(document).ready(function() {
             url = `https://api.themoviedb.org/3/trending/tv/week?api_key=${config.apiKey}`;
             mediaType = 'tv';
         } else if (type === 'anime') {
-            url = `https://api.themoviedb.org/3/discover/tv?api_key=${config.apiKey}&with_genres=16&sort_by=first_air_date.desc&with_original_language=ja&vote_average.gte=6&vote_count.gte=25&without_keywords=10121,9706,264386,280003,158718,281741`;
+            url = `https://api.themoviedb.org/3/discover/tv?api_key=${config.apiKey}&with_genres=16&sort_by=first_air_date.desc&with_original_language=ja&vote_count.gte=25&without_keywords=10121,9706,264386,280003,158718,281741`;
             mediaType = 'tv';
         } else if (type === 'kdrama') {
-            url = `https://api.themoviedb.org/3/discover/tv?api_key=${config.apiKey}&with_original_language=ko&sort_by=first_air_date.desc&vote_average.gte=6&vote_count.gte=25`;
+            url = `https://api.themoviedb.org/3/discover/tv?api_key=${config.apiKey}&with_original_language=ko&sort_by=first_air_date.desc&vote_count.gte=25`;
             mediaType = 'tv';
         } else if (type === 'cdrama') {
-            url = `https://api.themoviedb.org/3/discover/tv?api_key=${config.apiKey}&with_original_language=zh&sort_by=first_air_date.desc&vote_average.gte=6&vote_count.gte=10&without_genres=16,10759,10765,10768&without_keywords=15060,248451,289844,12995,195013,184656,234890`;
+            url = `https://api.themoviedb.org/3/discover/tv?api_key=${config.apiKey}&with_original_language=zh&sort_by=first_air_date.desc&vote_count.gte=10&without_genres=16,10759,10765,10768&without_keywords=15060,248451,289844,12995,195013,184656,234890`;
             mediaType = 'tv';
         } else if (type === 'trending') {
             url = `https://api.themoviedb.org/3/trending/all/day?api_key=${config.apiKey}`;
@@ -273,43 +297,36 @@ $(document).ready(function() {
                     console.error(`No results for ${type} on page ${page}`);
                     return items;
                 }
+                
+                // Removed the requirement for item.vote_average from filter since we use OMDb strictly
                 let validItems = data.results
-                    .filter(item => item.id && (item.title || item.name) && item.poster_path && item.vote_average)
+                    .filter(item => item.id && (item.title || item.name) && item.poster_path)
                     .map(item => ({ ...item, type: isPreview ? item.media_type : mediaType }));
                 
-                if (isPreview) {
-                    validItems = validItems.filter(m => m.backdrop_path);
-                    validItems = await Promise.all(validItems.map(async m => {
-                        const mediaType = m.media_type === 'movie' ? 'movie' : 'tv';
-                        // Fetch details & external IDs for OMDb
-                        const details = await fetchWithRetry(`https://api.themoviedb.org/3/${mediaType}/${m.id}?api_key=${config.apiKey}&append_to_response=external_ids`);
-                        
-                        // OMDb Fetch Logic
-                        let imdbRating = omdbCache.get(m.id);
-                        if (!imdbRating && details.external_ids && details.external_ids.imdb_id) {
-                            try {
-                                const omdbRes = await fetchWithRetry(`https://www.omdbapi.com/?apikey=${config.omdbApiKey}&i=${details.external_ids.imdb_id}`);
-                                if (omdbRes && omdbRes.imdbRating && omdbRes.imdbRating !== 'N/A') {
-                                    imdbRating = parseFloat(omdbRes.imdbRating).toFixed(1);
-                                    omdbCache.set(m.id, imdbRating);
-                                }
-                            } catch (e) {
-                                console.error('OMDb limit reached or fetch failed', e);
-                            }
-                        }
+                if (isPreview) validItems = validItems.filter(m => m.backdrop_path);
 
-                        const logo = await fetchWithRetry(`https://api.themoviedb.org/3/${mediaType}/${m.id}/images?api_key=${config.apiKey}&include_image_language=en,null`);
-                        const logoUrl = logo.logos?.find(l => l.file_path && l.iso_639_1 === 'en')?.file_path || logo.logos?.[0]?.file_path;
-                        
-                        return logoUrl ? { 
-                            ...m, 
-                            logo_path: `https://image.tmdb.org/t/p/original${logoUrl}`, 
-                            genres: details.genres,
-                            omdb_rating: imdbRating // Append IMDb rating
-                        } : null;
-                    }));
-                    validItems = validItems.filter(m => m);
-                }
+                // Fetch OMDb Rating for EVERY valid item
+                validItems = await Promise.all(validItems.map(async m => {
+                    const mType = m.media_type === 'movie' ? 'movie' : 'tv';
+                    const imdbRating = await getOMDbRating(m.id, mType);
+                    
+                    let logoUrl = null, genres = [];
+                    if (isPreview) {
+                        const details = await fetchWithRetry(`https://api.themoviedb.org/3/${mType}/${m.id}?api_key=${config.apiKey}`);
+                        genres = details.genres;
+                        const logo = await fetchWithRetry(`https://api.themoviedb.org/3/${mType}/${m.id}/images?api_key=${config.apiKey}&include_image_language=en,null`);
+                        logoUrl = logo.logos?.find(l => l.file_path && l.iso_639_1 === 'en')?.file_path || logo.logos?.[0]?.file_path;
+                    }
+
+                    return { 
+                        ...m, 
+                        media_type: mType,
+                        logo_path: logoUrl ? `https://image.tmdb.org/t/p/original${logoUrl}` : null, 
+                        genres: genres,
+                        omdb_rating: imdbRating 
+                    };
+                }));
+
                 items = items.concat(validItems);
                 page++;
             }
@@ -325,10 +342,8 @@ $(document).ready(function() {
         const title = item.title || item.name || 'Unknown';
         const posterPath = item.poster_path || item.poster || '';
         
-        // Use OMDb cache if it exists, fallback to fetchMedia omdb_rating, fallback to TMDB rating
-        let ratingVal = item.omdb_rating || omdbCache.get(item.id) || item.vote_average || item.rating || 0;
-        const rating = typeof ratingVal === 'number' ? ratingVal.toFixed(1) : ratingVal;
-        const finalRatingDisplay = rating === '0.0' || rating == 0 ? 'N/A' : rating;
+        // STRICTLY use OMDb rating
+        const finalRatingDisplay = item.omdb_rating || omdbCache.get(item.id) || item.rating || 'N/A';
 
         const imageUrl = getImageUrl(posterPath, 'poster');
         if (!imageUrl) return;
@@ -392,7 +407,7 @@ $(document).ready(function() {
         } else {
             const poster = createElement(`
                 <div class="poster-item">
-                    <span class="rating-badge" title="IMDb/TMDB Rating"><i class="fas fa-star"></i>${finalRatingDisplay}</span>
+                    <span class="rating-badge" title="IMDb Rating"><i class="fas fa-star"></i>${finalRatingDisplay}</span>
                     ${isLibrary && item.season && item.episode ? `<span class="episode-info">S${item.season} E${item.episode}</span>` : ''}
                     ${isLibrary ? `<span class="delete-badge" aria-label="Delete ${title} from ${container.attr('id') === 'watchlistSlider' ? 'watchlist' : 'history'}"><i class="fas fa-trash"></i></span>` : ''}
                     <img class="poster-img loaded" src="${imageUrl}" alt="${title}" role="button" aria-label="Play ${title}">
@@ -734,8 +749,8 @@ $(document).ready(function() {
                 selectors.mediaPoster.attr('src', '').attr('alt', 'Poster unavailable');
             });
             
-            // Prioritize OMDb rating if we fetched it, else fallback
-            const finalRating = data.imdb_rating || data.vote_average?.toFixed(1) || rating || 'N/A';
+            // STRICTLY use OMDb rating
+            const finalRating = data.imdb_rating || rating || 'N/A';
             selectors.mediaRatingBadge.find('.rating-value').text(finalRating);
             
             selectors.mediaDetailsTitle.text(title);
@@ -759,23 +774,11 @@ $(document).ready(function() {
         }
 
         try {
-            // Include external_ids to grab the IMDb ID instantly
-            const data = await fetchWithRetry(`https://api.themoviedb.org/3/${type}/${id}?api_key=${config.apiKey}&append_to_response=external_ids`);
+            const data = await fetchWithRetry(`https://api.themoviedb.org/3/${type}/${id}?api_key=${config.apiKey}`);
             
-            // Fetch OMDb Rating
-            let imdbRating = omdbCache.get(id);
-            if (!imdbRating && data.external_ids && data.external_ids.imdb_id) {
-                try {
-                    const omdbRes = await fetchWithRetry(`https://www.omdbapi.com/?apikey=${config.omdbApiKey}&i=${data.external_ids.imdb_id}`);
-                    if (omdbRes && omdbRes.imdbRating && omdbRes.imdbRating !== 'N/A') {
-                        imdbRating = parseFloat(omdbRes.imdbRating).toFixed(1);
-                        omdbCache.set(id, imdbRating);
-                    }
-                } catch (e) {
-                    console.error('Failed to fetch OMDb rating in details', e);
-                }
-            }
-            data.imdb_rating = imdbRating; // Attach it to the data payload
+            // Fetch strict OMDb Rating
+            const imdbRating = await getOMDbRating(id, type);
+            data.imdb_rating = imdbRating; 
             
             mediaCache.set(id, type, data);
             updateUI(data);
@@ -908,7 +911,7 @@ $(document).ready(function() {
     selectors.watchlistBtn.on('click', () => {
         const { id, type, title, poster, year } = selectors.videoPage.data();
         const rating = selectors.mediaRatingBadge.find('.rating-value').text() || '0';
-        toggleWatchlist({ id, type, title, poster, rating: parseFloat(rating), year });
+        toggleWatchlist({ id, type, title, poster, rating: rating, year });
         selectors.watchlistBtn.html(`Add to Watchlist <i class="${state.watchlist.some(w => w.id === id) ? 'fa-solid fa-check' : 'fas fa-plus'}"></i>`);
     });
 
@@ -934,10 +937,18 @@ $(document).ready(function() {
         const filter = selectors.searchFilter.val();
         try {
             const data = await fetchWithRetry(`https://api.themoviedb.org/3/search/multi?api_key=${config.apiKey}&query=${encodeURIComponent(query)}&page=1`);
-            const results = data.results?.filter(item => 
+            let results = data.results?.filter(item => 
                 (item.media_type === filter || filter === 'all') &&
-                item.id && (item.title || item.name) && item.poster_path && item.vote_average
+                item.id && (item.title || item.name) && item.poster_path
             ).slice(0, 20) || [];
+
+            // Fetch OMDb Rating for search results
+            results = await Promise.all(results.map(async m => {
+                const mType = m.media_type === 'movie' ? 'movie' : 'tv';
+                const imdbRating = await getOMDbRating(m.id, mType);
+                return { ...m, omdb_rating: imdbRating };
+            }));
+
             selectors.searchResults.empty();
             if (!results.length) {
                 selectors.searchResults.html('<p class="text-center" style="color: #ccc;">No results found.</p>');
@@ -1004,19 +1015,19 @@ $(document).ready(function() {
             let title = stateData.title || 'Unknown';
             let year = stateData.year || 'N/A';
             let poster = stateData.poster || '';
-            let rating = stateData.rating || 'N/A';
+            let rating = stateData.rating; 
             if (!stateData.title) {
                 try {
                     const data = await fetchWithRetry(`https://api.themoviedb.org/3/movie/${id}?api_key=${config.apiKey}`);
                     title = data.title || 'Unknown';
                     year = data.release_date?.split('-')[0] || 'N/A';
                     poster = getImageUrl(data.poster_path) || '';
-                    rating = data.vote_average?.toFixed(1) || 'N/A';
+                    rating = await getOMDbRating(id, 'movie'); // STRICT OMDb
                 } catch (error) {
                     console.error('Failed to fetch movie details for initial load', error);
                 }
             }
-            navigateToMedia(id, 'movie', title, poster, year, null, null, 'home', rating);
+            navigateToMedia(id, 'movie', title, poster, year, null, null, 'home', rating || 'N/A');
         } else if (tvMatch) {
             const id = tvMatch[1];
             const season = tvMatch[2] ? parseInt(tvMatch[2]) : null;
@@ -1025,19 +1036,19 @@ $(document).ready(function() {
             let title = stateData.title || 'Unknown';
             let year = stateData.year || 'N/A';
             let poster = stateData.poster || '';
-            let rating = stateData.rating || 'N/A';
+            let rating = stateData.rating;
             if (!stateData.title) {
                 try {
                     const data = await fetchWithRetry(`https://api.themoviedb.org/3/tv/${id}?api_key=${config.apiKey}`);
                     title = data.name || 'Unknown';
                     year = data.first_air_date?.split('-')[0] || 'N/A';
                     poster = getImageUrl(data.poster_path) || '';
-                    rating = data.vote_average?.toFixed(1) || 'N/A';
+                    rating = await getOMDbRating(id, 'tv'); // STRICT OMDb
                 } catch (error) {
                     console.error('Failed to fetch TV details for initial load', error);
                 }
             }
-            navigateToMedia(id, 'tv', title, poster, year, season, episode, 'home', rating);
+            navigateToMedia(id, 'tv', title, poster, year, season, episode, 'home', rating || 'N/A');
         } else {
             window.history.replaceState({ section: 'home' }, '', '/home');
             loadHomepage();
