@@ -13,6 +13,8 @@
     <link rel="apple-touch-icon" sizes="180x180" href="https://raw.githubusercontent.com/ChocoCooper/Showplay/refs/heads/main/apple-touch-icon.png">
     <link rel="manifest" href="https://raw.githubusercontent.com/ChocoCooper/Showplay/refs/heads/main/manifest.json">
     <link rel="stylesheet" href="styles.css">
+    
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 </head>
 <body>
     <div class="app-container">
@@ -21,6 +23,7 @@
                 <li class="active" data-section="home"><i class="fas fa-home"></i><span>Home</span></li>
                 <li data-section="search"><i class="fas fa-search"></i><span>Search</span></li>
                 <li data-section="library"><i class="fas fa-bookmark"></i><span>Library</span></li>
+                <li data-section="livetv"><i class="fas fa-tv"></i><span>Live TV</span></li>
             </ul>
         </nav>
 
@@ -132,6 +135,27 @@
                         <div class="poster-slider" id="historySlider"></div>
                     </div>
                 </div>
+
+                <div class="livetv-section" id="livetvSection">
+                    <div class="livetv-container">
+                        <div class="livetv-player-section">
+                            <video id="liveTvPlayer" controls autoplay></video>
+                            <div id="livetvChannelTitle">Select a channel from the list...</div>
+                        </div>
+                        <div class="livetv-sidebar">
+                            <div class="livetv-controls">
+                                <input type="text" id="livetvSearch" placeholder="Search channels...">
+                                <select id="livetvGroup">
+                                    <option value="All">All Groups</option>
+                                </select>
+                            </div>
+                            <div class="livetv-playlist" id="livetvPlaylist">
+                                <p style="text-align: center; color: #888; padding: 20px;">Loading Live TV...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
             </div>
         </div>
     </div>
@@ -141,4 +165,3 @@
     <script src="script.js"></script>
 </body>
 </html>
-
