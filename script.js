@@ -25,6 +25,7 @@ $(document).ready(function() {
         tvSlider: $('#tvSliderContainer'),
         animeSlider: $('#animeSliderContainer'),
         kdramaSlider: $('#kdramaSliderContainer'),
+        cdramaSlider: $('#cdramaSliderContainer'),
         librarySection: $('#librarySection'),
         watchlistSlider: $('#watchlistSlider'),
         historySlider: $('#historySlider'),
@@ -54,6 +55,7 @@ $(document).ready(function() {
             tv: false,
             anime: false,
             kdrama: false,
+            cdrama: false,
             search: false,
             library: false
         }
@@ -233,6 +235,9 @@ $(document).ready(function() {
         } else if (type === 'kdrama') {
             url = `https://api.themoviedb.org/3/discover/tv?api_key=${config.apiKey}&with_original_language=ko&sort_by=first_air_date.desc&vote_average.gte=7&vote_count.gte=25`;
             mediaType = 'tv';
+        } else if (type === 'cdrama') {
+            url = `https://api.themoviedb.org/3/discover/tv?api_key=${config.apiKey}&with_original_language=zh&sort_by=first_air_date.desc&vote_average.gte=7&vote_count.gte=25&without_genres=16,10759,10765,10768&without_keywords=15060,248451`;
+            mediaType = 'tv';
         } else if (type === 'trending') {
             url = `https://api.themoviedb.org/3/trending/all/day?api_key=${config.apiKey}`;
             mediaType = 'multi';
@@ -357,7 +362,7 @@ $(document).ready(function() {
                 const year = (item.year || item.release_date || item.first_air_date || '').split('-')[0] || 'N/A';
                 const section = container.closest('.search-section').length ? 'search' : 
                                container.closest('.library-section').length ? 'library' : 'home';
-                const mediaType = item.media_type || item.type || (container.closest('#animeSliderContainer, #kdramaSliderContainer').length ? 'tv' : 'movie');
+                const mediaType = item.media_type || item.type || (container.closest('#animeSliderContainer, #kdramaSliderContainer, #cdramaSliderContainer').length ? 'tv' : 'movie');
                 navigateToMedia(item.id, mediaType, title, imageUrl, year, item.season, item.episode, section, item.rating);
                 if (!isLibrary && mediaType === 'movie') {
                     addToHistory({ id: item.id, type: mediaType, title, poster: posterPath, year, season: item.season || null, episode: item.episode || null, rating: item.vote_average });
@@ -553,6 +558,7 @@ $(document).ready(function() {
         selectors.tvSlider.parent().show();
         selectors.animeSlider.parent().show();
         selectors.kdramaSlider.parent().show();
+        selectors.cdramaSlider.parent().show();
         selectors.librarySection.hide();
         selectors.searchSection.hide();
 
@@ -591,6 +597,7 @@ $(document).ready(function() {
         observeElement(selectors.tvSlider, () => loadSection(selectors.tvSlider, 'tv'));
         observeElement(selectors.animeSlider, () => loadSection(selectors.animeSlider, 'anime'));
         observeElement(selectors.kdramaSlider, () => loadSection(selectors.kdramaSlider, 'kdrama'));
+        observeElement(selectors.cdramaSlider, () => loadSection(selectors.cdramaSlider, 'cdrama'));
     };
 
     // Load Search Section
@@ -602,6 +609,7 @@ $(document).ready(function() {
         selectors.tvSlider.parent().hide();
         selectors.animeSlider.parent().hide();
         selectors.kdramaSlider.parent().hide();
+        selectors.cdramaSlider.parent().hide();
         selectors.librarySection.hide();
         selectors.searchSection.show();
         selectors.searchInput.focus();
@@ -740,6 +748,7 @@ $(document).ready(function() {
             selectors.tvSlider.parent().hide();
             selectors.animeSlider.parent().hide();
             selectors.kdramaSlider.parent().hide();
+            selectors.cdramaSlider.parent().hide();
             selectors.librarySection.show();
             selectors.searchSection.hide();
             stopPreviewSlideshow();
