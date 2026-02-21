@@ -63,7 +63,8 @@ $(document).ready(function() {
 
     // Configuration
     const config = {
-        apiKey: 'ea118e768e75a1fe3b53dc99c9e4de09', // Note: Should be moved to server-side for security
+        apiKey: 'ea118e768e75a1fe3b53dc99c9e4de09', // TMDB API Key
+        omdbApiKey: '7397a243', // OMDb API Key
         servers: [
             { 
                 name: 'Server 1', 
@@ -132,6 +133,26 @@ $(document).ready(function() {
             };
             tryLoad();
         });
+    };
+
+    // Utility: OMDb Cache (Protects the 1000/day limit)
+    const omdbCache = {
+        get(id) {
+            const cached = localStorage.getItem(`imdbRating_${id}`);
+            if (!cached) return null;
+            const parsed = JSON.parse(cached);
+            if (Date.now() > parsed.expires) {
+                localStorage.removeItem(`imdbRating_${id}`);
+                return null;
+            }
+            return parsed.rating;
+        },
+        set(id, rating) {
+            localStorage.setItem(`imdbRating_${id}`, JSON.stringify({
+                rating,
+                expires: Date.now() + 7 * 24 * 60 * 60 * 1000 // Cache for 7 days
+            }));
+        }
     };
 
     // Utility: Media Cache
@@ -260,10 +281,32 @@ $(document).ready(function() {
                     validItems = validItems.filter(m => m.backdrop_path);
                     validItems = await Promise.all(validItems.map(async m => {
                         const mediaType = m.media_type === 'movie' ? 'movie' : 'tv';
-                        const details = await fetchWithRetry(`https://api.themoviedb.org/3/${mediaType}/${m.id}?api_key=${config.apiKey}`);
+                        // Fetch details & external IDs for OMDb
+                        const details = await fetchWithRetry(`https://api.themoviedb.org/3/${mediaType}/${m.id}?api_key=${config.apiKey}&append_to_response=external_ids`);
+                        
+                        // OMDb Fetch Logic
+                        let imdbRating = omdbCache.get(m.id);
+                        if (!imdbRating && details.external_ids && details.external_ids.imdb_id) {
+                            try {
+                                const omdbRes = await fetchWithRetry(`https://www.omdbapi.com/?apikey=${config.omdbApiKey}&i=${details.external_ids.imdb_id}`);
+                                if (omdbRes && omdbRes.imdbRating && omdbRes.imdbRating !== 'N/A') {
+                                    imdbRating = parseFloat(omdbRes.imdbRating).toFixed(1);
+                                    omdbCache.set(m.id, imdbRating);
+                                }
+                            } catch (e) {
+                                console.error('OMDb limit reached or fetch failed', e);
+                            }
+                        }
+
                         const logo = await fetchWithRetry(`https://api.themoviedb.org/3/${mediaType}/${m.id}/images?api_key=${config.apiKey}&include_image_language=en,null`);
                         const logoUrl = logo.logos?.find(l => l.file_path && l.iso_639_1 === 'en')?.file_path || logo.logos?.[0]?.file_path;
-                        return logoUrl ? { ...m, logo_path: `https://image.tmdb.org/t/p/original${logoUrl}`, genres: details.genres } : null;
+                        
+                        return logoUrl ? { 
+                            ...m, 
+                            logo_path: `https://image.tmdb.org/t/p/original${logoUrl}`, 
+                            genres: details.genres,
+                            omdb_rating: imdbRating // Append IMDb rating
+                        } : null;
                     }));
                     validItems = validItems.filter(m => m);
                 }
@@ -281,7 +324,12 @@ $(document).ready(function() {
     const renderItem = async (item, container, renderType = 'slider', isLibrary = false) => {
         const title = item.title || item.name || 'Unknown';
         const posterPath = item.poster_path || item.poster || '';
-        const rating = (item.vote_average || item.rating || 0).toFixed(1) || 'N/A';
+        
+        // Use OMDb cache if it exists, fallback to fetchMedia omdb_rating, fallback to TMDB rating
+        let ratingVal = item.omdb_rating || omdbCache.get(item.id) || item.vote_average || item.rating || 0;
+        const rating = typeof ratingVal === 'number' ? ratingVal.toFixed(1) : ratingVal;
+        const finalRatingDisplay = rating === '0.0' || rating == 0 ? 'N/A' : rating;
+
         const imageUrl = getImageUrl(posterPath, 'poster');
         if (!imageUrl) return;
 
@@ -307,7 +355,7 @@ $(document).ready(function() {
                         <img class="preview-title" src="${item.logo_path}" alt="${title}">
                         <div class="preview-meta">
                             <span class="media-type">${mediaType} • ${genres.join(', ')}</span>
-                            <span class="rating"><i class="fas fa-star"></i>${rating}</span>
+                            <span class="rating"><i class="fas fa-star" title="IMDb Rating"></i>${finalRatingDisplay}</span>
                         </div>
                         <p class="preview-description">${item.overview || 'No description available.'}</p>
                         <div class="preview-buttons">
@@ -328,14 +376,14 @@ $(document).ready(function() {
             attachClickHandler(previewItem.find('.play-btn'), e => {
                 e.preventDefault();
                 const year = (item.release_date || item.first_air_date || '').split('-')[0];
-                navigateToMedia(item.id, item.media_type, title, imageUrl, year, null, null, 'home', item.vote_average);
+                navigateToMedia(item.id, item.media_type, title, imageUrl, year, null, null, 'home', finalRatingDisplay);
                 if (item.media_type === 'movie') {
-                    addToHistory({ id: item.id, type: 'movie', title, poster: posterPath, year, season: null, episode: null, rating: item.vote_average });
+                    addToHistory({ id: item.id, type: 'movie', title, poster: posterPath, year, season: null, episode: null, rating: finalRatingDisplay });
                 }
             });
 
             attachClickHandler(previewItem.find('.add-btn'), () => {
-                toggleWatchlist({ id: item.id, type: item.media_type, title, poster: posterPath, rating: item.vote_average });
+                toggleWatchlist({ id: item.id, type: item.media_type, title, poster: posterPath, rating: finalRatingDisplay });
                 const isInWatchlist = state.watchlist.some(w => w.id === item.id);
                 previewItem.find('.add-btn i').attr('class', isInWatchlist ? 'fa-solid fa-check' : 'fas fa-plus');
             });
@@ -344,7 +392,7 @@ $(document).ready(function() {
         } else {
             const poster = createElement(`
                 <div class="poster-item">
-                    <span class="rating-badge"><i class="fas fa-star"></i>${rating}</span>
+                    <span class="rating-badge" title="IMDb/TMDB Rating"><i class="fas fa-star"></i>${finalRatingDisplay}</span>
                     ${isLibrary && item.season && item.episode ? `<span class="episode-info">S${item.season} E${item.episode}</span>` : ''}
                     ${isLibrary ? `<span class="delete-badge" aria-label="Delete ${title} from ${container.attr('id') === 'watchlistSlider' ? 'watchlist' : 'history'}"><i class="fas fa-trash"></i></span>` : ''}
                     <img class="poster-img loaded" src="${imageUrl}" alt="${title}" role="button" aria-label="Play ${title}">
@@ -363,9 +411,9 @@ $(document).ready(function() {
                 const section = container.closest('.search-section').length ? 'search' : 
                                container.closest('.library-section').length ? 'library' : 'home';
                 const mediaType = item.media_type || item.type || (container.closest('#animeSliderContainer, #kdramaSliderContainer, #cdramaSliderContainer').length ? 'tv' : 'movie');
-                navigateToMedia(item.id, mediaType, title, imageUrl, year, item.season, item.episode, section, item.rating);
+                navigateToMedia(item.id, mediaType, title, imageUrl, year, item.season, item.episode, section, finalRatingDisplay);
                 if (!isLibrary && mediaType === 'movie') {
-                    addToHistory({ id: item.id, type: mediaType, title, poster: posterPath, year, season: item.season || null, episode: item.episode || null, rating: item.vote_average });
+                    addToHistory({ id: item.id, type: mediaType, title, poster: posterPath, year, season: item.season || null, episode: item.episode || null, rating: finalRatingDisplay });
                 }
             });
 
@@ -500,6 +548,8 @@ $(document).ready(function() {
                         state.episode = ep.episode_number;
                         embedVideo();
                         selectors.downloadBtn.attr('href', `https://dl.vidsrc.vip/tv/${state.mediaId}/${state.season}/${state.episode}`);
+                        
+                        const currentRating = selectors.mediaRatingBadge.find('.rating-value').text() || 'N/A';
                         addToHistory({ 
                             id: state.mediaId, 
                             type: state.mediaType, 
@@ -508,10 +558,10 @@ $(document).ready(function() {
                             year: selectors.videoPage.data('year'), 
                             season: state.season, 
                             episode: state.episode,
-                            rating: data.vote_average
+                            rating: currentRating
                         });
                         window.history.replaceState(
-                            { id: state.mediaId, type: state.mediaType, title: selectors.videoPage.data('title'), poster: selectors.videoPage.data('poster'), year: selectors.videoPage.data('year'), season: state.season, episode: state.episode, section: state.previousSection, rating: data.vote_average },
+                            { id: state.mediaId, type: state.mediaType, title: selectors.videoPage.data('title'), poster: selectors.videoPage.data('poster'), year: selectors.videoPage.data('year'), season: state.season, episode: state.episode, section: state.previousSection, rating: currentRating },
                             '',
                             `/tv/${state.mediaId}/${state.season}/${state.episode}`
                         );
@@ -683,7 +733,11 @@ $(document).ready(function() {
             }).catch(() => {
                 selectors.mediaPoster.attr('src', '').attr('alt', 'Poster unavailable');
             });
-            selectors.mediaRatingBadge.find('.rating-value').text(data.vote_average?.toFixed(1) || rating || 'N/A');
+            
+            // Prioritize OMDb rating if we fetched it, else fallback
+            const finalRating = data.imdb_rating || data.vote_average?.toFixed(1) || rating || 'N/A';
+            selectors.mediaRatingBadge.find('.rating-value').text(finalRating);
+            
             selectors.mediaDetailsTitle.text(title);
             selectors.mediaYearGenre.text(`${type.toUpperCase()} • ${year || 'N/A'} • ${genres.join(', ')}`);
             selectors.mediaPlot.text(data.overview || 'No description available.');
@@ -705,7 +759,24 @@ $(document).ready(function() {
         }
 
         try {
-            const data = await fetchWithRetry(`https://api.themoviedb.org/3/${type}/${id}?api_key=${config.apiKey}`);
+            // Include external_ids to grab the IMDb ID instantly
+            const data = await fetchWithRetry(`https://api.themoviedb.org/3/${type}/${id}?api_key=${config.apiKey}&append_to_response=external_ids`);
+            
+            // Fetch OMDb Rating
+            let imdbRating = omdbCache.get(id);
+            if (!imdbRating && data.external_ids && data.external_ids.imdb_id) {
+                try {
+                    const omdbRes = await fetchWithRetry(`https://www.omdbapi.com/?apikey=${config.omdbApiKey}&i=${data.external_ids.imdb_id}`);
+                    if (omdbRes && omdbRes.imdbRating && omdbRes.imdbRating !== 'N/A') {
+                        imdbRating = parseFloat(omdbRes.imdbRating).toFixed(1);
+                        omdbCache.set(id, imdbRating);
+                    }
+                } catch (e) {
+                    console.error('Failed to fetch OMDb rating in details', e);
+                }
+            }
+            data.imdb_rating = imdbRating; // Attach it to the data payload
+            
             mediaCache.set(id, type, data);
             updateUI(data);
         } catch (error) {
@@ -936,8 +1007,7 @@ $(document).ready(function() {
             let rating = stateData.rating || 'N/A';
             if (!stateData.title) {
                 try {
-                    const data = await fetchWithRetry(`https://api.themo
-                    viedb.org/3/movie/${id}?api_key=${config.apiKey}`);
+                    const data = await fetchWithRetry(`https://api.themoviedb.org/3/movie/${id}?api_key=${config.apiKey}`);
                     title = data.title || 'Unknown';
                     year = data.release_date?.split('-')[0] || 'N/A';
                     poster = getImageUrl(data.poster_path) || '';
@@ -979,16 +1049,3 @@ $(document).ready(function() {
     setupPreviewTouch();
     handleInitialLoad();
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
