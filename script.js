@@ -34,17 +34,10 @@ $(document).ready(function() {
         searchFilter: $('#searchFilter'),
         searchResults: $('#searchResults'),
         searchTrending: $('#searchTrending'),
-        sidebarNavItems: $('.sidebar-nav li'),
-        // Live TV selectors (NEW)
-        liveTvSection: $('#livetvSection'),
-        liveTvPlayer: $('#liveTvPlayer')[0],
-        liveTvChannelTitle: $('#livetvChannelTitle'),
-        liveTvPlaylist: $('#livetvPlaylist'),
-        liveTvSearch: $('#livetvSearch'),
-        liveTvGroup: $('#livetvGroup')
+        sidebarNavItems: $('.sidebar-nav li')
     };
 
-    // Application State (ADDED liveTv state)
+    // Application State
     const state = {
         mediaType: 'movie',
         mediaId: null,
@@ -65,19 +58,12 @@ $(document).ready(function() {
             cdrama: false,
             search: false,
             library: false
-        },
-        // Live TV state (NEW)
-        liveTv: {
-            channels: [],
-            filteredChannels: [],
-            player: null,
-            activeChannel: null
         }
     };
 
-    // Configuration (ADDED proxyWorkerUrl and m3uPlaylistUrl)
+    // Configuration
     const config = {
-        apiKey: 'ea118e768e75a1fe3b53dc99c9e4de09',
+        apiKey: 'ea118e768e75a1fe3b53dc99c9e4de09', // Note: Should be moved to server-side for security
         servers: [
             { 
                 name: 'Server 1', 
@@ -97,14 +83,9 @@ $(document).ready(function() {
                 moviePattern: 'https://vidsrc.cc/v2/embed/movie/{tmdb_id}', 
                 tvPattern: 'https://vidsrc.cc/v2/embed/tv/{tmdb_id}/{season}/{episode}' 
             }
-        ],
-        // Cloudflare Worker URL (ADD THIS - replace with your actual Worker URL)
-        proxyWorkerUrl: 'https://iptv.s16.workers.dev/',
-        // Hardcoded M3U playlist URL (ADD THIS - replace with your actual M3U URL)
-        m3uPlaylistUrl: 'https://raw.githubusercontent.com/Arunjunan20/My-IPTV/refs/heads/main/jiostar.m3u'
+        ]
     };
 
-    // ============= EXISTING UTILITY FUNCTIONS (ALL PRESERVED) =============
     // Utility: Fetch with Retry
     const fetchWithRetry = async (url, retries = 3, delay = 500) => {
         for (let i = 0; i < retries; i++) {
@@ -194,7 +175,6 @@ $(document).ready(function() {
         observer.observe(element[0]);
     };
 
-    // ============= EXISTING FUNCTIONS (ALL PRESERVED) =============
     // Initialize Servers
     const initializeServers = () => {
         selectors.serverGrid.empty();
@@ -240,7 +220,7 @@ $(document).ready(function() {
         selectors.videoFrame.attr('src', src);
     };
 
-    // Fetch Media (COMPLETE ORIGINAL FUNCTION)
+    // Fetch Media
     const fetchMedia = async (type, isPreview = false) => {
         let url, mediaType;
         if (type === 'movie') {
@@ -297,7 +277,7 @@ $(document).ready(function() {
         }
     };
 
-    // Render Item (COMPLETE ORIGINAL FUNCTION)
+    // Render Item
     const renderItem = async (item, container, renderType = 'slider', isLibrary = false) => {
         const title = item.title || item.name || 'Unknown';
         const posterPath = item.poster_path || item.poster || '';
@@ -573,7 +553,6 @@ $(document).ready(function() {
     const loadHomepage = async () => {
         selectors.homepage.show();
         selectors.videoPage.hide();
-        selectors.liveTvSection.hide(); // Hide Live TV
         selectors.previewSection.show();
         selectors.moviesSlider.parent().show();
         selectors.tvSlider.parent().show();
@@ -625,7 +604,6 @@ $(document).ready(function() {
     const loadSearchSection = () => {
         selectors.homepage.show();
         selectors.videoPage.hide();
-        selectors.liveTvSection.hide(); // Hide Live TV
         selectors.previewSection.hide();
         selectors.moviesSlider.parent().hide();
         selectors.tvSlider.parent().hide();
@@ -689,7 +667,6 @@ $(document).ready(function() {
 
         selectors.videoPage.show();
         selectors.homepage.hide();
-        selectors.liveTvSection.hide(); // Hide Live TV
         selectors.videoMediaTitle.show().text(`${title}\n(${year || 'N/A'})`);
         selectors.selectorContainer.show();
         selectors.mediaDetails.show();
@@ -753,329 +730,31 @@ $(document).ready(function() {
         }
     };
 
-    // ============= NEW LIVE TV FUNCTIONS (ADDED) =============
-    
-    // Initialize Shaka Player
-    const initShakaPlayer = () => {
-        // Check if the browser supports Shaka Player
-        if (!shaka.Player.isBrowserSupported()) {
-            console.error('Browser not supported for Shaka Player');
-            selectors.liveTvPlaylist.html('<p class="empty-message">Your browser does not support Shaka Player.</p>');
-            return;
+    // Navigate to Section
+    const navigateToSection = section => {
+        selectors.sidebarNavItems.removeClass('active');
+        selectors.sidebarNavItems.filter(`[data-section="${section}"]`).addClass('active');
+        
+        if (section === 'home') {
+            loadHomepage();
+        } else if (section === 'search') {
+            loadSearchSection();
+            window.history.replaceState({ section: 'search' }, '', '/search');
+        } else if (section === 'library') {
+            selectors.homepage.show();
+            selectors.videoPage.hide();
+            selectors.previewSection.hide();
+            selectors.moviesSlider.parent().hide();
+            selectors.tvSlider.parent().hide();
+            selectors.animeSlider.parent().hide();
+            selectors.kdramaSlider.parent().hide();
+            selectors.cdramaSlider.parent().hide();
+            selectors.librarySection.show();
+            selectors.searchSection.hide();
+            stopPreviewSlideshow();
+            loadLibrary();
+            window.history.replaceState({ section: 'library' }, '', '/library');
         }
-
-        // Create a player instance
-        state.liveTv.player = new shaka.Player(selectors.liveTvPlayer);
-        
-        // Attach error handler
-        state.liveTv.player.addEventListener('error', onShakaError);
-        
-        // Configure the player for optimal live streaming
-        state.liveTv.player.configure({
-            manifest: {
-                dash: {
-                    clockSyncUri: undefined
-                }
-            },
-            streaming: {
-                bufferingGoal: 30,
-                rebufferingGoal: 15,
-                bufferBehind: 60,
-                ignoreTextStreamFailures: true,
-                alwaysStreamText: false,
-                startAtSegmentBoundary: true,
-                gapDetection: true,
-                smallGapLimit: 0.5,
-                jumpLargeGaps: true,
-                durationBackoff: 1
-            },
-            preferNativeHls: true,
-            preferNativeDash: true
-        });
-
-        console.log('Shaka Player initialized');
-    };
-
-    // Shaka Player error handler
-    const onShakaError = (event) => {
-        console.error('Shaka Player error:', event.detail);
-        selectors.liveTvChannelTitle.text(`Error playing channel: ${event.detail.message || 'Unknown error'}`);
-    };
-
-    // Load M3U playlist and parse channels
-    const loadLiveTvChannels = async () => {
-        try {
-            // Fetch the M3U playlist through the Cloudflare Worker to bypass CORS
-            const proxyUrl = `${config.proxyWorkerUrl}?url=${encodeURIComponent(config.m3uPlaylistUrl)}`;
-            const response = await fetch(proxyUrl);
-            
-            if (!response.ok) {
-                throw new Error(`Failed to load playlist: ${response.status}`);
-            }
-            
-            const m3uText = await response.text();
-            
-            // Parse the M3U playlist
-            const channels = parseM3U(m3uText);
-            
-            if (channels.length === 0) {
-                selectors.liveTvPlaylist.html('<p class="empty-message">No channels found in playlist.</p>');
-                return;
-            }
-            
-            state.liveTv.channels = channels;
-            state.liveTv.filteredChannels = channels;
-            
-            // Populate group filter dropdown
-            const groups = [...new Set(channels.map(c => c.group).filter(Boolean))];
-            selectors.liveTvGroup.empty().append('<option value="All">All Groups</option>');
-            groups.forEach(group => {
-                selectors.liveTvGroup.append(`<option value="${group}">${group}</option>`);
-            });
-            
-            // Render the channel list
-            renderChannelList(channels);
-            
-            // Auto-select first channel
-            if (channels.length > 0) {
-                playChannel(channels[0]);
-            }
-            
-        } catch (error) {
-            console.error('Failed to load Live TV channels:', error);
-            selectors.liveTvPlaylist.html('<p class="empty-message">Failed to load channels. Please try again later.</p>');
-        }
-    };
-
-    // Parse M3U playlist content
-    const parseM3U = (m3uText) => {
-        const lines = m3uText.split('\n');
-        const channels = [];
-        let currentExtInf = null;
-        let currentTvgLogo = null;
-        let currentGroup = null;
-        let currentTvgId = null;
-        let currentKodiProps = [];
-        let currentHttpHeaders = {};
-
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i].trim();
-            
-            if (line.startsWith('#EXTINF:')) {
-                // Parse EXTINF line
-                const extinfMatch = line.match(/#EXTINF:(-?\d+)(.*?),(.*)/);
-                if (extinfMatch) {
-                    const duration = extinfMatch[1];
-                    const attributes = extinfMatch[2];
-                    const name = extinfMatch[3].trim();
-                    
-                    // Parse tvg attributes
-                    const tvgLogoMatch = attributes.match(/tvg-logo="([^"]*)"/);
-                    const tvgIdMatch = attributes.match(/tvg-id="([^"]*)"/);
-                    const groupMatch = attributes.match(/group-title="([^"]*)"/);
-                    
-                    currentTvgLogo = tvgLogoMatch ? tvgLogoMatch[1] : null;
-                    currentTvgId = tvgIdMatch ? tvgIdMatch[1] : null;
-                    currentGroup = groupMatch ? groupMatch[1] : 'Ungrouped';
-                    currentExtInf = { duration, name };
-                }
-            } else if (line.startsWith('#KODIPROP:')) {
-                // Parse KODIPROP lines (for DRM)
-                const propMatch = line.match(/#KODIPROP:(.*?)=(.*)/);
-                if (propMatch) {
-                    currentKodiProps.push({ key: propMatch[1].trim(), value: propMatch[2].trim() });
-                }
-            } else if (line.startsWith('#EXTVLCOPT:')) {
-                // Parse EXTVLCOPT lines (for user agent)
-                const optMatch = line.match(/#EXTVLCOPT:(.*)/);
-                if (optMatch) {
-                    const opt = optMatch[1].trim();
-                    if (opt.includes('http-user-agent=')) {
-                        const ua = opt.split('=')[1];
-                        currentHttpHeaders['User-Agent'] = ua;
-                    }
-                }
-            } else if (line.startsWith('#EXTHTTP:')) {
-                // Parse EXTHTTP lines (for cookies and headers)
-                const httpMatch = line.match(/#EXTHTTP:\s*(.*)/);
-                if (httpMatch) {
-                    try {
-                        const headers = JSON.parse(httpMatch[1]);
-                        currentHttpHeaders = { ...currentHttpHeaders, ...headers };
-                    } catch (e) {
-                        console.warn('Failed to parse EXTHTTP:', e);
-                    }
-                }
-            } else if (line && !line.startsWith('#')) {
-                // This is a URL line
-                if (currentExtInf) {
-                    channels.push({
-                        name: currentExtInf.name,
-                        duration: currentExtInf.duration,
-                        url: line,
-                        tvgLogo: currentTvgLogo,
-                        tvgId: currentTvgId,
-                        group: currentGroup || 'Ungrouped',
-                        kodiProps: currentKodiProps,
-                        httpHeaders: currentHttpHeaders
-                    });
-                    
-                    // Reset for next channel
-                    currentExtInf = null;
-                    currentTvgLogo = null;
-                    currentGroup = null;
-                    currentTvgId = null;
-                    currentKodiProps = [];
-                    currentHttpHeaders = {};
-                }
-            }
-        }
-        
-        return channels;
-    };
-
-    // Render channel list
-    const renderChannelList = (channels) => {
-        selectors.liveTvPlaylist.empty();
-        
-        if (channels.length === 0) {
-            selectors.liveTvPlaylist.html('<p class="empty-message">No channels match your search.</p>');
-            return;
-        }
-        
-        channels.forEach(channel => {
-            const channelItem = $(`
-                <div class="livetv-channel-item" data-url="${channel.url}" data-channel='${JSON.stringify(channel)}'>
-                    <img class="livetv-channel-logo" src="${channel.tvgLogo || 'https://via.placeholder.com/50x35?text=TV'}" alt="${channel.name}" onerror="this.src='https://via.placeholder.com/50x35?text=TV'">
-                    <span class="livetv-channel-name">${channel.name}</span>
-                </div>
-            `);
-            
-            channelItem.on('click', () => {
-                $('.livetv-channel-item').removeClass('active');
-                channelItem.addClass('active');
-                playChannel(channel);
-            });
-            
-            selectors.liveTvPlaylist.append(channelItem);
-        });
-    };
-
-    // Play channel using Shaka Player
-    const playChannel = async (channel) => {
-        if (!state.liveTv.player) {
-            initShakaPlayer();
-        }
-        
-        state.liveTv.activeChannel = channel;
-        selectors.liveTvChannelTitle.text(channel.name);
-        
-        // Stop current playback
-        state.liveTv.player.unload();
-        
-        try {
-            // Build headers object
-            const headers = { ...channel.httpHeaders };
-            
-            // Check if we need to proxy through Cloudflare Worker
-            const useProxy = true; // Always use proxy for CORS bypass
-            
-            let manifestUrl = channel.url;
-            
-            if (useProxy) {
-                // Build proxy URL with all necessary headers
-                const proxyUrl = new URL(config.proxyWorkerUrl);
-                proxyUrl.searchParams.set('url', channel.url);
-                
-                // Add headers as query parameters
-                if (headers['Cookie']) proxyUrl.searchParams.set('Cookie', headers['Cookie']);
-                if (headers['Referer']) proxyUrl.searchParams.set('Referer', headers['Referer']);
-                if (headers['Origin']) proxyUrl.searchParams.set('Origin', headers['Origin']);
-                if (headers['User-Agent']) proxyUrl.searchParams.set('User-agent', headers['User-Agent']);
-                
-                manifestUrl = proxyUrl.toString();
-            }
-            
-            // Configure DRM if KODIPROP contains Clearkey info
-            if (channel.kodiProps && channel.kodiProps.length > 0) {
-                const clearkeyProp = channel.kodiProps.find(p => 
-                    p.key.includes('license_type') && p.value === 'org.w3.clearkey'
-                );
-                
-                const licenseKeyProp = channel.kodiProps.find(p => 
-                    p.key.includes('license_key')
-                );
-                
-                if (clearkeyProp && licenseKeyProp) {
-                    // Parse license URL and key info
-                    const licenseUrl = licenseKeyProp.value;
-                    
-                    // Configure DRM for Clearkey
-                    state.liveTv.player.configure({
-                        drm: {
-                            clearKeys: {
-                                // This is a simplified example; actual Clearkey implementation may vary
-                                // You might need to fetch the license from the URL
-                            }
-                        }
-                    });
-                }
-            }
-            
-            // Load the manifest
-            await state.liveTv.player.load(manifestUrl);
-            
-            console.log('Channel loaded successfully:', channel.name);
-            
-        } catch (error) {
-            console.error('Failed to play channel:', error);
-            selectors.liveTvChannelTitle.text(`Failed to play: ${channel.name}`);
-            
-            // Try direct load as fallback
-            try {
-                await state.liveTv.player.load(channel.url);
-                console.log('Channel loaded directly (fallback):', channel.name);
-            } catch (fallbackError) {
-                console.error('Fallback also failed:', fallbackError);
-            }
-        }
-    };
-
-    // Filter channels based on search and group
-    const filterChannels = () => {
-        const searchTerm = selectors.liveTvSearch.val().toLowerCase();
-        const groupFilter = selectors.liveTvGroup.val();
-        
-        state.liveTv.filteredChannels = state.liveTv.channels.filter(channel => {
-            const matchesSearch = channel.name.toLowerCase().includes(searchTerm);
-            const matchesGroup = groupFilter === 'All' || channel.group === groupFilter;
-            return matchesSearch && matchesGroup;
-        });
-        
-        renderChannelList(state.liveTv.filteredChannels);
-    };
-
-    // Navigate to Live TV section (NEW)
-    const navigateToLiveTv = () => {
-        selectors.homepage.hide();
-        selectors.videoPage.hide();
-        selectors.librarySection.hide();
-        selectors.searchSection.hide();
-        selectors.liveTvSection.show();
-        
-        stopPreviewSlideshow();
-        
-        // Initialize Shaka Player if not already done
-        if (!state.liveTv.player) {
-            initShakaPlayer();
-        }
-        
-        // Load channels if not already loaded
-        if (state.liveTv.channels.length === 0) {
-            loadLiveTvChannels();
-        }
-        
-        window.history.replaceState({ section: 'livetv' }, '', '/livetv');
     };
 
     // Setup Preview Touch
@@ -1168,14 +847,8 @@ $(document).ready(function() {
         resumePreviewSlideshow();
     });
 
-    // Updated navigation to include Live TV
     selectors.sidebarNavItems.on('click', function() { 
-        const section = $(this).data('section');
-        if (section === 'livetv') {
-            navigateToLiveTv();
-        } else {
-            navigateToSection(section);
-        }
+        navigateToSection($(this).data('section')); 
     });
 
     let searchTimeout = null;
@@ -1220,11 +893,7 @@ $(document).ready(function() {
         if (s && s.id && s.type) {
             navigateToMedia(s.id, s.type, s.title || 'Unknown', s.poster || '', s.year, s.season, s.episode, s.section, s.rating || 'N/A');
         } else if (s && s.section) {
-            if (s.section === 'livetv') {
-                navigateToLiveTv();
-            } else {
-                navigateToSection(s.section);
-            }
+            navigateToSection(s.section);
         } else {
             loadHomepage();
         }
@@ -1253,16 +922,12 @@ $(document).ready(function() {
         }, 200);
     });
 
-    // Updated handleInitialLoad to include Live TV
     const handleInitialLoad = async () => {
         const path = window.location.pathname;
         const movieMatch = path.match(/^\/movie\/(\d+)$/);
         const tvMatch = path.match(/^\/tv\/(\d+)(?:\/(\d+)\/(\d+))?$/);
-        const liveTvMatch = path === '/livetv';
         
-        if (liveTvMatch) {
-            navigateToLiveTv();
-        } else if (movieMatch) {
+        if (movieMatch) {
             const id = movieMatch[1];
             const stateData = history.state || {};
             let title = stateData.title || 'Unknown';
@@ -1271,7 +936,8 @@ $(document).ready(function() {
             let rating = stateData.rating || 'N/A';
             if (!stateData.title) {
                 try {
-                    const data = await fetchWithRetry(`https://api.themoviedb.org/3/movie/${id}?api_key=${config.apiKey}`);
+                    const data = await fetchWithRetry(`https://api.themo
+                    viedb.org/3/movie/${id}?api_key=${config.apiKey}`);
                     title = data.title || 'Unknown';
                     year = data.release_date?.split('-')[0] || 'N/A';
                     poster = getImageUrl(data.poster_path) || '';
@@ -1308,16 +974,7 @@ $(document).ready(function() {
         }
     };
 
-    // Live TV event listeners
-    selectors.liveTvSearch.on('input', () => {
-        filterChannels();
-    });
-
-    selectors.liveTvGroup.on('change', () => {
-        filterChannels();
-    });
-
-    // Initialize everything
+    // Initialize
     initializeServers();
     setupPreviewTouch();
     handleInitialLoad();
