@@ -13,6 +13,21 @@
     <link rel="apple-touch-icon" sizes="180x180" href="https://raw.githubusercontent.com/ChocoCooper/Showplay/refs/heads/main/apple-touch-icon.png">
     <link rel="manifest" href="https://raw.githubusercontent.com/ChocoCooper/Showplay/refs/heads/main/manifest.json">
     <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#2af598',
+                        dark: '#101010',
+                        card: '#1a1a1a'
+                    },
+                    fontFamily: { sans: ['Lexend', 'sans-serif'] }
+                }
+            }
+        }
+    </script>
 </head>
 <body>
     <div class="app-container">
@@ -25,117 +40,74 @@
         </nav>
 
         <div class="main-content">
-            <div class="video-page" id="videoPage">
-                <div class="video-header">
-                    <button class="back-btn" aria-label="Go back"><i class="fas fa-arrow-left"></i></button>
-                    <p class="media-title" id="videoMediaTitle"></p>
-                </div>
-                <div class="video-wrapper">
-                    <iframe id="videoFrame" src="" allowfullscreen aria-label="Video Player" sandbox="allow-forms allow-scripts allow-same-origin"></iframe>
-                </div>
-                <div class="selector-container" id="selectorContainer">
-                    <div class="server-selector">
-                        <div class="server-buttons" id="serverGrid"></div>
-                        <div class="watchlist-btn-container">
-                            <button class="watchlist-btn" id="watchlistBtn" aria-label="Add to watchlist">Add to Watchlist <i class="fas fa-plus"></i></button>
-                            <a class="download-btn" id="downloadBtn" href="#" target="_blank" aria-label="Download media">Download <i class="fa-solid fa-download"></i></a>
-                        </div>
-                    </div>
-                    <div class="season-episode-selector" id="seasonEpisodeSelector" style="display: none;">
-                        <div class="selector-title">Seasons & Episodes</div>
-                        <div class="season-episode-accordion" id="seasonEpisodeAccordion"></div>
-                    </div>
-                    <div class="media-details" id="mediaDetails">
-                        <div class="media-details-container">
-                            <div class="media-details-poster">
-                                <img src="" alt="Media Poster" id="mediaPoster">
-                                <span class="rating-badge" id="mediaRatingBadge"><i class="fas fa-star"></i><span class="rating-value"></span></span>
-                            </div>
-                            <div class="media-details-content">
-                                <h3 id="mediaDetailsTitle" class="title"></h3>
-                                <p id="mediaYearGenre" class="year-genre"></p>
-                                <p id="mediaPlot" class="plot"></p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
             <div class="container" id="homepage">
                 <div class="main-title-container">
                     <img src="https://raw.githubusercontent.com/ChocoCooper/Showplay/refs/heads/main/showplay-text.png" alt="Showplay" class="main-title">
                 </div>
 
-                <div class="search-section" id="searchSection">
-                    <div class="search-container">
-                        <div class="search-input-container">
-                            <input type="text" class="search-input" id="searchInput" placeholder="Search for Movies, Shows..." aria-label="Search for media">
-                            <i class="fas fa-search search-icon"></i>
-                        </div>
-                        <select class="search-filter" id="searchFilter" aria-label="Filter search results by type">
-                            <option value="movie" selected>Movie</option>
-                            <option value="tv">TV</option>
-                        </select>
-                    </div>
-                    <div class="search-results" id="searchResults"></div>
-                    <div class="search-trending" id="searchTrending"></div>
-                </div>
-
                 <div class="preview-section" id="previewSection">
                     <div class="preview-items-container" id="previewItemsContainer"></div>
+                    <button class="slider-arrow left" onclick="navigatePreview('left')"><i class="fas fa-chevron-left"></i></button>
+                    <button class="slider-arrow right" onclick="navigatePreview('right')"><i class="fas fa-chevron-right"></i></button>
                 </div>
 
                 <div class="media-slider-section" data-type="movie">
                     <div class="slider-header">
                         <h2 class="slider-title">Trending Movies</h2>
                     </div>
-                    <div class="poster-slider" id="moviesSliderContainer"></div>
+                    <div class="slider-wrapper">
+                        <button class="slider-arrow left" onclick="scrollSlider('moviesSliderContainer', 'left')"><i class="fas fa-chevron-left"></i></button>
+                        <div class="poster-slider" id="moviesSliderContainer"></div>
+                        <button class="slider-arrow right" onclick="scrollSlider('moviesSliderContainer', 'right')"><i class="fas fa-chevron-right"></i></button>
+                    </div>
                 </div>
 
                 <div class="media-slider-section" data-type="tv">
                     <div class="slider-header">
                         <h2 class="slider-title">Trending Shows</h2>
                     </div>
-                    <div class="poster-slider" id="tvSliderContainer"></div>
+                    <div class="slider-wrapper">
+                        <button class="slider-arrow left" onclick="scrollSlider('tvSliderContainer', 'left')"><i class="fas fa-chevron-left"></i></button>
+                        <div class="poster-slider" id="tvSliderContainer"></div>
+                        <button class="slider-arrow right" onclick="scrollSlider('tvSliderContainer', 'right')"><i class="fas fa-chevron-right"></i></button>
+                    </div>
                 </div>
 
                 <div class="media-slider-section" data-type="anime">
                     <div class="slider-header">
                         <h2 class="slider-title">Trending Anime</h2>
                     </div>
-                    <div class="poster-slider" id="animeSliderContainer"></div>
+                    <div class="slider-wrapper">
+                        <button class="slider-arrow left" onclick="scrollSlider('animeSliderContainer', 'left')"><i class="fas fa-chevron-left"></i></button>
+                        <div class="poster-slider" id="animeSliderContainer"></div>
+                        <button class="slider-arrow right" onclick="scrollSlider('animeSliderContainer', 'right')"><i class="fas fa-chevron-right"></i></button>
+                    </div>
                 </div>
 
                 <div class="media-slider-section" data-type="kdrama">
                     <div class="slider-header">
                         <h2 class="slider-title">Trending K-Drama</h2>
                     </div>
-                    <div class="poster-slider" id="kdramaSliderContainer"></div>
+                    <div class="slider-wrapper">
+                        <button class="slider-arrow left" onclick="scrollSlider('kdramaSliderContainer', 'left')"><i class="fas fa-chevron-left"></i></button>
+                        <div class="poster-slider" id="kdramaSliderContainer"></div>
+                        <button class="slider-arrow right" onclick="scrollSlider('kdramaSliderContainer', 'right')"><i class="fas fa-chevron-right"></i></button>
+                    </div>
                 </div>
 
                 <div class="media-slider-section" data-type="cdrama">
                     <div class="slider-header">
                         <h2 class="slider-title">Trending C-Drama</h2>
                     </div>
-                    <div class="poster-slider" id="cdramaSliderContainer"></div>
-                </div>
-
-                <div class="library-section" id="librarySection">
-                    <div class="watchlist-section">
-                        <div class="slider-header">
-                            <h2 class="slider-title">Watchlist</h2>
-                        </div>
-                        <div class="poster-slider" id="watchlistSlider"></div>
-                    </div>
-                    <div class="history-section">
-                        <div class="slider-header">
-                            <h2 class="slider-title">History</h2>
-                        </div>
-                        <div class="poster-slider" id="historySlider"></div>
+                    <div class="slider-wrapper">
+                        <button class="slider-arrow left" onclick="scrollSlider('cdramaSliderContainer', 'left')"><i class="fas fa-chevron-left"></i></button>
+                        <div class="poster-slider" id="cdramaSliderContainer"></div>
+                        <button class="slider-arrow right" onclick="scrollSlider('cdramaSliderContainer', 'right')"><i class="fas fa-chevron-right"></i></button>
                     </div>
                 </div>
             </div>
         </div>
+        <div id="toastNotification" class="toast-notification"></div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL" crossorigin="anonymous"></script>
