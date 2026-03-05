@@ -407,9 +407,12 @@ $(document).ready(function() {
         if (!html || html.length < 1000) throw new Error('Vixsrc: page too short, likely blocked');
         if (!html.includes('masterPlaylist') && !html.includes('token')) throw new Error('Vixsrc: page did not contain token data (length: ' + html.length + ')');
         // Extract from raw HTML string (faster than DOM parsing)
-        const tokenM   = html.match(/"token"\s*:\s*"([^"]{10,})"/) || html.match(/'token'\s*:\s*'([^']{10,})'/);
-        const expiresM = html.match(/"expires"\s*:\s*"([^"]+)"/) || html.match(/'expires'\s*:\s*'([^']+)'/);
-        const vidM     = html.match(/\/playlist\/(\d+)/) || html.match(/[{,]\s*"id"\s*:\s*"(\d+)"/) || html.match(/video[_-]?id['":\s]+(\d+)/i);
+        // token can be short (20 chars) — lower minimum
+        // expires can be a number (unix timestamp) or string
+        // videoId comes from /playlist/{id} in the URL or window.video.id
+        const tokenM   = html.match(/"token"\s*:\s*"([^"]{5,})"/) || html.match(/'token'\s*:\s*'([^']{5,})'/);
+        const expiresM = html.match(/"expires"\s*:\s*(\d+)/) || html.match(/"expires"\s*:\s*"([^"]+)"/) || html.match(/'expires'\s*:\s*'([^']+)'/);
+        const vidM     = html.match(/\/playlist\/(\d+)/) || html.match(/"id"\s*:\s*(\d+)/) || html.match(/'id'\s*:\s*(\d+)/);
         console.log('[Vixsrc] token:', tokenM?.[1]?.slice(0,20), 'expires:', expiresM?.[1], 'videoId:', vidM?.[1]);
         if (!tokenM || !expiresM) throw new Error('Vixsrc: token/expires not found in page');
         if (!vidM) throw new Error('Vixsrc: videoId not found in page');
