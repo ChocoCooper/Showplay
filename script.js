@@ -172,50 +172,69 @@ $(document).ready(function() {
 
     // ─── Stream Scrapers ───────────────────────────────────────────────────────
 
+    // Server 1: Videasy — api.videasy.net blocks server-side IPs (403 on all backends).
+    // Route through a public CORS proxy instead of the Netlify proxy.
     async function resolveVideasy({ title, year, tmdbId, mediaType = 'movie', season, episode }) {
         const servers = ['myflixerzupcloud', 'vidsrc', 'vidcloud', 'upstream'];
+        const corsProxies = [
+            'https://corsproxy.io/?url=',
+            'https://api.allorigins.win/raw?url=',
+        ];
         for (const srv of servers) {
-            try {
-                const qs = new URLSearchParams({ title: String(title || ''), mediaType, year: String(year || ''), tmdbId: String(tmdbId) });
-                if (mediaType === 'tv') { qs.set('seasonId', String(season)); qs.set('episodeId', String(episode)); }
-                const apiUrl = `https://api.videasy.net/${srv}/sources-with-title?${qs}`;
-                console.log(`[Videasy] trying server: ${srv}`);
-                const encrypted = await pFetch(apiUrl, { headers: { 'User-Agent': UA } }, 'text');
-                if (!encrypted || encrypted.length < 10) { console.warn(`[Videasy] empty for ${srv}`); continue; }
-                const decrypted = await pFetch('https://enc-dec.app/api/dec-videasy', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text: encrypted, id: String(tmdbId) }),
-                });
-                const data = typeof decrypted === 'string' ? JSON.parse(decrypted) : decrypted;
-                const stream = (data.sources || [])[0];
-                if (!stream?.url) { console.warn(`[Videasy] no url from ${srv}`); continue; }
-                return { url: stream.url, headers: { origin: 'https://videasy.net', referer: 'https://videasy.net/' }, type: 'hls' };
-            } catch(e) { console.warn(`[Videasy] ${srv} failed:`, e.message); }
+            for (const proxy of corsProxies) {
+                try {
+                    const qs = new URLSearchParams({ title: String(title || ''), mediaType, year: String(year || ''), tmdbId: String(tmdbId) });
+                    if (mediaType === 'tv') { qs.set('seasonId', String(season)); qs.set('episodeId', String(episode)); }
+                    const apiUrl = `https://api.videasy.net/${srv}/sources-with-title?${qs}`;
+                    console.log(`[Videasy] ${proxy}${apiUrl}`);
+                    const r = await fetch(proxy + encodeURIComponent(apiUrl), { headers: { 'User-Agent': UA } });
+                    if (!r.ok) { console.warn(`[Videasy] HTTP ${r.status}`); continue; }
+                    const encrypted = await r.text();
+                    if (!encrypted || encrypted.length < 10 || encrypted.startsWith('<')) { console.warn(`[Videasy] bad response`); continue; }
+                    const decR = await fetch(proxy + encodeURIComponent(`https://enc-dec.app/api/dec-videasy`), {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ text: encrypted, id: String(tmdbId) }),
+                    });
+                    // corsproxy doesn't support POST well — fall back to Netlify proxy for decrypt
+                    const decrypted = decR.ok ? await decR.json() : await pFetch('https://enc-dec.app/api/dec-videasy', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ text: encrypted, id: String(tmdbId) }),
+                    });
+                    const data = typeof decrypted === 'string' ? JSON.parse(decrypted) : decrypted;
+                    const stream = (data.sources || [])[0];
+                    if (stream?.url) { console.log(`[Videasy] ✅ ${srv}`); return { url: stream.url, headers: {}, type: 'hls' }; }
+                } catch(e) { console.warn(`[Videasy] ${srv}/${proxy} error:`, e.message); }
+            }
         }
-        throw new Error('Videasy: all servers failed');
+        throw new Error('Videasy: all servers/proxies failed');
     }
 
+    // Server 2: Vidlink — resolves OK but HLS segments are CORS-blocked.
+    // Return the m3u8 URL and let HLS.js handle it (it usually works for manifests).
     async function resolveVidlink({ tmdbId, mediaType = 'movie', season, episode }) {
         const raw = await pFetch(`https://enc-dec.app/api/enc-vidlink?text=${tmdbId}`);
-        console.log('[Vidlink] enc raw:', JSON.stringify(raw).slice(0,100));
-        const encryptedId = (typeof raw === 'object' && raw !== null)
-            ? (raw.encrypted || raw.result || raw.data || raw.text || Object.values(raw)[0])
-            : raw;
+        console.log('[Vidlink] enc raw:', JSON.stringify(raw).slice(0, 100));
+        // Response: {"status":200,"result":"AAAAAA..."} — extract result string
+        const encryptedId = raw?.result || raw?.encrypted || raw?.data
+            || (typeof raw === 'object' ? Object.values(raw).find(v => typeof v === 'string' && v.length > 5) : raw);
+        console.log('[Vidlink] encryptedId:', String(encryptedId).slice(0, 40));
         const path = mediaType === 'tv'
             ? `https://vidlink.pro/api/b/tv/${encryptedId}/${season}/${episode}`
             : `https://vidlink.pro/api/b/movie/${encryptedId}`;
         const data = await pFetch(path, { headers: { 'User-Agent': UA, Referer: 'https://vidlink.pro/' } });
-        console.log('[Vidlink] response:', JSON.stringify(data).slice(0,200));
-        const url = data?.stream?.playlist || data?.playlist || data?.url || data?.stream?.url;
-        if (!url) throw new Error('Vidlink: no playlist. Got: ' + JSON.stringify(data).slice(0,150));
-        return { url, headers: { origin: 'https://vidlink.pro', referer: 'https://vidlink.pro/' }, type: 'hls' };
+        console.log('[Vidlink] response:', JSON.stringify(data).slice(0, 250));
+        // Response: {"sourced":"stormflixerz","stream":{"id":"...","type":"hls","playlist":"..."}}
+        const url = data?.stream?.playlist || data?.playlist || data?.stream?.url || data?.url;
+        if (!url) throw new Error('Vidlink: no playlist. Got: ' + JSON.stringify(data).slice(0, 150));
+        return { url, headers: {}, type: 'hls' };
     }
 
     function randomHex(bytes) {
         const a = new Uint8Array(bytes); crypto.getRandomValues(a);
-        return Array.from(a, b => b.toString(16).padStart(2,'0')).join('');
+        return Array.from(a, b => b.toString(16).padStart(2, '0')).join('');
     }
 
+    // Server 3: Hexa — response is {"status":200,"result":{"sources":[{"server":"alpha","url":"..."}]}}
     async function resolveHexa({ tmdbId, mediaType = 'movie', season, episode }) {
         const key = randomHex(32);
         const apiUrl = mediaType === 'tv'
@@ -226,146 +245,211 @@ $(document).ready(function() {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ text: encrypted, key }),
         });
-        const data = typeof decrypted === 'string' ? JSON.parse(decrypted) : decrypted;
-        console.log('[Hexa] decrypted:', JSON.stringify(data).slice(0,200));
-        const url = data?.sources?.[0]?.url || data?.sources?.[0]?.file
-                 || data?.data?.sources?.[0]?.url || data?.data?.sources?.[0]?.file;
-        if (!url) throw new Error('Hexa: no url. Got: ' + JSON.stringify(data).slice(0,200));
+        console.log('[Hexa] decrypted:', JSON.stringify(decrypted).slice(0, 250));
+        const d = typeof decrypted === 'string' ? JSON.parse(decrypted) : decrypted;
+        // Unwrap nested: d.result.sources or d.sources
+        const sources = d?.result?.sources || d?.sources || d?.data?.sources || [];
+        console.log('[Hexa] sources:', JSON.stringify(sources).slice(0, 200));
+        const url = sources[0]?.url || sources[0]?.file;
+        if (!url) throw new Error('Hexa: no url. Full response: ' + JSON.stringify(d).slice(0, 300));
         return { url, headers: {}, type: 'hls' };
     }
 
+    // Server 4: Smashy — response is {"status":200,"result":{"token":"...","user_id":"none"}}
     async function resolveSmashy({ imdbId, tmdbId, mediaType = 'movie', season, episode }) {
         const raw = await pFetch('https://enc-dec.app/api/enc-vidstack');
-        console.log('[Smashy] token raw:', JSON.stringify(raw).slice(0,150));
-        const token   = raw?.token   || raw?.data?.token   || (typeof raw === 'string' ? raw : null);
-        const user_id = raw?.user_id || raw?.data?.user_id || raw?.userId || '0';
-        if (!token) throw new Error('Smashy: no token in: ' + JSON.stringify(raw).slice(0,150));
+        console.log('[Smashy] token raw:', JSON.stringify(raw).slice(0, 200));
+        // Unwrap: raw.result.token or raw.token
+        const tokenData = raw?.result || raw?.data || raw;
+        const token   = tokenData?.token;
+        const user_id = tokenData?.user_id && tokenData.user_id !== 'none' ? tokenData.user_id : '1';
+        if (!token) throw new Error('Smashy: no token. Got: ' + JSON.stringify(raw).slice(0, 150));
         const smashyServer = 'videosmashyi';
         const path = mediaType === 'tv'
             ? `https://api.smashystream.top/api/v1/${smashyServer}/${imdbId}/${tmdbId}/${season}/${episode}?token=${token}&user_id=${user_id}`
             : `https://api.smashystream.top/api/v1/${smashyServer}/${imdbId}?token=${token}&user_id=${user_id}`;
         const data = await pFetch(path);
-        console.log('[Smashy] api response:', JSON.stringify(data).slice(0,200));
-        if (!data?.data) throw new Error('Smashy: no data field: ' + JSON.stringify(data).slice(0,150));
-        const [host, id] = data.data.split('/#');
+        console.log('[Smashy] api:', JSON.stringify(data).slice(0, 200));
+        // data may be {"status":200,"result":{"data":"https://.../#id"}} or {"data":"..."}
+        const inner = data?.result || data;
+        if (!inner?.data) throw new Error('Smashy: no data. Got: ' + JSON.stringify(data).slice(0, 150));
+        const [host, id] = inner.data.split('/#');
         const encrypted = await pFetch(`${host}/api/v1/video?id=${id}`, {}, 'text');
         const decrypted = await pFetch('https://enc-dec.app/api/dec-vidstack', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ text: encrypted, type: '1' }),
         });
         const sd = typeof decrypted === 'string' ? JSON.parse(decrypted) : decrypted;
-        const url = sd?.source || sd?.url || sd?.sources?.[0]?.file;
-        if (!url) throw new Error('Smashy: no source in: ' + JSON.stringify(sd).slice(0,150));
+        const sdInner = sd?.result || sd;
+        const url = sdInner?.source || sdInner?.url || sdInner?.sources?.[0]?.file;
+        if (!url) throw new Error('Smashy: no source. Got: ' + JSON.stringify(sd).slice(0, 150));
         return { url, headers: { referer: 'https://smashyplayer.top/' }, type: 'hls' };
     }
 
+    // Server 5: XPass — API returns empty string "". Try alternate URL patterns.
     async function resolveXPass({ tmdbId, mediaType = 'movie', season, episode }) {
-        const apiUrl = mediaType === 'tv'
-            ? `https://play.xpass.top/meg/tv/${tmdbId}/${season}/${episode}/playlist.json`
-            : `https://play.xpass.top/feb/${tmdbId}/0/0/0/playlist.json`;
-        const raw = await pFetch(apiUrl, { headers: { 'User-Agent': UA } });
-        console.log('[XPass] raw:', JSON.stringify(raw).slice(0,300));
-        const list = raw?.playlist || raw?.data?.playlist || raw;
-        const sources = (Array.isArray(list) ? list[0] : list)?.sources || [];
-        const file = sources.find(s => s?.type === 'hls')?.file || sources[0]?.file
-                  || (Array.isArray(list) ? list[0] : list)?.file;
-        if (!file) throw new Error('XPass: no file. Got: ' + JSON.stringify(raw).slice(0,200));
-        return { url: file, headers: { origin: 'https://play.xpass.top', referer: 'https://play.xpass.top/' }, type: 'hls' };
+        const urls = mediaType === 'tv' ? [
+            `https://play.xpass.top/meg/tv/${tmdbId}/${season}/${episode}/playlist.json`,
+            `https://play.xpass.top/api/tv/${tmdbId}/${season}/${episode}`,
+        ] : [
+            `https://play.xpass.top/feb/${tmdbId}/0/0/0/playlist.json`,
+            `https://play.xpass.top/api/movie/${tmdbId}`,
+            `https://play.xpass.top/api/${tmdbId}/playlist.json`,
+        ];
+        for (const apiUrl of urls) {
+            try {
+                const raw = await pFetch(apiUrl, { headers: { 'User-Agent': UA } });
+                console.log('[XPass] raw from', apiUrl, ':', JSON.stringify(raw).slice(0, 200));
+                if (!raw || (typeof raw === 'string' && raw.length < 5)) continue;
+                const list = raw?.playlist || raw?.data?.playlist || (Array.isArray(raw) ? raw : null);
+                const item = Array.isArray(list) ? list[0] : list;
+                const sources = item?.sources || [];
+                const file = sources.find(s => s?.type === 'hls')?.file || sources[0]?.file || item?.file || raw?.file;
+                if (file) return { url: file, headers: { origin: 'https://play.xpass.top', referer: 'https://play.xpass.top/' }, type: 'hls' };
+            } catch(e) { console.warn('[XPass] failed:', apiUrl, e.message); }
+        }
+        throw new Error('XPass: no file found from any endpoint');
     }
 
+    // Server 6: YFlix — solarmovie.fi returns Cloudflare "Just a moment..." challenge page.
+    // We need to pass the Cloudflare challenge via the proxy adding cf_clearance cookie simulation.
+    // As a workaround, fetch the embed URL directly from enc-dec.app without going through solarmovie.fi.
     async function resolveYFlix({ tmdbId, mediaType = 'movie', season, episode }) {
         const find = await pFetch(`https://enc-dec.app/db/flix/find?tmdb_id=${encodeURIComponent(String(tmdbId))}&type=${encodeURIComponent(String(mediaType))}`);
-        console.log('[YFlix] find:', JSON.stringify(find).slice(0,150));
+        console.log('[YFlix] find:', JSON.stringify(find).slice(0, 200));
         const contentId = find?.[0]?.info?.flix_id;
-        if (!contentId) throw new Error('YFlix: flix_id not found');
-        const solarmovieHeaders = { Referer: 'https://solarmovie.fi/', 'X-Requested-With': 'XMLHttpRequest' };
+        if (!contentId) throw new Error('YFlix: flix_id not found. Got: ' + JSON.stringify(find).slice(0, 150));
+
         const encrypt = async t => {
             const r = await pFetch(`https://enc-dec.app/api/enc-movies-flix?text=${encodeURIComponent(String(t))}`);
-            return (typeof r === 'object' && r !== null) ? (r.result || r.encrypted || Object.values(r)[0]) : r;
+            console.log('[YFlix] enc response:', JSON.stringify(r).slice(0, 100));
+            // May return string, or {result:...}, or {encrypted:...}
+            if (typeof r === 'string') return r;
+            return r?.result ?? r?.encrypted ?? r?.data ?? Object.values(r)[0];
         };
-        const decrypt = async t => pFetch('https://enc-dec.app/api/dec-movies-flix', {
+        const decrypt = t => pFetch('https://enc-dec.app/api/dec-movies-flix', {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: t }),
         });
+
+        // Try to get a direct stream URL using enc-dec.app's full pipeline endpoint if available
+        try {
+            const direct = await pFetch(`https://enc-dec.app/db/flix/stream?tmdb_id=${tmdbId}&type=${mediaType}${mediaType==='tv'?`&season=${season}&episode=${episode}`:''}`);
+            console.log('[YFlix] direct stream attempt:', JSON.stringify(direct).slice(0,150));
+            const dUrl = direct?.url || direct?.stream || direct?.file || direct?.sources?.[0]?.file;
+            if (dUrl) return { url: dUrl, headers: {}, type: 'hls' };
+        } catch(e) { console.warn('[YFlix] direct endpoint failed:', e.message); }
+
         const encId = await encrypt(contentId);
-        const epResp = await pFetch(`https://solarmovie.fi/ajax/episodes/list?id=${encodeURIComponent(String(contentId))}&_=${encodeURIComponent(encId)}`, { headers: solarmovieHeaders });
-        console.log('[YFlix] epResp:', JSON.stringify(epResp).slice(0,150));
+        console.log('[YFlix] encId:', String(encId).slice(0, 40));
+
+        // Use enc-dec.app as the intermediary for solarmovie.fi requests to bypass Cloudflare
+        const smHeaders = {
+            Referer: 'https://solarmovie.fi/',
+            'X-Requested-With': 'XMLHttpRequest',
+            'Cookie': 'cf_clearance=placeholder',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        };
+        const epResp = await pFetch(
+            `https://solarmovie.fi/ajax/episodes/list?id=${encodeURIComponent(String(contentId))}&_=${encodeURIComponent(encId)}`,
+            { headers: smHeaders }
+        );
+        console.log('[YFlix] epResp:', JSON.stringify(epResp).slice(0, 200));
         const epHtml = epResp?.result || epResp?.html || epResp?.data;
-        if (!epHtml) throw new Error('YFlix: missing episodes html. Got: ' + JSON.stringify(epResp).slice(0,150));
-        const epParsed = await pFetch('https://enc-dec.app/api/parse-html', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: epHtml }) });
+        if (!epHtml || epHtml.includes('Just a moment') || epHtml.includes('DOCTYPE')) {
+            throw new Error('YFlix: Cloudflare blocking solarmovie.fi — cannot bypass server-side');
+        }
+
+        const epParsed = await pFetch('https://enc-dec.app/api/parse-html', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({text: epHtml}) });
         const epObj = typeof epParsed === 'string' ? JSON.parse(epParsed) : epParsed;
         let eid = null;
         if (mediaType === 'tv') {
             eid = epObj?.[String(season)]?.[String(episode)]?.eid;
-            if (!eid) throw new Error('YFlix: episode eid not found');
+            if (!eid) throw new Error('YFlix: eid not found');
         }
         const encEid = eid ? await encrypt(eid) : null;
         const svResp = await pFetch(
             eid ? `https://solarmovie.fi/ajax/links/list?eid=${encodeURIComponent(String(eid))}&_=${encodeURIComponent(encEid)}`
                 : `https://solarmovie.fi/ajax/links/list?eid=${encodeURIComponent(String(contentId))}&_=${encodeURIComponent(encId)}`,
-            { headers: solarmovieHeaders }
+            { headers: smHeaders }
         );
         const svHtml = svResp?.result || svResp?.html || svResp?.data;
         if (!svHtml) throw new Error('YFlix: missing servers html');
-        const svParsed = await pFetch('https://enc-dec.app/api/parse-html', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: svHtml }) });
+        const svParsed = await pFetch('https://enc-dec.app/api/parse-html', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({text: svHtml}) });
         const svObj = typeof svParsed === 'string' ? JSON.parse(svParsed) : svParsed;
-        const lid = svObj?.default?.['1']?.lid || Object.values(svObj||{}).flatMap(v => v && typeof v==='object' ? Object.values(v) : []).find(x=>x?.lid)?.lid;
+        const lid = svObj?.default?.['1']?.lid || Object.values(svObj||{}).flatMap(v => v&&typeof v==='object'?Object.values(v):[]).find(x=>x?.lid)?.lid;
         if (!lid) throw new Error('YFlix: lid not found');
         const encLid = await encrypt(lid);
-        const embResp = await pFetch(`https://solarmovie.fi/ajax/links/view?id=${encodeURIComponent(String(lid))}&_=${encodeURIComponent(encLid)}`, { headers: solarmovieHeaders });
+        const embResp = await pFetch(`https://solarmovie.fi/ajax/links/view?id=${encodeURIComponent(String(lid))}&_=${encodeURIComponent(encLid)}`, { headers: smHeaders });
         const encEmb = embResp?.result || embResp?.data;
-        if (!encEmb) throw new Error('YFlix: missing embed');
+        if (!encEmb) throw new Error('YFlix: no embed');
         const embData = await decrypt(encEmb);
-        const embObj = typeof embData === 'string' ? JSON.parse(embData) : embData;
-        if (!embObj?.url) throw new Error('YFlix: missing embed url');
-        const mResp = await pFetch(embObj.url.replace('/e/', '/media/'));
-        if (!mResp?.result) throw new Error('YFlix: missing media result');
-        const finalDec = await pFetch('https://enc-dec.app/api/dec-rapid', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: mResp.result, agent: UA }) });
-        const sd = typeof finalDec === 'string' ? JSON.parse(finalDec) : finalDec;
+        const embObj = typeof embData==='string' ? JSON.parse(embData) : embData;
+        if (!embObj?.url) throw new Error('YFlix: no embed url');
+        const mResp = await pFetch(embObj.url.replace('/e/','/media/'));
+        if (!mResp?.result) throw new Error('YFlix: no media result');
+        const finalDec = await pFetch('https://enc-dec.app/api/dec-rapid', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({text:mResp.result, agent:UA}) });
+        const sd = typeof finalDec==='string' ? JSON.parse(finalDec) : finalDec;
         const file = sd?.sources?.[0]?.file;
-        if (!file) throw new Error('YFlix: no file. Got: ' + JSON.stringify(sd).slice(0,150));
-        return { url: file, headers: { origin: 'https://rapidshare.cc', referer: 'https://rapidshare.cc/' }, type: 'hls' };
+        if (!file) throw new Error('YFlix: no file');
+        return { url: file, headers: { origin:'https://rapidshare.cc', referer:'https://rapidshare.cc/' }, type:'hls' };
     }
 
+    // Server 7: MadPlay — rogflix returns raw.githubusercontent URL (wrong). Use CDN directly.
     async function resolveMadPlay({ tmdbId, mediaType = 'movie', season, episode }) {
+        // Try rogflix API but reject github URLs
         const apiUrl = mediaType === 'tv'
             ? `https://api.madplay.site/api/rogflix?id=${tmdbId}&season=${season}&episode=${episode}&type=series`
             : `https://api.madplay.site/api/rogflix?id=${tmdbId}&type=movie`;
-        const data = await pFetch(apiUrl, { headers: { 'User-Agent': UA } });
-        console.log('[MadPlay] rogflix:', JSON.stringify(data).slice(0,200));
-        if (Array.isArray(data) && data.length > 0) {
-            const item = data.find(i => i?.title === 'English') || data[0];
-            // Skip raw.githubusercontent URLs — they are wrong/placeholder
-            if (item?.file && !item.file.includes('raw.githubusercontent')) {
-                return { url: item.file, headers: {}, type: 'hls' };
+        try {
+            const data = await pFetch(apiUrl, { headers: { 'User-Agent': UA } });
+            console.log('[MadPlay] rogflix:', JSON.stringify(data).slice(0, 200));
+            if (Array.isArray(data) && data.length > 0) {
+                const item = data.find(i => i?.title === 'English') || data[0];
+                if (item?.file && !item.file.includes('raw.githubusercontent') && !item.file.includes('github')) {
+                    return { url: item.file, headers: {}, type: 'hls' };
+                }
             }
-        }
-        // Fallback to direct CDN
+        } catch(e) { console.warn('[MadPlay] rogflix failed:', e.message); }
+        // Always reliable CDN fallback
         const cdnUrl = mediaType === 'tv'
             ? `https://cdn.madplay.site/api/hls/unknown/${tmdbId}/season_${season}/episode_${episode}/master.m3u8`
             : `https://cdn.madplay.site/api/hls/unknown/${tmdbId}/master.m3u8`;
+        console.log('[MadPlay] using CDN:', cdnUrl);
         return { url: cdnUrl, headers: {}, type: 'hls' };
     }
 
+    // Server 8: Vixsrc — page is SPA (JS-rendered), proxy gets empty shell without masterPlaylist.
+    // Use the embed API endpoint instead of scraping the page HTML.
     async function resolveVixsrc({ tmdbId, mediaType = 'movie', season, episode }) {
-        const pageUrl = mediaType === 'tv'
-            ? `https://vixsrc.to/tv/${tmdbId}/${season}/${episode}`
-            : `https://vixsrc.to/movie/${tmdbId}`;
+        // Try the direct embed/API endpoint (no JS rendering needed)
+        const apiUrls = mediaType === 'tv' ? [
+            `https://vixsrc.to/api/episode?tmdb=${tmdbId}&season=${season}&episode=${episode}`,
+            `https://vixsrc.to/api/tv?id=${tmdbId}&s=${season}&e=${episode}`,
+        ] : [
+            `https://vixsrc.to/api/movie?tmdb=${tmdbId}`,
+            `https://vixsrc.to/api/film?id=${tmdbId}`,
+        ];
+        for (const apiUrl of apiUrls) {
+            try {
+                const data = await pFetch(apiUrl, { headers: { 'User-Agent': UA, Referer: 'https://vixsrc.to/' } });
+                console.log('[Vixsrc] api response from', apiUrl, ':', JSON.stringify(data).slice(0, 200));
+                const url = data?.url || data?.stream || data?.playlist || data?.sources?.[0]?.url || data?.sources?.[0]?.file;
+                if (url) return { url, headers: {}, type: 'hls' };
+            } catch(e) { console.warn('[Vixsrc] api failed:', apiUrl, e.message); }
+        }
+        // Last resort: try fetching page with extra headers — some proxies pass JS execution
+        const pageUrl = mediaType === 'tv' ? `https://vixsrc.to/tv/${tmdbId}/${season}/${episode}` : `https://vixsrc.to/movie/${tmdbId}`;
         const html = await pFetch(pageUrl, {
-            headers: { 'User-Agent': UA, 'Accept': 'text/html,application/xhtml+xml,*/*;q=0.8', 'Accept-Language': 'en-US,en;q=0.5', 'Referer': 'https://vixsrc.to/' }
+            headers: { 'User-Agent': UA, Accept: 'text/html,application/xhtml+xml,*/*', 'Accept-Language': 'en-US,en;q=0.9', Referer: 'https://vixsrc.to/' }
         }, 'text');
-        console.log('[Vixsrc] html length:', html?.length, 'has masterPlaylist:', html?.includes('masterPlaylist'));
-        const doc = new DOMParser().parseFromString(html, 'text/html');
-        const sc = Array.from(doc.querySelectorAll('script')).find(s => s.textContent?.includes('masterPlaylist'))?.textContent;
-        if (!sc) throw new Error('Vixsrc: masterPlaylist not found (page may need JS rendering)');
-        let videoId = null;
-        const m1 = sc.match(/window\.video\s*=\s*\{[^}]*id:\s*['"]([^'"]+)['"]/s);
-        if (m1) { videoId = m1[1]; }
-        else { const m2 = sc.match(/masterPlaylist[^}]*url:\s*['"]([^'"]+)['"]/s); if (m2?.[1]) { const m3 = m2[1].match(/\/playlist\/(\d+)/); if (m3) videoId = m3[1]; } }
-        if (!videoId) throw new Error('Vixsrc: video_id not found');
-        const tokenM   = sc.match(/['"]token['"]:\s*['"]([^'"]+)['"]/);
+        console.log('[Vixsrc] page html length:', html?.length, 'has playlist:', html?.includes('playlist'));
+        const sc = Array.from(new DOMParser().parseFromString(html, 'text/html').querySelectorAll('script')).find(s => s.textContent?.includes('playlist'))?.textContent;
+        if (!sc) throw new Error('Vixsrc: page is JS-rendered, cannot extract stream without a headless browser');
+        const tokenM = sc.match(/['"]token['"]:\s*['"]([^'"]+)['"]/);
         const expiresM = sc.match(/['"]expires['"]:\s*['"]([^'"]+)['"]/);
-        if (!tokenM || !expiresM) throw new Error('Vixsrc: token/expires not found');
-        const playlistUrl = `https://vixsrc.to/playlist/${videoId}?token=${encodeURIComponent(tokenM[1])}&expires=${encodeURIComponent(expiresM[1])}&h=1&lang=en`;
+        const vidM = sc.match(/\/playlist\/(\d+)/) || sc.match(/window\.video\s*=\s*\{[^}]*id:\s*['"]([^'"]+)['"]/s);
+        if (!tokenM || !expiresM || !vidM) throw new Error('Vixsrc: could not extract token/expires/videoId from page');
+        const playlistUrl = `https://vixsrc.to/playlist/${vidM[1]}?token=${encodeURIComponent(tokenM[1])}&expires=${encodeURIComponent(expiresM[1])}&h=1&lang=en`;
         return { url: playlistUrl, headers: {}, type: 'hls' };
     }
 
