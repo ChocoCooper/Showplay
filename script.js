@@ -83,70 +83,77 @@ $(document).ready(function() {
 
     const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
 
-    const NETLIFY_PROXY   = '/api/proxy';
-    const CORS_PROXY_BASE = 'https://corsproxy.io/?url=';
-    const CORS_PROXY2_BASE = 'https://api.allorigins.win/raw?url='; // second fallback
+    // Proxy endpoints — direct function URL tried first, then the /api alias
+    const PROXY_URLS = [
+        '/.netlify/functions/proxy',
+        '/api/proxy',
+    ];
+    const CORS_PROXIES = [
+        { name: 'corsproxy.io',  base: 'https://corsproxy.io/?url=' },
+        { name: 'allorigins',    base: 'https://api.allorigins.win/raw?url=' },
+        { name: 'cors.sh',       base: 'https://proxy.cors.sh/' },
+    ];
 
     /**
      * pFetch — proxy-aware fetch
-     * Sends the request through Netlify proxy. Falls back to public CORS proxies
-     * if the Netlify proxy returns an error or is unreachable.
-     *
-     * @param {string} url          - Target URL
-     * @param {object} opts         - { method, headers, body }
-     * @param {string} responseType - 'text' | 'json' (default 'json')
+     * 1. Tries each Netlify function URL (direct + alias)
+     * 2. Falls back to public CORS proxies for GETs
+     * 3. Falls back to corsproxy.io POST for POST requests
      */
     const pFetch = async (url, opts = {}, responseType = 'json') => {
         const payload = {
             url,
-            method: opts.method || 'GET',
+            method:  opts.method  || 'GET',
             headers: opts.headers || {},
-            body: opts.body !== undefined ? opts.body : undefined,
+            body:    opts.body    !== undefined ? opts.body : undefined,
         };
 
-        // 1️⃣  Try Netlify serverless proxy
-        try {
-            const r = await fetch(NETLIFY_PROXY, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
-            });
-            if (r.ok) {
-                const envelope = await r.json();
-                if (envelope.ok) {
-                    if (responseType === 'text') return envelope.text;
-                    return envelope.json !== null ? envelope.json : JSON.parse(envelope.text);
+        // ── 1. Try each Netlify function URL ──────────────────────────────────
+        for (const proxyUrl of PROXY_URLS) {
+            try {
+                const r = await fetch(proxyUrl, {
+                    method:  'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body:    JSON.stringify(payload),
+                });
+                if (r.status === 404) continue; // function not deployed at this path
+                if (r.ok) {
+                    const envelope = await r.json();
+                    if (envelope.ok) {
+                        if (responseType === 'text') return envelope.text;
+                        if (envelope.json !== null && envelope.json !== undefined) return envelope.json;
+                        return JSON.parse(envelope.text);
+                    }
+                    // Upstream returned non-2xx but proxy itself worked — throw so we don't
+                    // silently fall through to a public proxy with wrong data
+                    throw new Error(`Upstream HTTP ${envelope.status} for ${url}`);
                 }
+            } catch (e) {
+                if (e.message.startsWith('Upstream HTTP')) throw e; // re-throw upstream errors
+                // Network / CORS error on the proxy itself — try next proxy URL
             }
-        } catch (e) { /* fall through */ }
-
-        // 2️⃣  Fallback: corsproxy.io (GET only — wraps URL, no custom headers)
-        if (!opts.method || opts.method === 'GET') {
-            try {
-                const r = await fetch(CORS_PROXY_BASE + encodeURIComponent(url));
-                if (r.ok) {
-                    if (responseType === 'text') return r.text();
-                    return r.json();
-                }
-            } catch (e) { /* fall through */ }
-
-            // 3️⃣  Fallback 2: allorigins
-            try {
-                const r = await fetch(CORS_PROXY2_BASE + encodeURIComponent(url));
-                if (r.ok) {
-                    if (responseType === 'text') return r.text();
-                    return r.json();
-                }
-            } catch (e) { /* fall through */ }
         }
 
-        // 4️⃣  POST fallback — corsproxy.io supports POST via their API
+        // ── 2. Public CORS proxies (GET/HEAD only) ────────────────────────────
+        if (!opts.method || opts.method === 'GET' || opts.method === 'HEAD') {
+            for (const { name, base } of CORS_PROXIES) {
+                try {
+                    const r = await fetch(base + encodeURIComponent(url));
+                    if (r.ok) {
+                        if (responseType === 'text') return r.text();
+                        return r.json();
+                    }
+                } catch (e) { /* try next */ }
+            }
+        }
+
+        // ── 3. POST via corsproxy.io ──────────────────────────────────────────
         if (opts.method === 'POST') {
             try {
                 const r = await fetch('https://corsproxy.io/?' + encodeURIComponent(url), {
-                    method: 'POST',
+                    method:  'POST',
                     headers: opts.headers || {},
-                    body: opts.body,
+                    body:    opts.body,
                 });
                 if (r.ok) {
                     if (responseType === 'text') return r.text();
