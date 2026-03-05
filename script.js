@@ -66,25 +66,213 @@ $(document).ready(function() {
     const config = {
         apiKey: 'ea118e768e75a1fe3b53dc99c9e4de09', // Note: Should be moved to server-side for security
         servers: [
-            { 
-                name: 'Server 1', 
-                url: 'https://vidfast.pro', 
-                moviePattern: 'https://vidfast.pro/movie/{tmdb_id}', 
-                tvPattern: 'https://vidfast.pro/tv/{tmdb_id}/{season}/{episode}' 
-            },
-            { 
-                name: 'Server 2', 
-                url: 'https://111movies.com', 
-                moviePattern: 'https://111movies.com/movie/{tmdb_id}', 
-                tvPattern: 'https://111movies.com/tv/{tmdb_id}/{season}/{episode}' 
-            },
-            { 
-                name: 'Server 3', 
-                url: 'https://vidsrc.cc/v2', 
-                moviePattern: 'https://vidsrc.cc/v2/embed/movie/{tmdb_id}', 
-                tvPattern: 'https://vidsrc.cc/v2/embed/tv/{tmdb_id}/{season}/{episode}' 
-            }
+            { name: 'Server 1', resolver: 'videasy' },
+            { name: 'Server 2', resolver: 'vidlink' },
+            { name: 'Server 3', resolver: 'hexa' },
+            { name: 'Server 4', resolver: 'smashy' },
+            { name: 'Server 5', resolver: 'xpass' },
+            { name: 'Server 6', resolver: 'yflix' },
+            { name: 'Server 7', resolver: 'madplay' },
+            { name: 'Server 8', resolver: 'vixsrc' }
         ]
+    };
+
+    // ─── Stream Scrapers ───────────────────────────────────────────────────────
+
+    const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
+
+    async function resolveVideasy({ title, year, tmdbId, mediaType = 'movie', season, episode, server = 'myflixerzupcloud' }) {
+        const qs = new URLSearchParams({ title, mediaType, year: String(year), tmdbId: String(tmdbId) });
+        if (mediaType === 'tv') { qs.set('seasonId', String(season)); qs.set('episodeId', String(episode)); }
+        const apiUrl = `https://api.videasy.net/${server}/sources-with-title?${qs}`;
+        const encrypted = await fetch(apiUrl, { headers: { 'User-Agent': UA } }).then(r => r.text());
+        const decrypted = await fetch('https://enc-dec.app/api/dec-videasy', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: encrypted, id: String(tmdbId) }),
+        }).then(r => r.json());
+        const data = typeof decrypted === 'string' ? JSON.parse(decrypted) : decrypted;
+        const stream = (data.sources || [])[0];
+        return { url: stream.url, headers: { origin: 'https://videasy.net', referer: 'https://videasy.net/' }, type: 'hls' };
+    }
+
+    async function resolveVidlink({ tmdbId, mediaType = 'movie', season, episode }) {
+        const encryptedId = await fetch(`https://enc-dec.app/api/enc-vidlink?text=${tmdbId}`).then(r => r.json());
+        const path = mediaType === 'tv'
+            ? `https://vidlink.pro/api/b/tv/${encryptedId}/${season}/${episode}`
+            : `https://vidlink.pro/api/b/movie/${encryptedId}`;
+        const data = await fetch(path, { headers: { 'User-Agent': UA, Referer: 'https://vidlink.pro/' } }).then(r => r.json());
+        return { url: data.stream.playlist, headers: { origin: 'https://vidlink.pro', referer: 'https://vidlink.pro/' }, type: 'hls' };
+    }
+
+    function randomHex(bytes) {
+        const array = new Uint8Array(bytes);
+        crypto.getRandomValues(array);
+        return Array.from(array, b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    async function resolveHexa({ tmdbId, mediaType = 'movie', season, episode }) {
+        const key = randomHex(32);
+        const apiUrl = mediaType === 'tv'
+            ? `https://themoviedb.hexa.su/api/tmdb/tv/${tmdbId}/season/${season}/episode/${episode}/images`
+            : `https://themoviedb.hexa.su/api/tmdb/movie/${tmdbId}/images`;
+        const encrypted = await fetch(apiUrl, { headers: { 'X-Api-Key': key } }).then(r => r.text());
+        const decrypted = await fetch('https://enc-dec.app/api/dec-hexa', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: encrypted, key }),
+        }).then(r => r.json());
+        const data = typeof decrypted === 'string' ? JSON.parse(decrypted) : decrypted;
+        return { url: data.sources[0].url, headers: {}, type: 'hls' };
+    }
+
+    async function resolveSmashy({ imdbId, tmdbId, mediaType = 'movie', season, episode }) {
+        const token = await fetch('https://enc-dec.app/api/enc-vidstack').then(r => r.json());
+        const server = 'videosmashyi';
+        const path = mediaType === 'tv'
+            ? `https://api.smashystream.top/api/v1/${server}/${imdbId}/${tmdbId}/${season}/${episode}?token=${token.token}&user_id=${token.user_id}`
+            : `https://api.smashystream.top/api/v1/${server}/${imdbId}?token=${token.token}&user_id=${token.user_id}`;
+        const data = await fetch(path).then(r => r.json());
+        const [host, id] = data.data.split('/#');
+        const encrypted = await fetch(`${host}/api/v1/video?id=${id}`).then(r => r.text());
+        const decrypted = await fetch('https://enc-dec.app/api/dec-vidstack', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: encrypted, type: '1' }),
+        }).then(r => r.json());
+        const streamData = typeof decrypted === 'string' ? JSON.parse(decrypted) : decrypted;
+        return { url: streamData.source, headers: { referer: 'https://smashyplayer.top/' }, type: 'hls' };
+    }
+
+    async function resolveXPass({ tmdbId, mediaType = 'movie', season, episode }) {
+        const apiUrl = mediaType === 'tv'
+            ? `https://play.xpass.top/meg/tv/${tmdbId}/${season}/${episode}/playlist.json`
+            : `https://play.xpass.top/feb/${tmdbId}/0/0/0/playlist.json`;
+        const data = await fetch(apiUrl, { headers: { 'User-Agent': UA } }).then(r => r.json());
+        const file = data?.playlist?.[0]?.sources?.find(s => s?.type === 'hls')?.file || data?.playlist?.[0]?.sources?.[0]?.file;
+        if (!file) throw new Error('Missing playlist source');
+        return { url: file, headers: { origin: 'https://play.xpass.top', referer: 'https://play.xpass.top/' }, type: 'hls' };
+    }
+
+    async function resolveYFlix({ tmdbId, mediaType = 'movie', season, episode }) {
+        const findUrl = `https://enc-dec.app/db/flix/find?tmdb_id=${encodeURIComponent(String(tmdbId))}&type=${encodeURIComponent(String(mediaType))}`;
+        const find = await fetch(findUrl).then(r => r.json());
+        const contentId = find?.[0]?.info?.flix_id;
+        if (!contentId) throw new Error('flix_id not found');
+        const encrypt = async text => await fetch(`https://enc-dec.app/api/enc-movies-flix?text=${encodeURIComponent(String(text))}`).then(r => r.json());
+        const decrypt = async text => await fetch('https://enc-dec.app/api/dec-movies-flix', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }),
+        }).then(r => r.json());
+        const encId = await encrypt(contentId);
+        const episodesResp = await fetch(`https://solarmovie.fi/ajax/episodes/list?id=${encodeURIComponent(String(contentId))}&_=${encodeURIComponent(encId)}`).then(r => r.json());
+        const episodesHtml = episodesResp?.result;
+        if (!episodesHtml) throw new Error('Missing episodes html');
+        const episodes = await fetch('https://enc-dec.app/api/parse-html', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: episodesHtml }),
+        }).then(r => r.json());
+        const episodesObj = typeof episodes === 'string' ? JSON.parse(episodes) : episodes;
+        let eid = null;
+        if (mediaType === 'tv') {
+            eid = episodesObj?.[String(season)]?.[String(episode)]?.eid;
+            if (!eid) throw new Error('Episode eid not found');
+        }
+        const encEid = eid ? await encrypt(eid) : null;
+        const serversResp = await fetch(eid
+            ? `https://solarmovie.fi/ajax/links/list?eid=${encodeURIComponent(String(eid))}&_=${encodeURIComponent(encEid)}`
+            : `https://solarmovie.fi/ajax/links/list?eid=${encodeURIComponent(String(contentId))}&_=${encodeURIComponent(encId)}`
+        ).then(r => r.json());
+        const serversHtml = serversResp?.result;
+        if (!serversHtml) throw new Error('Missing servers html');
+        const serversParsed = await fetch('https://enc-dec.app/api/parse-html', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: serversHtml }),
+        }).then(r => r.json());
+        const serversObj = typeof serversParsed === 'string' ? JSON.parse(serversParsed) : serversParsed;
+        const lid = serversObj?.default?.['1']?.lid || Object.values(serversObj || {}).flatMap(v => (v && typeof v === 'object' ? Object.values(v) : [])).find(x => x?.lid)?.lid;
+        if (!lid) throw new Error('lid not found');
+        const encLid = await encrypt(lid);
+        const embedResp = await fetch(`https://solarmovie.fi/ajax/links/view?id=${encodeURIComponent(String(lid))}&_=${encodeURIComponent(encLid)}`).then(r => r.json());
+        const encryptedEmbed = embedResp?.result;
+        if (!encryptedEmbed) throw new Error('Missing encrypted embed');
+        const embedDecrypted = await decrypt(encryptedEmbed);
+        const embedData = typeof embedDecrypted === 'string' ? JSON.parse(embedDecrypted) : embedDecrypted;
+        const embedUrl = embedData?.url;
+        if (!embedUrl) throw new Error('Missing embed url');
+        const mediaUrl = embedUrl.replace('/e/', '/media/');
+        const resp = await fetch(mediaUrl).then(r => r.json());
+        const encrypted = resp?.result;
+        if (!encrypted) throw new Error('Missing encrypted result');
+        const decrypted = await fetch('https://enc-dec.app/api/dec-rapid', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: encrypted, agent: UA }),
+        }).then(r => r.json());
+        const streamData = typeof decrypted === 'string' ? JSON.parse(decrypted) : decrypted;
+        const file = streamData?.sources?.[0]?.file;
+        if (!file) throw new Error('Missing sources[0].file');
+        return { url: file, headers: { origin: 'https://rapidshare.cc', referer: 'https://rapidshare.cc/' }, type: 'hls' };
+    }
+
+    async function resolveMadPlay({ tmdbId, mediaType = 'movie', season, episode }) {
+        const url = mediaType === 'tv'
+            ? `https://cdn.madplay.site/api/hls/unknown/${tmdbId}/season_${season}/episode_${episode}/master.m3u8`
+            : `https://cdn.madplay.site/api/hls/unknown/${tmdbId}/master.m3u8`;
+        const res = await fetch(url, { method: 'HEAD' });
+        if (res.ok) return { url, headers: {}, type: 'hls' };
+        const apiUrl = mediaType === 'tv'
+            ? `https://api.madplay.site/api/rogflix?id=${tmdbId}&season=${season}&episode=${episode}&type=series`
+            : `https://api.madplay.site/api/rogflix?id=${tmdbId}&type=movie`;
+        const data = await fetch(apiUrl, { headers: { 'User-Agent': UA } }).then(r => r.json());
+        if (Array.isArray(data) && data.length > 0) {
+            const englishItem = data.find(item => item?.title === 'English');
+            if (englishItem?.file) return { url: englishItem.file, headers: {}, type: 'hls' };
+        }
+        throw new Error('MadPlay: no sources found');
+    }
+
+    async function resolveVixsrc({ tmdbId, mediaType = 'movie', season, episode }) {
+        const pageUrl = mediaType === 'tv'
+            ? `https://vixsrc.to/tv/${tmdbId}/${season}/${episode}`
+            : `https://vixsrc.to/movie/${tmdbId}`;
+        const html = await fetch(pageUrl, { headers: { 'User-Agent': UA, Referer: 'https://vixsrc.to/' } }).then(r => r.text());
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        const scripts = Array.from(doc.querySelectorAll('script'));
+        const scriptTag = scripts.find(s => s.textContent && s.textContent.includes('window.masterPlaylist'));
+        if (!scriptTag?.textContent) throw new Error('Script tag with window.masterPlaylist not found');
+        const scriptContent = scriptTag.textContent;
+        let videoId = null;
+        const videoIdMatch = scriptContent.match(/window\.video\s*=\s*\{[^}]*id:\s*['"]([^'"]+)['"]/s);
+        if (videoIdMatch) {
+            videoId = videoIdMatch[1];
+        } else {
+            const masterPlaylistUrlMatch = scriptContent.match(/window\.masterPlaylist\s*=\s*\{[^}]*url:\s*['"]([^'"]+)['"]/s);
+            if (masterPlaylistUrlMatch?.[1]) {
+                const urlMatch = masterPlaylistUrlMatch[1].match(/\/playlist\/(\d+)/);
+                if (urlMatch) videoId = urlMatch[1];
+            }
+        }
+        if (!videoId) throw new Error('video_id not found');
+        const tokenMatch = scriptContent.match(/masterPlaylist\s*=\s*\{[^}]*params:\s*\{[^}]*['"]token['"]:\s*['"]([^'"]+)['"]/s);
+        if (!tokenMatch) throw new Error('token not found');
+        const token = tokenMatch[1];
+        const expiresMatch = scriptContent.match(/masterPlaylist\s*=\s*\{[^}]*params:\s*\{[^}]*['"]expires['"]:\s*['"]([^'"]+)['"]/s);
+        if (!expiresMatch) throw new Error('expires not found');
+        const expires = expiresMatch[1];
+        const playlistUrl = `https://vixsrc.to/playlist/${videoId}?token=${encodeURIComponent(token)}&expires=${encodeURIComponent(expires)}&h=1&lang=en`;
+        return { url: playlistUrl, headers: { 'User-Agent': UA, 'Referer': pageUrl, 'Origin': 'https://vixsrc.to' }, type: 'hls' };
+    }
+
+    // Resolve stream from a named resolver
+    const resolveStream = async (resolverName, params) => {
+        switch (resolverName) {
+            case 'videasy': return resolveVideasy(params);
+            case 'vidlink': return resolveVidlink(params);
+            case 'hexa': return resolveHexa(params);
+            case 'smashy': return resolveSmashy(params);
+            case 'xpass': return resolveXPass(params);
+            case 'yflix': return resolveYFlix(params);
+            case 'madplay': return resolveMadPlay(params);
+            case 'vixsrc': return resolveVixsrc(params);
+            default: throw new Error(`Unknown resolver: ${resolverName}`);
+        }
     };
 
     // Utility: Fetch with Retry
@@ -191,42 +379,87 @@ $(document).ready(function() {
 
         select.on('change', () => {
             if (state.mediaId && (state.mediaType === 'movie' || (state.season && state.episode))) {
-                embedVideo();
+                embedVideo().catch(e => console.error('embedVideo error:', e));
             }
         });
         selectors.serverGrid.append(select);
     };
 
-    // Get Active Server
-    const getActiveServer = () => {
-        const index = $('#serverSelect').val();
-        return config.servers[index] || config.servers[0];
-    };
-
-    // Embed Video
-    const embedVideo = () => {
+    // Embed Video — uses stream scraper resolvers + HLS.js
+    const embedVideo = async () => {
         if (!state.mediaId) {
             console.error('Cannot embed video: mediaId is not set');
-            selectors.videoFrame.attr('src', '');
             return;
         }
         if (state.mediaType === 'tv' && (!state.season || !state.episode)) {
             console.error('Cannot embed TV video: season or episode is not set');
-            selectors.videoFrame.attr('src', '');
             return;
         }
 
-        const server = getActiveServer();
-        let src;
-        if (state.mediaType === 'movie') {
-            src = server.moviePattern.replace('{tmdb_id}', state.mediaId);
-        } else {
-            src = server.tvPattern
-                .replace('{tmdb_id}', state.mediaId)
-                .replace('{season}', state.season)
-                .replace('{episode}', state.episode);
+        const serverIndex = parseInt($('#serverSelect').val()) || 0;
+        const server = config.servers[serverIndex] || config.servers[0];
+
+        // Show loading state
+        const wrapper = selectors.videoFrame.parent();
+        selectors.videoFrame.hide();
+        wrapper.find('.stream-loading').remove();
+        wrapper.find('.stream-error').remove();
+        const loadingEl = $('<div class="stream-loading"><div class="stream-spinner"></div><p>Loading stream…</p></div>');
+        wrapper.append(loadingEl);
+
+        const params = {
+            tmdbId: state.mediaId,
+            mediaType: state.mediaType,
+            title: selectors.videoPage.data('title') || '',
+            year: selectors.videoPage.data('year') || '',
+            season: state.season,
+            episode: state.episode,
+        };
+
+        // For smashy we also need imdbId — fetch it
+        if (server.resolver === 'smashy') {
+            try {
+                const ext = await fetchWithRetry(`https://api.themoviedb.org/3/${state.mediaType}/${state.mediaId}/external_ids?api_key=${config.apiKey}`);
+                params.imdbId = ext.imdb_id || '';
+            } catch(e) { params.imdbId = ''; }
         }
-        selectors.videoFrame.attr('src', src);
+
+        try {
+            const stream = await resolveStream(server.resolver, params);
+            loadingEl.remove();
+
+            // Use a <video> element with HLS.js
+            wrapper.find('video.hls-player').remove();
+            const video = $('<video class="hls-player" controls playsinline style="position:absolute;top:0;left:0;width:100%;height:100%;background:#000;border-radius:8px;"></video>');
+            wrapper.append(video);
+
+            if (stream.type === 'hls') {
+                if (typeof Hls !== 'undefined' && Hls.isSupported()) {
+                    const hls = new Hls({
+                        xhrSetup: (xhr) => {
+                            if (stream.headers?.referer) xhr.setRequestHeader('Referer', stream.headers.referer);
+                        }
+                    });
+                    hls.loadSource(stream.url);
+                    hls.attachMedia(video[0]);
+                    hls.on(Hls.Events.MANIFEST_PARSED, () => video[0].play().catch(() => {}));
+                } else if (video[0].canPlayType('application/vnd.apple.mpegurl')) {
+                    video[0].src = stream.url;
+                    video[0].play().catch(() => {});
+                } else {
+                    throw new Error('HLS not supported in this browser');
+                }
+            } else {
+                video[0].src = stream.url;
+                video[0].play().catch(() => {});
+            }
+        } catch (err) {
+            console.error('Stream resolve failed:', err);
+            loadingEl.remove();
+            wrapper.find('video.hls-player').remove();
+            const errorEl = $(`<div class="stream-error"><i class="fas fa-exclamation-triangle"></i><p>Failed to load stream. Try another server.</p></div>`);
+            wrapper.append(errorEl);
+        }
     };
 
     // Fetch Media
@@ -529,7 +762,7 @@ $(document).ready(function() {
                         }
                         state.season = season.season_number;
                         state.episode = ep.episode_number;
-                        embedVideo();
+                        embedVideo().catch(e => console.error('embedVideo error:', e));
                         selectors.downloadBtn.attr('href', `https://dl.vidsrc.vip/tv/${state.mediaId}/${state.season}/${state.episode}`);
                         addToHistory({ 
                             id: state.mediaId, 
@@ -567,7 +800,11 @@ $(document).ready(function() {
         state.mediaType = 'movie';
         state.season = null;
         state.episode = null;
-        selectors.videoFrame.attr('src', '');
+        // Clean up video player
+        const wrapper = selectors.videoFrame.parent();
+        wrapper.find('video.hls-player').each(function() { this.pause(); this.src = ''; }).remove();
+        wrapper.find('.stream-loading, .stream-error').remove();
+        selectors.videoFrame.attr('src', '').hide();
         selectors.videoMediaTitle.text('');
         selectors.mediaPoster.attr('src', '').attr('alt', '').removeClass('loaded');
         selectors.mediaRatingBadge.find('.rating-value').text('');
@@ -756,13 +993,13 @@ $(document).ready(function() {
         if (type === 'movie') {
             // Auto-select first server if none selected
             if (!$('#serverSelect').val()) $('#serverSelect').val(0);
-            embedVideo();
+            embedVideo().catch(e => console.error('embedVideo error:', e));
         } else {
             await loadSeasonEpisodeAccordion();
             if (season && episode) {
                 $(`.episode-btn[data-season="${season}"][data-episode="${episode}"]`).addClass('active');
                 if (!$('#serverSelect').val()) $('#serverSelect').val(0);
-                embedVideo();
+                embedVideo().catch(e => console.error('embedVideo error:', e));
                 selectors.downloadBtn.attr('href', `https://dl.vidsrc.vip/tv/${id}/${season}/${episode}`);
             }
         }
