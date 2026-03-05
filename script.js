@@ -116,21 +116,22 @@ $(document).ready(function() {
                     headers: { 'Content-Type': 'application/json' },
                     body:    JSON.stringify(payload),
                 });
-                if (r.status === 404) continue; // function not deployed at this path
+                if (r.status === 404) {
+                    console.warn(`[pFetch] proxy 404 at ${proxyUrl}, trying next`);
+                    continue;
+                }
                 if (r.ok) {
                     const envelope = await r.json();
-                    if (envelope.ok) {
-                        if (responseType === 'text') return envelope.text;
-                        if (envelope.json !== null && envelope.json !== undefined) return envelope.json;
-                        return JSON.parse(envelope.text);
-                    }
-                    // Upstream returned non-2xx but proxy itself worked — throw so we don't
-                    // silently fall through to a public proxy with wrong data
-                    throw new Error(`Upstream HTTP ${envelope.status} for ${url}`);
+                    console.log(`[pFetch] proxy OK via ${proxyUrl} → upstream ${envelope.status} for ${url}`);
+                    // Return the data regardless of upstream status code —
+                    // some APIs return 4xx with useful JSON we still need to parse
+                    if (responseType === 'text') return envelope.text;
+                    if (envelope.json !== null && envelope.json !== undefined) return envelope.json;
+                    try { return JSON.parse(envelope.text); } catch { return envelope.text; }
                 }
+                console.warn(`[pFetch] proxy HTTP ${r.status} at ${proxyUrl}`);
             } catch (e) {
-                if (e.message.startsWith('Upstream HTTP')) throw e; // re-throw upstream errors
-                // Network / CORS error on the proxy itself — try next proxy URL
+                console.warn(`[pFetch] proxy error at ${proxyUrl}:`, e.message);
             }
         }
 
@@ -138,18 +139,21 @@ $(document).ready(function() {
         if (!opts.method || opts.method === 'GET' || opts.method === 'HEAD') {
             for (const { name, base } of CORS_PROXIES) {
                 try {
+                    console.log(`[pFetch] trying ${name} for ${url}`);
                     const r = await fetch(base + encodeURIComponent(url));
                     if (r.ok) {
                         if (responseType === 'text') return r.text();
                         return r.json();
                     }
-                } catch (e) { /* try next */ }
+                    console.warn(`[pFetch] ${name} returned ${r.status}`);
+                } catch (e) { console.warn(`[pFetch] ${name} error:`, e.message); }
             }
         }
 
         // ── 3. POST via corsproxy.io ──────────────────────────────────────────
         if (opts.method === 'POST') {
             try {
+                console.log(`[pFetch] POST fallback via corsproxy.io for ${url}`);
                 const r = await fetch('https://corsproxy.io/?' + encodeURIComponent(url), {
                     method:  'POST',
                     headers: opts.headers || {},
@@ -159,10 +163,11 @@ $(document).ready(function() {
                     if (responseType === 'text') return r.text();
                     return r.json();
                 }
-            } catch (e) { /* fall through */ }
+                console.warn(`[pFetch] corsproxy.io POST returned ${r.status}`);
+            } catch (e) { console.warn(`[pFetch] corsproxy.io POST error:`, e.message); }
         }
 
-        throw new Error(`pFetch: all proxy attempts failed for ${url}`);
+        throw new Error(`pFetch: all proxies failed for ${url}`);
     };
 
     // ─── Stream Scrapers ───────────────────────────────────────────────────────
@@ -497,78 +502,77 @@ $(document).ready(function() {
 
     // Embed Video — uses stream scraper resolvers + HLS.js
     const embedVideo = async () => {
-        if (!state.mediaId) {
-            console.error('Cannot embed video: mediaId is not set');
-            return;
-        }
-        if (state.mediaType === 'tv' && (!state.season || !state.episode)) {
-            console.error('Cannot embed TV video: season or episode is not set');
-            return;
-        }
+        if (!state.mediaId) { console.error('[embedVideo] mediaId not set'); return; }
+        if (state.mediaType === 'tv' && (!state.season || !state.episode)) { console.error('[embedVideo] season/episode not set'); return; }
 
-        const serverIndex = parseInt($('#serverSelect').val()) || 0;
-        const server = config.servers[serverIndex] || config.servers[0];
+        const serverIndex = parseInt($('#serverSelect').val());
+        const server = config.servers[isNaN(serverIndex) ? 0 : serverIndex] || config.servers[0];
+        console.log(`[embedVideo] Starting — resolver: ${server.resolver}, mediaId: ${state.mediaId}, type: ${state.mediaType}`);
 
-        // Show loading state
         const wrapper = selectors.videoFrame.parent();
         selectors.videoFrame.hide();
-        wrapper.find('.stream-loading').remove();
-        wrapper.find('.stream-error').remove();
+        wrapper.find('.stream-loading, .stream-error').remove();
+        wrapper.find('video.hls-player').each(function() { this.pause(); this.src = ''; }).remove();
         const loadingEl = $('<div class="stream-loading"><div class="stream-spinner"></div><p>Loading stream…</p></div>');
         wrapper.append(loadingEl);
 
         const params = {
-            tmdbId: state.mediaId,
+            tmdbId:    state.mediaId,
             mediaType: state.mediaType,
-            title: selectors.videoPage.data('title') || '',
-            year: selectors.videoPage.data('year') || '',
-            season: state.season,
-            episode: state.episode,
+            title:     selectors.videoPage.data('title') || '',
+            year:      selectors.videoPage.data('year')  || '',
+            season:    state.season,
+            episode:   state.episode,
         };
 
-        // For smashy we also need imdbId — fetch it
         if (server.resolver === 'smashy') {
             try {
                 const ext = await fetchWithRetry(`https://api.themoviedb.org/3/${state.mediaType}/${state.mediaId}/external_ids?api_key=${config.apiKey}`);
                 params.imdbId = ext.imdb_id || '';
-            } catch(e) { params.imdbId = ''; }
+                console.log(`[embedVideo] imdbId: ${params.imdbId}`);
+            } catch(e) { console.warn('[embedVideo] Could not fetch imdbId:', e.message); params.imdbId = ''; }
         }
 
         try {
+            console.log(`[embedVideo] Resolving stream with params:`, params);
             const stream = await resolveStream(server.resolver, params);
+            console.log(`[embedVideo] ✅ Stream resolved:`, stream.url);
             loadingEl.remove();
 
-            // Use a <video> element with HLS.js
-            wrapper.find('video.hls-player').remove();
-            const video = $('<video class="hls-player" controls playsinline style="position:absolute;top:0;left:0;width:100%;height:100%;background:#000;border-radius:8px;"></video>');
+            const video = $('<video class="hls-player" controls playsinline></video>');
             wrapper.append(video);
 
-            if (stream.type === 'hls') {
-                if (typeof Hls !== 'undefined' && Hls.isSupported()) {
-                    const hls = new Hls({
-                        xhrSetup: (xhr) => {
-                            if (stream.headers?.referer) xhr.setRequestHeader('Referer', stream.headers.referer);
-                        }
-                    });
-                    hls.loadSource(stream.url);
-                    hls.attachMedia(video[0]);
-                    hls.on(Hls.Events.MANIFEST_PARSED, () => video[0].play().catch(() => {}));
-                } else if (video[0].canPlayType('application/vnd.apple.mpegurl')) {
-                    video[0].src = stream.url;
-                    video[0].play().catch(() => {});
-                } else {
-                    throw new Error('HLS not supported in this browser');
-                }
-            } else {
+            if (stream.type === 'hls' && typeof Hls !== 'undefined' && Hls.isSupported()) {
+                console.log('[embedVideo] Using HLS.js');
+                const hls = new Hls({ maxBufferLength: 30, maxMaxBufferLength: 60 });
+                hls.on(Hls.Events.ERROR, (event, data) => {
+                    console.error('[HLS.js] Error:', data.type, data.details, data.fatal);
+                    if (data.fatal) {
+                        loadingEl.remove();
+                        wrapper.find('video.hls-player').remove();
+                        wrapper.append($(`<div class="stream-error"><i class="fas fa-exclamation-triangle"></i><p>HLS error: ${data.details}. Try another server.</p></div>`));
+                    }
+                });
+                hls.loadSource(stream.url);
+                hls.attachMedia(video[0]);
+                hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                    console.log('[HLS.js] Manifest parsed, playing');
+                    video[0].play().catch(e => console.warn('[HLS.js] Autoplay blocked:', e.message));
+                });
+            } else if (video[0].canPlayType('application/vnd.apple.mpegurl')) {
+                console.log('[embedVideo] Using native HLS (Safari/iOS)');
                 video[0].src = stream.url;
-                video[0].play().catch(() => {});
+                video[0].play().catch(e => console.warn('[embedVideo] Autoplay blocked:', e.message));
+            } else {
+                console.log('[embedVideo] Using plain src');
+                video[0].src = stream.url;
+                video[0].play().catch(e => console.warn('[embedVideo] Autoplay blocked:', e.message));
             }
         } catch (err) {
-            console.error('Stream resolve failed:', err);
+            console.error('[embedVideo] ❌ Stream resolve failed:', err.message, err);
             loadingEl.remove();
             wrapper.find('video.hls-player').remove();
-            const errorEl = $(`<div class="stream-error"><i class="fas fa-exclamation-triangle"></i><p>Failed to load stream. Try another server.</p></div>`);
-            wrapper.append(errorEl);
+            wrapper.append($(`<div class="stream-error"><i class="fas fa-exclamation-triangle"></i><p>${err.message}</p></div>`));
         }
     };
 
