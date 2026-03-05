@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stream Scraper Debugger</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d0d0d; color: #e0e0e0; font-family: monospace; padding: 20px; }
+  h1 { color: #2af598; margin-bottom: 5px; font-size: 1.4rem; }
+  p.sub { color: #888; font-size: 0.8rem; margin-bottom: 20px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
+  input { background: #1a1a1a; border: 1px solid #333; color: #fff; padding: 8px 12px; border-radius: 8px; font-family: monospace; font-size: 0.85rem; width: 160px; }
+  input::placeholder { color: #555; }
+  select { background: #1a1a1a; border: 1px solid #333; color: #fff; padding: 8px 12px; border-radius: 8px; font-family: monospace; font-size: 0.85rem; }
+  button.run { background: #2af598; color: #000; border: none; padding: 8px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 0.9rem; }
+  button.run:hover { background: #1dd678; }
+  button.run-all { background: #333; color: #2af598; border: 1px solid #2af598; padding: 8px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 0.9rem; }
+  .servers { display: grid; gap: 12px; }
+  .server-card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 10px; padding: 14px; }
+  .server-card .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+  .server-card .name { font-weight: bold; color: #2af598; font-size: 0.95rem; }
+  .status { font-size: 0.75rem; padding: 3px 10px; border-radius: 20px; font-weight: bold; }
+  .status.idle     { background: #333; color: #888; }
+  .status.running  { background: #1a3a2a; color: #2af598; }
+  .status.ok       { background: #1a3a1a; color: #4ade80; }
+  .status.fail     { background: #3a1a1a; color: #f87171; }
+  .log { font-size: 0.78rem; line-height: 1.6; max-height: 200px; overflow-y: auto; background: #0d0d0d; border-radius: 6px; padding: 8px; }
+  .log .step  { color: #aaa; }
+  .log .ok    { color: #4ade80; }
+  .log .err   { color: #f87171; }
+  .log .warn  { color: #facc15; }
+  .log .url   { color: #60a5fa; word-break: break-all; }
+  .log .info  { color: #a78bfa; }
+  .play-btn { margin-top: 10px; background: #2af598; color: #000; border: none; padding: 6px 14px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 0.8rem; display: none; }
+  video { width: 100%; border-radius: 8px; margin-top: 10px; max-height: 200px; display: none; background: #000; }
+  .proxy-status { background: #1a1a2a; border: 1px solid #333; border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; font-size: 0.8rem; }
+  .proxy-status span { font-weight: bold; }
+</style>
+</head>
+<body>
+
+<h1>🔍 Stream Scraper Debugger</h1>
+<p class="sub">Tests each server resolver step-by-step and shows exactly where failures happen.</p>
+
+<div class="proxy-status" id="proxyStatus">Checking Netlify proxy… <span id="proxyLabel">⏳</span></div>
+
+<div class="controls">
+  <input id="tmdbId"    placeholder="TMDB ID (e.g. 550)"  value="550" />
+  <input id="imdbId"    placeholder="IMDB ID (e.g. tt0137523)" value="tt0137523" />
+  <input id="title"     placeholder="Title"  value="Fight Club" />
+  <input id="year"      placeholder="Year"   value="1999" />
+  <select id="mediaType">
+    <option value="movie" selected>movie</option>
+    <option value="tv">tv</option>
+  </select>
+  <input id="season"    placeholder="Season"  value="" style="width:80px" />
+  <input id="episode"   placeholder="Episode" value="" style="width:80px" />
+  <button class="run-all" onclick="runAll()">▶ Test All Servers</button>
+</div>
+
+<div class="servers" id="serverList"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest/dist/hls.min.js"></script>
+<script>
+const NETLIFY_PROXY    = '/api/proxy';
+const CORS_PROXY_BASE  = 'https://corsproxy.io/?url=';
+const CORS_PROXY2_BASE = 'https://api.allorigins.win/raw?url=';
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
+
+let proxyAvailable = false;
+
+// ─── Check proxy ────────────────────────────────────────────────────────────
+async function checkProxy() {
+  try {
+    const r = await fetch(NETLIFY_PROXY, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: 'https://enc-dec.app/', method: 'GET' })
+    });
+    if (r.ok) {
+      proxyAvailable = true;
+      document.getElementById('proxyLabel').innerHTML = '✅ Netlify proxy reachable';
+      document.getElementById('proxyStatus').style.borderColor = '#2af598';
+    } else {
+      throw new Error('non-ok');
+    }
+  } catch {
+    document.getElementById('proxyLabel').innerHTML = '⚠️ Netlify proxy unreachable — using public CORS proxies as fallback';
+    document.getElementById('proxyStatus').style.borderColor = '#facc15';
+  }
+}
+
+// ─── pFetch ─────────────────────────────────────────────────────────────────
+async function pFetch(url, opts = {}, responseType = 'json', log) {
+  const payload = { url, method: opts.method || 'GET', headers: opts.headers || {}, body: opts.body };
+
+  if (proxyAvailable) {
+    try {
+      log('step', `→ Netlify proxy: ${url}`);
+      const r = await fetch(NETLIFY_PROXY, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (r.ok) {
+        const env = await r.json();
+        if (env.ok) {
+          log('ok', `✓ Proxy OK (HTTP ${env.status})`);
+          if (responseType === 'text') return env.text;
+          return env.json !== null ? env.json : JSON.parse(env.text);
+        }
+        log('warn', `Proxy returned non-ok upstream status ${env.status}`);
+      }
+    } catch (e) { log('warn', `Proxy fetch error: ${e.message}`); }
+  }
+
+  // GET fallbacks
+  if (!opts.method || opts.method === 'GET') {
+    for (const [name, base] of [['corsproxy.io', CORS_PROXY_BASE], ['allorigins', CORS_PROXY2_BASE]]) {
+      try {
+        log('step', `→ ${name}: ${url}`);
+        const r = await fetch(base + encodeURIComponent(url));
+        if (r.ok) {
+          log('ok', `✓ ${name} OK`);
+          if (responseType === 'text') return r.text();
+          return r.json();
+        }
+      } catch (e) { log('warn', `${name} error: ${e.message}`); }
+    }
+  }
+
+  // POST fallback
+  if (opts.method === 'POST') {
+    try {
+      log('step', `→ corsproxy.io POST: ${url}`);
+      const r = await fetch('https://corsproxy.io/?' + encodeURIComponent(url), {
+        method: 'POST', headers: opts.headers || {}, body: opts.body
+      });
+      if (r.ok) {
+        log('ok', '✓ corsproxy.io POST OK');
+        if (responseType === 'text') return r.text();
+        return r.json();
+      }
+    } catch (e) { log('warn', `corsproxy.io POST error: ${e.message}`); }
+  }
+
+  throw new Error(`All proxies failed for: ${url}`);
+}
+
+// ─── Resolvers ───────────────────────────────────────────────────────────────
+function randomHex(b) {
+  const a = new Uint8Array(b); crypto.getRandomValues(a);
+  return Array.from(a, x => x.toString(16).padStart(2,'0')).join('');
+}
+
+const RESOLVERS = {
+  'Server 1 (Videasy)': async (p, log) => {
+    const qs = new URLSearchParams({ title: p.title, mediaType: p.mediaType, year: String(p.year), tmdbId: String(p.tmdbId) });
+    if (p.mediaType === 'tv') { qs.set('seasonId', String(p.season)); qs.set('episodeId', String(p.episode)); }
+    const apiUrl = `https://api.videasy.net/myflixerzupcloud/sources-with-title?${qs}`;
+    log('step', 'Fetching encrypted source from Videasy API…');
+    const encrypted = await pFetch(apiUrl, { headers: { 'User-Agent': UA } }, 'text', log);
+    log('info', `Encrypted length: ${encrypted?.length ?? 0}`);
+    log('step', 'Decrypting via enc-dec.app…');
+    const dec = await pFetch('https://enc-dec.app/api/dec-videasy', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: encrypted, id: String(p.tmdbId) })
+    }, 'json', log);
+    const data = typeof dec === 'string' ? JSON.parse(dec) : dec;
+    const stream = (data.sources || [])[0];
+    if (!stream?.url) throw new Error('No stream URL in sources');
+    log('url', stream.url);
+    return { url: stream.url, headers: { origin: 'https://videasy.net', referer: 'https://videasy.net/' }, type: 'hls' };
+  },
+
+  'Server 2 (Vidlink)': async (p, log) => {
+    log('step', 'Encrypting tmdbId via enc-dec.app…');
+    const encId = await pFetch(`https://enc-dec.app/api/enc-vidlink?text=${p.tmdbId}`, {}, 'json', log);
+    log('info', `Encrypted ID: ${encId}`);
+    const path = p.mediaType === 'tv'
+      ? `https://vidlink.pro/api/b/tv/${encId}/${p.season}/${p.episode}`
+      : `https://vidlink.pro/api/b/movie/${encId}`;
+    log('step', 'Fetching stream from Vidlink…');
+    const data = await pFetch(path, { headers: { 'User-Agent': UA, Referer: 'https://vidlink.pro/' } }, 'json', log);
+    if (!data?.stream?.playlist) throw new Error('No playlist in response');
+    log('url', data.stream.playlist);
+    return { url: data.stream.playlist, headers: { origin: 'https://vidlink.pro', referer: 'https://vidlink.pro/' }, type: 'hls' };
+  },
+
+  'Server 3 (Hexa)': async (p, log) => {
+    const key = randomHex(32);
+    log('step', `Generated key: ${key}`);
+    const apiUrl = p.mediaType === 'tv'
+      ? `https://themoviedb.hexa.su/api/tmdb/tv/${p.tmdbId}/season/${p.season}/episode/${p.episode}/images`
+      : `https://themoviedb.hexa.su/api/tmdb/movie/${p.tmdbId}/images`;
+    log('step', 'Fetching encrypted data from Hexa…');
+    const encrypted = await pFetch(apiUrl, { headers: { 'X-Api-Key': key } }, 'text', log);
+    log('info', `Encrypted length: ${encrypted?.length ?? 0}`);
+    log('step', 'Decrypting…');
+    const dec = await pFetch('https://enc-dec.app/api/dec-hexa', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: encrypted, key })
+    }, 'json', log);
+    const data = typeof dec === 'string' ? JSON.parse(dec) : dec;
+    if (!data?.sources?.[0]?.url) throw new Error('No source url');
+    log('url', data.sources[0].url);
+    return { url: data.sources[0].url, headers: {}, type: 'hls' };
+  },
+
+  'Server 4 (Smashy)': async (p, log) => {
+    log('step', 'Getting Smashy token…');
+    const token = await pFetch('https://enc-dec.app/api/enc-vidstack', {}, 'json', log);
+    log('info', `token: ${token?.token}, user_id: ${token?.user_id}`);
+    const path = p.mediaType === 'tv'
+      ? `https://api.smashystream.top/api/v1/videosmashyi/${p.imdbId}/${p.tmdbId}/${p.season}/${p.episode}?token=${token.token}&user_id=${token.user_id}`
+      : `https://api.smashystream.top/api/v1/videosmashyi/${p.imdbId}?token=${token.token}&user_id=${token.user_id}`;
+    log('step', 'Fetching from Smashy API…');
+    const data = await pFetch(path, {}, 'json', log);
+    log('info', `data.data: ${data?.data}`);
+    const [host, id] = data.data.split('/#');
+    log('step', `Fetching video from ${host}…`);
+    const encrypted = await pFetch(`${host}/api/v1/video?id=${id}`, {}, 'text', log);
+    log('step', 'Decrypting…');
+    const dec = await pFetch('https://enc-dec.app/api/dec-vidstack', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: encrypted, type: '1' })
+    }, 'json', log);
+    const sd = typeof dec === 'string' ? JSON.parse(dec) : dec;
+    if (!sd?.source) throw new Error('No source in decrypted data');
+    log('url', sd.source);
+    return { url: sd.source, headers: { referer: 'https://smashyplayer.top/' }, type: 'hls' };
+  },
+
+  'Server 5 (XPass)': async (p, log) => {
+    const apiUrl = p.mediaType === 'tv'
+      ? `https://play.xpass.top/meg/tv/${p.tmdbId}/${p.season}/${p.episode}/playlist.json`
+      : `https://play.xpass.top/feb/${p.tmdbId}/0/0/0/playlist.json`;
+    log('step', 'Fetching XPass playlist…');
+    const data = await pFetch(apiUrl, { headers: { 'User-Agent': UA } }, 'json', log);
+    const file = data?.playlist?.[0]?.sources?.find(s => s?.type === 'hls')?.file || data?.playlist?.[0]?.sources?.[0]?.file;
+    if (!file) throw new Error('No file in playlist sources');
+    log('url', file);
+    return { url: file, headers: { origin: 'https://play.xpass.top', referer: 'https://play.xpass.top/' }, type: 'hls' };
+  },
+
+  'Server 6 (YFlix)': async (p, log) => {
+    log('step', 'Finding flix_id…');
+    const find = await pFetch(`https://enc-dec.app/db/flix/find?tmdb_id=${p.tmdbId}&type=${p.mediaType}`, {}, 'json', log);
+    const contentId = find?.[0]?.info?.flix_id;
+    if (!contentId) throw new Error('flix_id not found');
+    log('info', `flix_id: ${contentId}`);
+    const enc = t => pFetch(`https://enc-dec.app/api/enc-movies-flix?text=${encodeURIComponent(String(t))}`, {}, 'json', log);
+    const dec = t => pFetch('https://enc-dec.app/api/dec-movies-flix', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({text:t}) }, 'json', log);
+    const encId = await enc(contentId);
+    log('step', 'Fetching episode list…');
+    const epResp = await pFetch(`https://solarmovie.fi/ajax/episodes/list?id=${encodeURIComponent(String(contentId))}&_=${encodeURIComponent(encId)}`, {}, 'json', log);
+    if (!epResp?.result) throw new Error('No episodes html');
+    const epParsed = await pFetch('https://enc-dec.app/api/parse-html', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({text:epResp.result}) }, 'json', log);
+    const epObj = typeof epParsed === 'string' ? JSON.parse(epParsed) : epParsed;
+    let eid = null;
+    if (p.mediaType === 'tv') {
+      eid = epObj?.[String(p.season)]?.[String(p.episode)]?.eid;
+      if (!eid) throw new Error('Episode eid not found');
+    }
+    const encEid = eid ? await enc(eid) : null;
+    log('step', 'Fetching server links…');
+    const svResp = await pFetch(eid
+      ? `https://solarmovie.fi/ajax/links/list?eid=${encodeURIComponent(String(eid))}&_=${encodeURIComponent(encEid)}`
+      : `https://solarmovie.fi/ajax/links/list?eid=${encodeURIComponent(String(contentId))}&_=${encodeURIComponent(encId)}`, {}, 'json', log);
+    if (!svResp?.result) throw new Error('No servers html');
+    const svParsed = await pFetch('https://enc-dec.app/api/parse-html', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({text:svResp.result}) }, 'json', log);
+    const svObj = typeof svParsed === 'string' ? JSON.parse(svParsed) : svParsed;
+    const lid = svObj?.default?.['1']?.lid || Object.values(svObj||{}).flatMap(v=>(v&&typeof v==='object'?Object.values(v):[])).find(x=>x?.lid)?.lid;
+    if (!lid) throw new Error('lid not found');
+    const encLid = await enc(lid);
+    log('step', 'Fetching embed…');
+    const embResp = await pFetch(`https://solarmovie.fi/ajax/links/view?id=${encodeURIComponent(String(lid))}&_=${encodeURIComponent(encLid)}`, {}, 'json', log);
+    if (!embResp?.result) throw new Error('No embed result');
+    const embDec = await dec(embResp.result);
+    const embData = typeof embDec === 'string' ? JSON.parse(embDec) : embDec;
+    if (!embData?.url) throw new Error('No embed url');
+    const mediaUrl = embData.url.replace('/e/', '/media/');
+    log('step', `Fetching media: ${mediaUrl}`);
+    const mResp = await pFetch(mediaUrl, {}, 'json', log);
+    if (!mResp?.result) throw new Error('No encrypted media result');
+    log('step', 'Decrypting rapid…');
+    const finalDec = await pFetch('https://enc-dec.app/api/dec-rapid', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({text:mResp.result, agent:UA}) }, 'json', log);
+    const sd = typeof finalDec === 'string' ? JSON.parse(finalDec) : finalDec;
+    if (!sd?.sources?.[0]?.file) throw new Error('No sources[0].file');
+    log('url', sd.sources[0].file);
+    return { url: sd.sources[0].file, headers: { origin: 'https://rapidshare.cc', referer: 'https://rapidshare.cc/' }, type: 'hls' };
+  },
+
+  'Server 7 (MadPlay)': async (p, log) => {
+    const cdnUrl = p.mediaType === 'tv'
+      ? `https://cdn.madplay.site/api/hls/unknown/${p.tmdbId}/season_${p.season}/episode_${p.episode}/master.m3u8`
+      : `https://cdn.madplay.site/api/hls/unknown/${p.tmdbId}/master.m3u8`;
+    log('step', `HEAD check CDN: ${cdnUrl}`);
+    try {
+      const r = await fetch(NETLIFY_PROXY, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({url:cdnUrl, method:'HEAD'}) });
+      const env = await r.json();
+      if (env.ok) { log('ok', '✓ CDN direct HLS found'); log('url', cdnUrl); return { url: cdnUrl, headers: {}, type: 'hls' }; }
+      log('warn', `CDN returned ${env.status}, trying API…`);
+    } catch(e) { log('warn', `CDN probe failed: ${e.message}`); }
+    const apiUrl = p.mediaType === 'tv'
+      ? `https://api.madplay.site/api/rogflix?id=${p.tmdbId}&season=${p.season}&episode=${p.episode}&type=series`
+      : `https://api.madplay.site/api/rogflix?id=${p.tmdbId}&type=movie`;
+    log('step', 'Fetching from MadPlay Rogflix API…');
+    const data = await pFetch(apiUrl, { headers: {'User-Agent': UA} }, 'json', log);
+    log('info', `Response: ${JSON.stringify(data).slice(0,200)}`);
+    if (Array.isArray(data) && data.length > 0) {
+      const item = data.find(i => i?.title === 'English') || data[0];
+      if (item?.file) { log('url', item.file); return { url: item.file, headers: {}, type: 'hls' }; }
+    }
+    throw new Error('No sources found');
+  },
+
+  'Server 8 (Vixsrc)': async (p, log) => {
+    const pageUrl = p.mediaType === 'tv'
+      ? `https://vixsrc.to/tv/${p.tmdbId}/${p.season}/${p.episode}`
+      : `https://vixsrc.to/movie/${p.tmdbId}`;
+    log('step', `Fetching Vixsrc page: ${pageUrl}`);
+    const html = await pFetch(pageUrl, { headers: {'User-Agent': UA, Referer: 'https://vixsrc.to/'} }, 'text', log);
+    log('info', `HTML length: ${html?.length ?? 0}`);
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const sc = Array.from(doc.querySelectorAll('script')).find(s => s.textContent?.includes('window.masterPlaylist'))?.textContent;
+    if (!sc) throw new Error('masterPlaylist script tag not found in page HTML');
+    const m1 = sc.match(/window\.video\s*=\s*\{[^}]*id:\s*['"]([^'"]+)['"]/s);
+    const m2 = sc.match(/window\.masterPlaylist\s*=\s*\{[^}]*url:\s*['"]([^'"]+)['"]/s);
+    let videoId = m1?.[1] || m2?.[1]?.match(/\/playlist\/(\d+)/)?.[1];
+    if (!videoId) throw new Error('video_id not found in script');
+    log('info', `videoId: ${videoId}`);
+    const token   = sc.match(/masterPlaylist\s*=\s*\{[^}]*params:\s*\{[^}]*['"]token['"]:\s*['"]([^'"]+)['"]/s)?.[1];
+    const expires = sc.match(/masterPlaylist\s*=\s*\{[^}]*params:\s*\{[^}]*['"]expires['"]:\s*['"]([^'"]+)['"]/s)?.[1];
+    if (!token || !expires) throw new Error('token or expires not found');
+    const playlistUrl = `https://vixsrc.to/playlist/${videoId}?token=${encodeURIComponent(token)}&expires=${encodeURIComponent(expires)}&h=1&lang=en`;
+    log('url', playlistUrl);
+    return { url: playlistUrl, headers: { 'User-Agent': UA, Referer: pageUrl, Origin: 'https://vixsrc.to' }, type: 'hls' };
+  },
+};
+
+// ─── UI ──────────────────────────────────────────────────────────────────────
+const cards = {};
+function buildUI() {
+  const list = document.getElementById('serverList');
+  for (const name of Object.keys(RESOLVERS)) {
+    const card = document.createElement('div');
+    card.className = 'server-card';
+    card.innerHTML = `
+      <div class="header">
+        <span class="name">${name}</span>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span class="status idle" id="status-${name}">idle</span>
+          <button class="run" onclick="runOne('${name}')">Test</button>
+        </div>
+      </div>
+      <div class="log" id="log-${name}"><span style="color:#555">Press Test to run…</span></div>
+      <button class="play-btn" id="play-${name}">▶ Play Stream</button>
+      <video id="video-${name}" controls playsinline></video>
+    `;
+    list.appendChild(card);
+    cards[name] = {
+      status: card.querySelector(`#status-${name}`),
+      log: card.querySelector(`#log-${name}`),
+      playBtn: card.querySelector(`#play-${name}`),
+      video: card.querySelector(`#video-${name}`),
+      lastStream: null
+    };
+  }
+}
+
+function getParams() {
+  return {
+    tmdbId:    document.getElementById('tmdbId').value.trim(),
+    imdbId:    document.getElementById('imdbId').value.trim(),
+    title:     document.getElementById('title').value.trim(),
+    year:      document.getElementById('year').value.trim(),
+    mediaType: document.getElementById('mediaType').value,
+    season:    parseInt(document.getElementById('season').value) || 1,
+    episode:   parseInt(document.getElementById('episode').value) || 1,
+  };
+}
+
+function makeLogger(name) {
+  const c = cards[name];
+  return (type, msg) => {
+    const span = document.createElement('span');
+    span.className = type;
+    span.textContent = msg;
+    if (c.log.querySelector('span[style]')) c.log.innerHTML = '';
+    c.log.appendChild(span);
+    c.log.appendChild(document.createElement('br'));
+    c.log.scrollTop = c.log.scrollHeight;
+  };
+}
+
+async function runOne(name) {
+  const c = cards[name];
+  c.log.innerHTML = '';
+  c.status.className = 'status running';
+  c.status.textContent = 'running…';
+  c.playBtn.style.display = 'none';
+  c.video.style.display = 'none';
+  c.lastStream = null;
+
+  const log = makeLogger(name);
+  const p = getParams();
+
+  try {
+    const stream = await RESOLVERS[name](p, log);
+    c.lastStream = stream;
+    c.status.className = 'status ok';
+    c.status.textContent = '✓ success';
+    log('ok', `\n✅ Stream resolved!`);
+    log('ok', `Type: ${stream.type}`);
+
+    // Set up play button
+    c.playBtn.style.display = 'inline-block';
+    c.playBtn.onclick = () => {
+      c.video.style.display = 'block';
+      if (stream.type === 'hls' && Hls.isSupported()) {
+        const hls = new Hls();
+        hls.loadSource(stream.url);
+        hls.attachMedia(c.video);
+        hls.on(Hls.Events.MANIFEST_PARSED, () => c.video.play().catch(()=>{}));
+        hls.on(Hls.Events.ERROR, (e, d) => log('err', `HLS error: ${d.details}`));
+      } else {
+        c.video.src = stream.url;
+        c.video.play().catch(()=>{});
+      }
+    };
+  } catch (err) {
+    c.status.className = 'status fail';
+    c.status.textContent = '✗ failed';
+    log('err', `\n❌ ${err.message}`);
+  }
+}
+
+async function runAll() {
+  for (const name of Object.keys(RESOLVERS)) {
+    runOne(name);
+    await new Promise(r => setTimeout(r, 300));
+  }
+}
+
+buildUI();
+checkProxy();
+</script>
+</body>
+</html>
