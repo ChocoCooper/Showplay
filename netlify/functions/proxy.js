@@ -21,27 +21,49 @@ const CORS_HEADERS = {
 };
 
 const ALLOWED_DOMAINS = [
+    // enc-dec helpers
     'enc-dec.app',
+    // Videasy
     'api.videasy.net',
     'videasy.net',
+    // Vidlink
     'vidlink.pro',
+    // Hexa
     'themoviedb.hexa.su',
+    'hexa.su',
+    // Smashy
     'api.smashystream.top',
     'smashystream.top',
     'smashyplayer.top',
+    // XPass
     'play.xpass.top',
     'xpass.top',
+    // YFlix / SolarMovie
     'solarmovie.fi',
     'rapidshare.cc',
+    // MadPlay
     'cdn.madplay.site',
     'api.madplay.site',
     'madplay.site',
+    // Vixsrc
     'vixsrc.to',
+    // TMDB
     'api.themoviedb.org',
+    // Workers / CDN domains seen in logs
+    'workers.dev',
+    'p.ightbreeze17.site',
+    'videostr.net',
+    'nightbreeze17.site',
+    'frostcomet5.pro',
 ];
 
+// Also allow any domain ending in known CDN TLDs for stream segments
 function isAllowed(hostname) {
-    return ALLOWED_DOMAINS.some(d => hostname === d || hostname.endsWith('.' + d));
+    if (ALLOWED_DOMAINS.some(d => hostname === d || hostname.endsWith('.' + d))) return true;
+    // Allow Cloudflare Workers URLs
+    if (hostname.endsWith('.workers.dev')) return true;
+    return false;
+}
 }
 
 function makeRequest(urlStr, options = {}) {
