@@ -1,142 +1,117 @@
-/**
- * Netlify Function: proxy
- * 
- * Server-side CORS proxy for stream scraper API calls.
- * Uses Node.js built-in https/http modules — no external dependencies.
- * Works on Node 12, 14, 16, 18+.
- * 
- * POST body: { url, method?, headers?, body? }
- * Response:  { ok, status, text, json? }
- */
-
 const https = require('https');
 const http  = require('http');
-const { URL } = require('url');
 
-const CORS_HEADERS = {
-    'Access-Control-Allow-Origin':  '*',
+var CORS = {
+    'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Content-Type',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Content-Type': 'application/json',
+    'Content-Type': 'application/json'
 };
 
-const ALLOWED_DOMAINS = [
-    // enc-dec helpers
-    'enc-dec.app',
-    // Videasy
-    'api.videasy.net',
-    'videasy.net',
-    // Vidlink
-    'vidlink.pro',
-    // Hexa
-    'themoviedb.hexa.su',
-    'hexa.su',
-    // Smashy
-    'api.smashystream.top',
-    'smashystream.top',
-    'smashyplayer.top',
-    // XPass
-    'play.xpass.top',
-    'xpass.top',
-    // YFlix / SolarMovie
-    'solarmovie.fi',
-    'rapidshare.cc',
-    // MadPlay
-    'cdn.madplay.site',
-    'api.madplay.site',
-    'madplay.site',
-    // Vixsrc
-    'vixsrc.to',
-    // TMDB
-    'api.themoviedb.org',
-    // Workers / CDN domains seen in logs
-    'workers.dev',
-    'p.ightbreeze17.site',
-    'videostr.net',
-    'nightbreeze17.site',
-    'frostcomet5.pro',
-];
-
-// Also allow any domain ending in known CDN TLDs for stream segments
-function isAllowed(hostname) {
-    if (ALLOWED_DOMAINS.some(d => hostname === d || hostname.endsWith('.' + d))) return true;
-    // Allow Cloudflare Workers URLs
-    if (hostname.endsWith('.workers.dev')) return true;
-    return false;
-}
+function respond(callback, status, body) {
+    callback(null, { statusCode: status, headers: CORS, body: typeof body === 'string' ? body : JSON.stringify(body) });
 }
 
-function makeRequest(urlStr, options = {}) {
-    return new Promise((resolve, reject) => {
-        let parsed;
-        try { parsed = new URL(urlStr); } catch (e) { return reject(new Error('Invalid URL: ' + urlStr)); }
+function parseUrl(rawUrl) {
+    var isHttps = rawUrl.indexOf('https://') === 0;
+    var withoutProto = rawUrl.replace(/^https?:\/\//, '');
+    var qIdx = withoutProto.indexOf('?');
+    var hostAndPath = withoutProto;
+    var query = '';
+    if (qIdx > -1) {
+        // find first slash to separate host
+    }
+    var slashIdx = withoutProto.indexOf('/');
+    var hostPart, pathPart;
+    if (slashIdx === -1) {
+        hostPart = withoutProto;
+        pathPart = '/';
+    } else {
+        hostPart = withoutProto.slice(0, slashIdx);
+        pathPart = withoutProto.slice(slashIdx);
+    }
+    var colonIdx = hostPart.lastIndexOf(':');
+    var hostname, port;
+    if (colonIdx > -1 && colonIdx > hostPart.indexOf(']')) {
+        hostname = hostPart.slice(0, colonIdx);
+        port = parseInt(hostPart.slice(colonIdx + 1));
+    } else {
+        hostname = hostPart;
+        port = isHttps ? 443 : 80;
+    }
+    return { hostname: hostname, port: port, path: pathPart, isHttps: isHttps };
+}
 
-        const isHttps = parsed.protocol === 'https:';
-        const lib = isHttps ? https : http;
+function doRequest(parsed, method, reqHeaders, bodyData, redirectCount, callback) {
+    if (redirectCount > 5) return respond(callback, 502, { error: 'Too many redirects' });
 
-        const reqOptions = {
-            hostname: parsed.hostname,
-            port:     parsed.port || (isHttps ? 443 : 80),
-            path:     parsed.pathname + parsed.search,
-            method:   (options.method || 'GET').toUpperCase(),
-            headers:  {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                ...(options.headers || {}),
-            },
-            timeout: 15000,
-        };
+    var lib = parsed.isHttps ? https : http;
+    var options = {
+        hostname: parsed.hostname,
+        port: parsed.port,
+        path: parsed.path,
+        method: method,
+        headers: Object.assign({ 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }, reqHeaders),
+        rejectUnauthorized: false
+    };
+    if (bodyData) {
+        options.headers['Content-Length'] = Buffer.byteLength(bodyData);
+    }
 
-        const req = lib.request(reqOptions, (res) => {
-            // Follow redirects up to 5 hops
-            if ([301,302,303,307,308].includes(res.statusCode) && res.headers.location && (options._redirects||0) < 5) {
-                const loc = res.headers.location.startsWith('http')
-                    ? res.headers.location
-                    : `${parsed.protocol}//${parsed.host}${res.headers.location}`;
-                return makeRequest(loc, { ...options, _redirects: (options._redirects||0)+1 })
-                    .then(resolve).catch(reject);
+    var req = lib.request(options, function(res) {
+        if ([301,302,303,307,308].indexOf(res.statusCode) > -1 && res.headers.location) {
+            var loc = res.headers.location;
+            if (loc.indexOf('http') !== 0) {
+                var proto = parsed.isHttps ? 'https' : 'http';
+                loc = proto + '://' + parsed.hostname + (loc.indexOf('/') === 0 ? '' : '/') + loc;
             }
-            let data = '';
-            res.setEncoding('utf8');
-            res.on('data', chunk => { data += chunk; });
-            res.on('end', () => resolve({ statusCode: res.statusCode, body: data }));
-        });
+            try {
+                var newParsed = parseUrl(loc);
+                return doRequest(newParsed, 'GET', reqHeaders, null, redirectCount + 1, callback);
+            } catch(e) { return respond(callback, 502, { error: 'Redirect parse error: ' + e.message }); }
+        }
 
-        req.on('timeout', () => { req.destroy(); reject(new Error('Request timed out')); });
-        req.on('error', reject);
-        if (options.body) req.write(typeof options.body === 'string' ? options.body : JSON.stringify(options.body));
-        req.end();
+        var chunks = [];
+        res.on('data', function(c) { chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)); });
+        res.on('end', function() {
+            var text = Buffer.concat(chunks).toString('utf8');
+            var json = null;
+            try { json = JSON.parse(text); } catch(e) {}
+            respond(callback, 200, { ok: res.statusCode >= 200 && res.statusCode < 300, status: res.statusCode, text: text, json: json });
+        });
+        res.on('error', function(e) { respond(callback, 502, { error: 'Response error: ' + e.message }); });
     });
+
+    req.setTimeout(25000, function() { req.destroy(); respond(callback, 502, { error: 'Request timeout' }); });
+    req.on('error', function(e) { respond(callback, 502, { error: 'Request error: ' + e.message }); });
+    if (bodyData) req.write(bodyData);
+    req.end();
 }
 
-exports.handler = async (event) => {
-    if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: CORS_HEADERS, body: '' };
-    if (event.httpMethod !== 'POST')    return { statusCode: 405, headers: CORS_HEADERS, body: JSON.stringify({ error: 'Method not allowed' }) };
+exports.handler = function(event, context, callback) {
+    if (event.httpMethod === 'OPTIONS') return respond(callback, 204, '');
+    if (event.httpMethod !== 'POST')    return respond(callback, 405, { error: 'Method not allowed' });
 
-    let payload;
+    var payload;
     try { payload = JSON.parse(event.body || '{}'); }
-    catch { return { statusCode: 400, headers: CORS_HEADERS, body: JSON.stringify({ error: 'Invalid JSON' }) }; }
+    catch(e) { return respond(callback, 400, { error: 'Invalid JSON' }); }
 
-    const { url, method='GET', headers={}, body } = payload;
-    if (!url) return { statusCode: 400, headers: CORS_HEADERS, body: JSON.stringify({ error: 'Missing url' }) };
+    var url    = payload.url;
+    var method = (payload.method || 'GET').toUpperCase();
+    var hdrs   = payload.headers || {};
+    var body   = payload.body;
 
-    let parsed;
-    try { parsed = new URL(url); }
-    catch { return { statusCode: 400, headers: CORS_HEADERS, body: JSON.stringify({ error: 'Malformed url' }) }; }
+    if (!url || typeof url !== 'string') return respond(callback, 400, { error: 'Missing url' });
 
-    if (!isAllowed(parsed.hostname)) {
-        return { statusCode: 403, headers: CORS_HEADERS, body: JSON.stringify({ error: `Domain not allowed: ${parsed.hostname}` }) };
+    var parsed;
+    try { parsed = parseUrl(url); }
+    catch(e) { return respond(callback, 400, { error: 'Bad url: ' + e.message }); }
+
+    var bodyData = null;
+    if (body !== undefined && body !== null) {
+        bodyData = typeof body === 'string' ? body : JSON.stringify(body);
+        if (!hdrs['Content-Type'] && !hdrs['content-type']) hdrs['Content-Type'] = 'application/json';
     }
 
-    try {
-        const result = await makeRequest(url, { method, headers, body });
-        let json = null;
-        try { json = JSON.parse(result.body); } catch {}
-        return {
-            statusCode: 200,
-            headers: CORS_HEADERS,
-            body: JSON.stringify({ ok: result.statusCode >= 200 && result.statusCode < 300, status: result.statusCode, text: result.body, json }),
-        };
-    } catch (err) {
-        return { statusCode: 502, headers: CORS_HEADERS, body: JSON.stringify({ error: `Upstream failed: ${err.message}` }) };
-    }
+    doRequest(parsed, method, hdrs, bodyData, 0, callback);
 };
