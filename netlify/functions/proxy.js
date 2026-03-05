@@ -89,6 +89,30 @@ function doRequest(parsed, method, reqHeaders, bodyData, redirectCount, callback
 }
 
 exports.handler = function(event, context, callback) {
+    // Support GET with ?url= query param for HLS.js proxy loader
+    if (event.httpMethod === 'GET') {
+        var qs = event.queryStringParameters || {};
+        var getUrl = qs.url || qs.URL;
+        if (!getUrl) return respond(callback, 400, { error: 'Missing url param' });
+        var getParsed;
+        try { getParsed = parseUrl(getUrl); } catch(e) { return respond(callback, 400, { error: 'Bad url' }); }
+        return doRequest(getParsed, 'GET', {}, null, 0, function(err, result) {
+            if (err) return callback(err);
+            // For HLS content, return raw text/binary with proper content-type
+            var body = result.body;
+            var parsed2;
+            try { parsed2 = JSON.parse(body); } catch(e) { parsed2 = null; }
+            var isHlsContent = body && (body.indexOf('#EXTM3U') === 0 || body.indexOf('#EXT') === 0);
+            callback(null, {
+                statusCode: result.statusCode || 200,
+                headers: Object.assign({}, CORS, {
+                    'Content-Type': isHlsContent ? 'application/vnd.apple.mpegurl' : (result.contentType || 'application/octet-stream')
+                }),
+                body: body,
+                isBase64Encoded: false
+            });
+        });
+    }
     if (event.httpMethod === 'OPTIONS') return respond(callback, 204, '');
     if (event.httpMethod !== 'POST')    return respond(callback, 405, { error: 'Method not allowed' });
 
