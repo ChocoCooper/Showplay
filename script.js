@@ -397,26 +397,35 @@ $(document).ready(function() {
         return { url: cdnUrl, headers: {}, type: 'hls' };
     }
 
-    // Server 8: Vixsrc — page HTML works via proxy. Extract masterPlaylist token.
+    // Server 8: Vixsrc — SPA. Page has token in data but not "masterPlaylist".
+    // Log HTML sample to identify exact format, then extract token/expires/videoId.
     async function resolveVixsrc({ tmdbId, mediaType = 'movie', season, episode }) {
         const pageUrl = mediaType === 'tv' ? `https://vixsrc.to/tv/${tmdbId}/${season}/${episode}` : `https://vixsrc.to/movie/${tmdbId}`;
         const html = await pFetch(pageUrl, {
             headers: { 'User-Agent': UA, Accept: 'text/html,application/xhtml+xml,*/*', 'Accept-Language': 'en-US,en;q=0.9', Referer: 'https://vixsrc.to/' }
         }, 'text');
-        console.log('[Vixsrc] html length:', html?.length, 'has masterPlaylist:', html?.includes('masterPlaylist'));
-        if (!html || html.length < 1000) throw new Error('Vixsrc: page too short, likely blocked');
-        if (!html.includes('masterPlaylist') && !html.includes('token')) throw new Error('Vixsrc: page did not contain token data (length: ' + html.length + ')');
-        // Extract from raw HTML string (faster than DOM parsing)
-        // token can be short (20 chars) — lower minimum
-        // expires can be a number (unix timestamp) or string
-        // videoId comes from /playlist/{id} in the URL or window.video.id
-        const tokenM   = html.match(/"token"\s*:\s*"([^"]{5,})"/) || html.match(/'token'\s*:\s*'([^']{5,})'/);
-        const expiresM = html.match(/"expires"\s*:\s*(\d+)/) || html.match(/"expires"\s*:\s*"([^"]+)"/) || html.match(/'expires'\s*:\s*'([^']+)'/);
-        const vidM     = html.match(/\/playlist\/(\d+)/) || html.match(/"id"\s*:\s*(\d+)/) || html.match(/'id'\s*:\s*(\d+)/);
+        console.log('[Vixsrc] html length:', html?.length, 'first 300:', html?.slice(0,300));
+        if (!html || html.length < 500) throw new Error('Vixsrc: page too short');
+
+        // Token: hex string of 10+ chars
+        const tokenM = html.match(/["']?token["']?\s*:\s*["']([a-f0-9A-F]{10,})["']/)
+                    || html.match(/token=([a-f0-9A-F]{10,})[&"']/);
+        // Expires: 9-10 digit unix timestamp (number or string)
+        const expiresM = html.match(/["']?expires["']?\s*:\s*["']?(\d{9,10})["']?/)
+                      || html.match(/expires=(\d{9,10})[&"']/);
+        // Video ID: numeric ID in /playlist/NNN or video_id fields
+        const vidM = html.match(/\/playlist\/(\d+)/)
+                  || html.match(/video_id["'\s:]+(\d+)/i)
+                  || html.match(/videoId["'\s:]+(\d+)/i)
+                  || html.match(/["']id["']\s*:\s*(\d{4,})/);
+
         console.log('[Vixsrc] token:', tokenM?.[1]?.slice(0,20), 'expires:', expiresM?.[1], 'videoId:', vidM?.[1]);
-        if (!tokenM || !expiresM) throw new Error('Vixsrc: token/expires not found in page');
-        if (!vidM) throw new Error('Vixsrc: videoId not found in page');
-        const playlistUrl = `https://vixsrc.to/playlist/${vidM[1]}?token=${encodeURIComponent(tokenM[1])}&expires=${encodeURIComponent(expiresM[1])}&h=1&lang=en`;
+        if (!tokenM || !expiresM || !vidM) {
+            // Dump more of the page to help debug next iteration
+            console.log('[Vixsrc] html[300-900]:', html?.slice(300, 900));
+            throw new Error(\`Vixsrc: missing data - token:\${!!tokenM} expires:\${!!expiresM} videoId:\${!!vidM}\`);
+        }
+        const playlistUrl = \`https://vixsrc.to/playlist/\${vidM[1]}?token=\${encodeURIComponent(tokenM[1])}&expires=\${encodeURIComponent(expiresM[1])}&h=1&lang=en\`;
         console.log('[Vixsrc] ✅ playlistUrl:', playlistUrl);
         return { url: playlistUrl, headers: {}, type: 'hls' };
     }
@@ -591,18 +600,31 @@ $(document).ready(function() {
             if (stream.type === 'hls' && typeof Hls !== 'undefined' && Hls.isSupported()) {
                 console.log('[embedVideo] Using HLS.js with proxy loader');
 
-                // Custom loader: routes every HLS request through /.netlify/functions/proxy
-                // so CORS-blocked CDN segments are fetched server-side.
-                const defaultLoader = Hls.DefaultConfig.loader;
-                class ProxyLoader extends defaultLoader {
+                // Custom loader: POSTs each HLS request through the Netlify proxy
+                // to bypass CORS restrictions on CDN segments.
+                class ProxyLoader {
+                    constructor(config) { this.config = config; }
+                    destroy() { if (this._xhr) { this._xhr.abort(); } }
+                    abort()   { if (this._xhr) { this._xhr.abort(); } }
                     load(context, config, callbacks) {
                         const origUrl = context.url;
-                        // Only proxy external URLs (not data: or blob:)
-                        if (origUrl.startsWith('http')) {
-                            context.url = '/.netlify/functions/proxy?url=' + encodeURIComponent(origUrl);
-                            console.log('[ProxyLoader] proxying:', origUrl.slice(0, 80));
-                        }
-                        super.load(context, config, callbacks);
+                        const self = this;
+                        console.log('[ProxyLoader] fetching via proxy:', origUrl.slice(0, 80));
+                        fetch('/.netlify/functions/proxy', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ url: origUrl, method: 'GET' }),
+                        })
+                        .then(r => r.json())
+                        .then(envelope => {
+                            const text = envelope.text || '';
+                            const stats = { trequest: performance.now(), tfirst: performance.now(), tload: performance.now(), loaded: text.length, total: text.length, retry: 0 };
+                            callbacks.onSuccess({ data: text, url: origUrl }, stats, context, null);
+                        })
+                        .catch(err => {
+                            console.error('[ProxyLoader] error:', err.message);
+                            callbacks.onError({ code: 0, text: err.message }, context, null, {});
+                        });
                     }
                 }
 
