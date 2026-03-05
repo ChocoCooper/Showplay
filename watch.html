@@ -42,7 +42,7 @@
                     <p class="media-title" id="videoMediaTitle"></p>
                 </div>
                 <div class="video-wrapper">
-                    <iframe id="videoFrame" src="" allowfullscreen aria-label="Video Player"></iframe>
+                    <iframe id="videoFrame" src="" allowfullscreen aria-label="Video Player" style="display:none;"></iframe>
                 </div>
                 <div class="selector-container" id="selectorContainer">
                     <div class="server-selector">
@@ -74,6 +74,7 @@
         </div>
         <div id="toastNotification" class="toast-notification"></div>
     </div>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest/dist/hls.min.js"></script>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js" integrity="sha256-/xUj+3OJU5yExlq6GSYGSHk7tPXikynS7ogEvDej/m4=" crossorigin="anonymous"></script>
     <script src="script.js"></script>
 </body>
