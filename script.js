@@ -77,31 +77,112 @@ $(document).ready(function() {
         ]
     };
 
-    // ─── Stream Scrapers ───────────────────────────────────────────────────────
+    // ─── Proxy-aware fetch ─────────────────────────────────────────────────────
+    // All external scraper API calls are routed through the Netlify proxy first.
+    // If that fails (e.g. local dev), it retries through a public CORS proxy.
 
     const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
+
+    const NETLIFY_PROXY   = '/api/proxy';
+    const CORS_PROXY_BASE = 'https://corsproxy.io/?url=';
+    const CORS_PROXY2_BASE = 'https://api.allorigins.win/raw?url='; // second fallback
+
+    /**
+     * pFetch — proxy-aware fetch
+     * Sends the request through Netlify proxy. Falls back to public CORS proxies
+     * if the Netlify proxy returns an error or is unreachable.
+     *
+     * @param {string} url          - Target URL
+     * @param {object} opts         - { method, headers, body }
+     * @param {string} responseType - 'text' | 'json' (default 'json')
+     */
+    const pFetch = async (url, opts = {}, responseType = 'json') => {
+        const payload = {
+            url,
+            method: opts.method || 'GET',
+            headers: opts.headers || {},
+            body: opts.body !== undefined ? opts.body : undefined,
+        };
+
+        // 1️⃣  Try Netlify serverless proxy
+        try {
+            const r = await fetch(NETLIFY_PROXY, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            if (r.ok) {
+                const envelope = await r.json();
+                if (envelope.ok) {
+                    if (responseType === 'text') return envelope.text;
+                    return envelope.json !== null ? envelope.json : JSON.parse(envelope.text);
+                }
+            }
+        } catch (e) { /* fall through */ }
+
+        // 2️⃣  Fallback: corsproxy.io (GET only — wraps URL, no custom headers)
+        if (!opts.method || opts.method === 'GET') {
+            try {
+                const r = await fetch(CORS_PROXY_BASE + encodeURIComponent(url));
+                if (r.ok) {
+                    if (responseType === 'text') return r.text();
+                    return r.json();
+                }
+            } catch (e) { /* fall through */ }
+
+            // 3️⃣  Fallback 2: allorigins
+            try {
+                const r = await fetch(CORS_PROXY2_BASE + encodeURIComponent(url));
+                if (r.ok) {
+                    if (responseType === 'text') return r.text();
+                    return r.json();
+                }
+            } catch (e) { /* fall through */ }
+        }
+
+        // 4️⃣  POST fallback — corsproxy.io supports POST via their API
+        if (opts.method === 'POST') {
+            try {
+                const r = await fetch('https://corsproxy.io/?' + encodeURIComponent(url), {
+                    method: 'POST',
+                    headers: opts.headers || {},
+                    body: opts.body,
+                });
+                if (r.ok) {
+                    if (responseType === 'text') return r.text();
+                    return r.json();
+                }
+            } catch (e) { /* fall through */ }
+        }
+
+        throw new Error(`pFetch: all proxy attempts failed for ${url}`);
+    };
+
+    // ─── Stream Scrapers ───────────────────────────────────────────────────────
 
     async function resolveVideasy({ title, year, tmdbId, mediaType = 'movie', season, episode, server = 'myflixerzupcloud' }) {
         const qs = new URLSearchParams({ title, mediaType, year: String(year), tmdbId: String(tmdbId) });
         if (mediaType === 'tv') { qs.set('seasonId', String(season)); qs.set('episodeId', String(episode)); }
         const apiUrl = `https://api.videasy.net/${server}/sources-with-title?${qs}`;
-        const encrypted = await fetch(apiUrl, { headers: { 'User-Agent': UA } }).then(r => r.text());
-        const decrypted = await fetch('https://enc-dec.app/api/dec-videasy', {
+        const encrypted = await pFetch(apiUrl, { headers: { 'User-Agent': UA } }, 'text');
+        const decrypted = await pFetch('https://enc-dec.app/api/dec-videasy', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ text: encrypted, id: String(tmdbId) }),
-        }).then(r => r.json());
+        });
         const data = typeof decrypted === 'string' ? JSON.parse(decrypted) : decrypted;
         const stream = (data.sources || [])[0];
+        if (!stream?.url) throw new Error('Videasy: no stream url');
         return { url: stream.url, headers: { origin: 'https://videasy.net', referer: 'https://videasy.net/' }, type: 'hls' };
     }
 
     async function resolveVidlink({ tmdbId, mediaType = 'movie', season, episode }) {
-        const encryptedId = await fetch(`https://enc-dec.app/api/enc-vidlink?text=${tmdbId}`).then(r => r.json());
+        const encryptedId = await pFetch(`https://enc-dec.app/api/enc-vidlink?text=${tmdbId}`);
         const path = mediaType === 'tv'
             ? `https://vidlink.pro/api/b/tv/${encryptedId}/${season}/${episode}`
             : `https://vidlink.pro/api/b/movie/${encryptedId}`;
-        const data = await fetch(path, { headers: { 'User-Agent': UA, Referer: 'https://vidlink.pro/' } }).then(r => r.json());
+        const data = await pFetch(path, { headers: { 'User-Agent': UA, Referer: 'https://vidlink.pro/' } });
+        if (!data?.stream?.playlist) throw new Error('Vidlink: no playlist');
         return { url: data.stream.playlist, headers: { origin: 'https://vidlink.pro', referer: 'https://vidlink.pro/' }, type: 'hls' };
     }
 
@@ -116,31 +197,33 @@ $(document).ready(function() {
         const apiUrl = mediaType === 'tv'
             ? `https://themoviedb.hexa.su/api/tmdb/tv/${tmdbId}/season/${season}/episode/${episode}/images`
             : `https://themoviedb.hexa.su/api/tmdb/movie/${tmdbId}/images`;
-        const encrypted = await fetch(apiUrl, { headers: { 'X-Api-Key': key } }).then(r => r.text());
-        const decrypted = await fetch('https://enc-dec.app/api/dec-hexa', {
+        const encrypted = await pFetch(apiUrl, { headers: { 'X-Api-Key': key } }, 'text');
+        const decrypted = await pFetch('https://enc-dec.app/api/dec-hexa', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ text: encrypted, key }),
-        }).then(r => r.json());
+        });
         const data = typeof decrypted === 'string' ? JSON.parse(decrypted) : decrypted;
+        if (!data?.sources?.[0]?.url) throw new Error('Hexa: no source url');
         return { url: data.sources[0].url, headers: {}, type: 'hls' };
     }
 
     async function resolveSmashy({ imdbId, tmdbId, mediaType = 'movie', season, episode }) {
-        const token = await fetch('https://enc-dec.app/api/enc-vidstack').then(r => r.json());
-        const server = 'videosmashyi';
+        const token = await pFetch('https://enc-dec.app/api/enc-vidstack');
+        const smashyServer = 'videosmashyi';
         const path = mediaType === 'tv'
-            ? `https://api.smashystream.top/api/v1/${server}/${imdbId}/${tmdbId}/${season}/${episode}?token=${token.token}&user_id=${token.user_id}`
-            : `https://api.smashystream.top/api/v1/${server}/${imdbId}?token=${token.token}&user_id=${token.user_id}`;
-        const data = await fetch(path).then(r => r.json());
+            ? `https://api.smashystream.top/api/v1/${smashyServer}/${imdbId}/${tmdbId}/${season}/${episode}?token=${token.token}&user_id=${token.user_id}`
+            : `https://api.smashystream.top/api/v1/${smashyServer}/${imdbId}?token=${token.token}&user_id=${token.user_id}`;
+        const data = await pFetch(path);
         const [host, id] = data.data.split('/#');
-        const encrypted = await fetch(`${host}/api/v1/video?id=${id}`).then(r => r.text());
-        const decrypted = await fetch('https://enc-dec.app/api/dec-vidstack', {
+        const encrypted = await pFetch(`${host}/api/v1/video?id=${id}`, {}, 'text');
+        const decrypted = await pFetch('https://enc-dec.app/api/dec-vidstack', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ text: encrypted, type: '1' }),
-        }).then(r => r.json());
+        });
         const streamData = typeof decrypted === 'string' ? JSON.parse(decrypted) : decrypted;
+        if (!streamData?.source) throw new Error('Smashy: no source');
         return { url: streamData.source, headers: { referer: 'https://smashyplayer.top/' }, type: 'hls' };
     }
 
@@ -148,81 +231,103 @@ $(document).ready(function() {
         const apiUrl = mediaType === 'tv'
             ? `https://play.xpass.top/meg/tv/${tmdbId}/${season}/${episode}/playlist.json`
             : `https://play.xpass.top/feb/${tmdbId}/0/0/0/playlist.json`;
-        const data = await fetch(apiUrl, { headers: { 'User-Agent': UA } }).then(r => r.json());
-        const file = data?.playlist?.[0]?.sources?.find(s => s?.type === 'hls')?.file || data?.playlist?.[0]?.sources?.[0]?.file;
-        if (!file) throw new Error('Missing playlist source');
+        const data = await pFetch(apiUrl, { headers: { 'User-Agent': UA } });
+        const file = data?.playlist?.[0]?.sources?.find(s => s?.type === 'hls')?.file
+                  || data?.playlist?.[0]?.sources?.[0]?.file;
+        if (!file) throw new Error('XPass: missing playlist source');
         return { url: file, headers: { origin: 'https://play.xpass.top', referer: 'https://play.xpass.top/' }, type: 'hls' };
     }
 
     async function resolveYFlix({ tmdbId, mediaType = 'movie', season, episode }) {
         const findUrl = `https://enc-dec.app/db/flix/find?tmdb_id=${encodeURIComponent(String(tmdbId))}&type=${encodeURIComponent(String(mediaType))}`;
-        const find = await fetch(findUrl).then(r => r.json());
+        const find = await pFetch(findUrl);
         const contentId = find?.[0]?.info?.flix_id;
-        if (!contentId) throw new Error('flix_id not found');
-        const encrypt = async text => await fetch(`https://enc-dec.app/api/enc-movies-flix?text=${encodeURIComponent(String(text))}`).then(r => r.json());
-        const decrypt = async text => await fetch('https://enc-dec.app/api/dec-movies-flix', {
+        if (!contentId) throw new Error('YFlix: flix_id not found');
+
+        const encrypt = async text => pFetch(`https://enc-dec.app/api/enc-movies-flix?text=${encodeURIComponent(String(text))}`);
+        const decrypt = async text => pFetch('https://enc-dec.app/api/dec-movies-flix', {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }),
-        }).then(r => r.json());
+        });
+
         const encId = await encrypt(contentId);
-        const episodesResp = await fetch(`https://solarmovie.fi/ajax/episodes/list?id=${encodeURIComponent(String(contentId))}&_=${encodeURIComponent(encId)}`).then(r => r.json());
+        const episodesResp = await pFetch(`https://solarmovie.fi/ajax/episodes/list?id=${encodeURIComponent(String(contentId))}&_=${encodeURIComponent(encId)}`);
         const episodesHtml = episodesResp?.result;
-        if (!episodesHtml) throw new Error('Missing episodes html');
-        const episodes = await fetch('https://enc-dec.app/api/parse-html', {
+        if (!episodesHtml) throw new Error('YFlix: missing episodes html');
+
+        const episodes = await pFetch('https://enc-dec.app/api/parse-html', {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: episodesHtml }),
-        }).then(r => r.json());
+        });
         const episodesObj = typeof episodes === 'string' ? JSON.parse(episodes) : episodes;
+
         let eid = null;
         if (mediaType === 'tv') {
             eid = episodesObj?.[String(season)]?.[String(episode)]?.eid;
-            if (!eid) throw new Error('Episode eid not found');
+            if (!eid) throw new Error('YFlix: episode eid not found');
         }
         const encEid = eid ? await encrypt(eid) : null;
-        const serversResp = await fetch(eid
+
+        const serversResp = await pFetch(eid
             ? `https://solarmovie.fi/ajax/links/list?eid=${encodeURIComponent(String(eid))}&_=${encodeURIComponent(encEid)}`
             : `https://solarmovie.fi/ajax/links/list?eid=${encodeURIComponent(String(contentId))}&_=${encodeURIComponent(encId)}`
-        ).then(r => r.json());
+        );
         const serversHtml = serversResp?.result;
-        if (!serversHtml) throw new Error('Missing servers html');
-        const serversParsed = await fetch('https://enc-dec.app/api/parse-html', {
+        if (!serversHtml) throw new Error('YFlix: missing servers html');
+
+        const serversParsed = await pFetch('https://enc-dec.app/api/parse-html', {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: serversHtml }),
-        }).then(r => r.json());
+        });
         const serversObj = typeof serversParsed === 'string' ? JSON.parse(serversParsed) : serversParsed;
-        const lid = serversObj?.default?.['1']?.lid || Object.values(serversObj || {}).flatMap(v => (v && typeof v === 'object' ? Object.values(v) : [])).find(x => x?.lid)?.lid;
-        if (!lid) throw new Error('lid not found');
+        const lid = serversObj?.default?.['1']?.lid
+                 || Object.values(serversObj || {}).flatMap(v => (v && typeof v === 'object' ? Object.values(v) : [])).find(x => x?.lid)?.lid;
+        if (!lid) throw new Error('YFlix: lid not found');
         const encLid = await encrypt(lid);
-        const embedResp = await fetch(`https://solarmovie.fi/ajax/links/view?id=${encodeURIComponent(String(lid))}&_=${encodeURIComponent(encLid)}`).then(r => r.json());
+
+        const embedResp = await pFetch(`https://solarmovie.fi/ajax/links/view?id=${encodeURIComponent(String(lid))}&_=${encodeURIComponent(encLid)}`);
         const encryptedEmbed = embedResp?.result;
-        if (!encryptedEmbed) throw new Error('Missing encrypted embed');
+        if (!encryptedEmbed) throw new Error('YFlix: missing encrypted embed');
+
         const embedDecrypted = await decrypt(encryptedEmbed);
         const embedData = typeof embedDecrypted === 'string' ? JSON.parse(embedDecrypted) : embedDecrypted;
         const embedUrl = embedData?.url;
-        if (!embedUrl) throw new Error('Missing embed url');
+        if (!embedUrl) throw new Error('YFlix: missing embed url');
+
         const mediaUrl = embedUrl.replace('/e/', '/media/');
-        const resp = await fetch(mediaUrl).then(r => r.json());
-        const encrypted = resp?.result;
-        if (!encrypted) throw new Error('Missing encrypted result');
-        const decrypted = await fetch('https://enc-dec.app/api/dec-rapid', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: encrypted, agent: UA }),
-        }).then(r => r.json());
-        const streamData = typeof decrypted === 'string' ? JSON.parse(decrypted) : decrypted;
+        const resp = await pFetch(mediaUrl);
+        const encryptedResult = resp?.result;
+        if (!encryptedResult) throw new Error('YFlix: missing encrypted result');
+
+        const finalDecrypted = await pFetch('https://enc-dec.app/api/dec-rapid', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: encryptedResult, agent: UA }),
+        });
+        const streamData = typeof finalDecrypted === 'string' ? JSON.parse(finalDecrypted) : finalDecrypted;
         const file = streamData?.sources?.[0]?.file;
-        if (!file) throw new Error('Missing sources[0].file');
+        if (!file) throw new Error('YFlix: missing sources[0].file');
         return { url: file, headers: { origin: 'https://rapidshare.cc', referer: 'https://rapidshare.cc/' }, type: 'hls' };
     }
 
     async function resolveMadPlay({ tmdbId, mediaType = 'movie', season, episode }) {
-        const url = mediaType === 'tv'
+        // Try direct CDN first (HEAD via proxy)
+        const cdnUrl = mediaType === 'tv'
             ? `https://cdn.madplay.site/api/hls/unknown/${tmdbId}/season_${season}/episode_${episode}/master.m3u8`
             : `https://cdn.madplay.site/api/hls/unknown/${tmdbId}/master.m3u8`;
-        const res = await fetch(url, { method: 'HEAD' });
-        if (res.ok) return { url, headers: {}, type: 'hls' };
+        try {
+            const probe = await fetch(NETLIFY_PROXY, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: cdnUrl, method: 'HEAD' }),
+            });
+            const env = await probe.json();
+            if (env.ok) return { url: cdnUrl, headers: {}, type: 'hls' };
+        } catch (e) { /* fall through to API */ }
+
         const apiUrl = mediaType === 'tv'
             ? `https://api.madplay.site/api/rogflix?id=${tmdbId}&season=${season}&episode=${episode}&type=series`
             : `https://api.madplay.site/api/rogflix?id=${tmdbId}&type=movie`;
-        const data = await fetch(apiUrl, { headers: { 'User-Agent': UA } }).then(r => r.json());
+        const data = await pFetch(apiUrl, { headers: { 'User-Agent': UA } });
         if (Array.isArray(data) && data.length > 0) {
             const englishItem = data.find(item => item?.title === 'English');
             if (englishItem?.file) return { url: englishItem.file, headers: {}, type: 'hls' };
+            if (data[0]?.file) return { url: data[0].file, headers: {}, type: 'hls' };
         }
         throw new Error('MadPlay: no sources found');
     }
@@ -231,33 +336,31 @@ $(document).ready(function() {
         const pageUrl = mediaType === 'tv'
             ? `https://vixsrc.to/tv/${tmdbId}/${season}/${episode}`
             : `https://vixsrc.to/movie/${tmdbId}`;
-        const html = await fetch(pageUrl, { headers: { 'User-Agent': UA, Referer: 'https://vixsrc.to/' } }).then(r => r.text());
+        const html = await pFetch(pageUrl, { headers: { 'User-Agent': UA, Referer: 'https://vixsrc.to/' } }, 'text');
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, 'text/html');
         const scripts = Array.from(doc.querySelectorAll('script'));
         const scriptTag = scripts.find(s => s.textContent && s.textContent.includes('window.masterPlaylist'));
-        if (!scriptTag?.textContent) throw new Error('Script tag with window.masterPlaylist not found');
-        const scriptContent = scriptTag.textContent;
+        if (!scriptTag?.textContent) throw new Error('Vixsrc: masterPlaylist script not found');
+        const sc = scriptTag.textContent;
+
         let videoId = null;
-        const videoIdMatch = scriptContent.match(/window\.video\s*=\s*\{[^}]*id:\s*['"]([^'"]+)['"]/s);
-        if (videoIdMatch) {
-            videoId = videoIdMatch[1];
+        const m1 = sc.match(/window\.video\s*=\s*\{[^}]*id:\s*['"]([^'"]+)['"]/s);
+        if (m1) {
+            videoId = m1[1];
         } else {
-            const masterPlaylistUrlMatch = scriptContent.match(/window\.masterPlaylist\s*=\s*\{[^}]*url:\s*['"]([^'"]+)['"]/s);
-            if (masterPlaylistUrlMatch?.[1]) {
-                const urlMatch = masterPlaylistUrlMatch[1].match(/\/playlist\/(\d+)/);
-                if (urlMatch) videoId = urlMatch[1];
-            }
+            const m2 = sc.match(/window\.masterPlaylist\s*=\s*\{[^}]*url:\s*['"]([^'"]+)['"]/s);
+            if (m2?.[1]) { const m3 = m2[1].match(/\/playlist\/(\d+)/); if (m3) videoId = m3[1]; }
         }
-        if (!videoId) throw new Error('video_id not found');
-        const tokenMatch = scriptContent.match(/masterPlaylist\s*=\s*\{[^}]*params:\s*\{[^}]*['"]token['"]:\s*['"]([^'"]+)['"]/s);
-        if (!tokenMatch) throw new Error('token not found');
-        const token = tokenMatch[1];
-        const expiresMatch = scriptContent.match(/masterPlaylist\s*=\s*\{[^}]*params:\s*\{[^}]*['"]expires['"]:\s*['"]([^'"]+)['"]/s);
-        if (!expiresMatch) throw new Error('expires not found');
-        const expires = expiresMatch[1];
-        const playlistUrl = `https://vixsrc.to/playlist/${videoId}?token=${encodeURIComponent(token)}&expires=${encodeURIComponent(expires)}&h=1&lang=en`;
-        return { url: playlistUrl, headers: { 'User-Agent': UA, 'Referer': pageUrl, 'Origin': 'https://vixsrc.to' }, type: 'hls' };
+        if (!videoId) throw new Error('Vixsrc: video_id not found');
+
+        const tokenMatch   = sc.match(/masterPlaylist\s*=\s*\{[^}]*params:\s*\{[^}]*['"]token['"]:\s*['"]([^'"]+)['"]/s);
+        const expiresMatch = sc.match(/masterPlaylist\s*=\s*\{[^}]*params:\s*\{[^}]*['"]expires['"]:\s*['"]([^'"]+)['"]/s);
+        if (!tokenMatch)   throw new Error('Vixsrc: token not found');
+        if (!expiresMatch) throw new Error('Vixsrc: expires not found');
+
+        const playlistUrl = `https://vixsrc.to/playlist/${videoId}?token=${encodeURIComponent(tokenMatch[1])}&expires=${encodeURIComponent(expiresMatch[1])}&h=1&lang=en`;
+        return { url: playlistUrl, headers: { 'User-Agent': UA, Referer: pageUrl, Origin: 'https://vixsrc.to' }, type: 'hls' };
     }
 
     // Resolve stream from a named resolver
@@ -265,12 +368,12 @@ $(document).ready(function() {
         switch (resolverName) {
             case 'videasy': return resolveVideasy(params);
             case 'vidlink': return resolveVidlink(params);
-            case 'hexa': return resolveHexa(params);
-            case 'smashy': return resolveSmashy(params);
-            case 'xpass': return resolveXPass(params);
-            case 'yflix': return resolveYFlix(params);
+            case 'hexa':    return resolveHexa(params);
+            case 'smashy':  return resolveSmashy(params);
+            case 'xpass':   return resolveXPass(params);
+            case 'yflix':   return resolveYFlix(params);
             case 'madplay': return resolveMadPlay(params);
-            case 'vixsrc': return resolveVixsrc(params);
+            case 'vixsrc':  return resolveVixsrc(params);
             default: throw new Error(`Unknown resolver: ${resolverName}`);
         }
     };
