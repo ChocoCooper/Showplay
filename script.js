@@ -172,41 +172,9 @@ $(document).ready(function() {
 
     // ─── Stream Scrapers ───────────────────────────────────────────────────────
 
-    // Server 1: Videasy — api.videasy.net blocks server-side IPs (403 on all backends).
-    // Route through a public CORS proxy instead of the Netlify proxy.
+    // Server 1: Videasy — api.videasy.net blocks all proxy IPs with 403. Disabled.
     async function resolveVideasy({ title, year, tmdbId, mediaType = 'movie', season, episode }) {
-        const servers = ['myflixerzupcloud', 'vidsrc', 'vidcloud', 'upstream'];
-        const corsProxies = [
-            'https://corsproxy.io/?url=',
-            'https://api.allorigins.win/raw?url=',
-        ];
-        for (const srv of servers) {
-            for (const proxy of corsProxies) {
-                try {
-                    const qs = new URLSearchParams({ title: String(title || ''), mediaType, year: String(year || ''), tmdbId: String(tmdbId) });
-                    if (mediaType === 'tv') { qs.set('seasonId', String(season)); qs.set('episodeId', String(episode)); }
-                    const apiUrl = `https://api.videasy.net/${srv}/sources-with-title?${qs}`;
-                    console.log(`[Videasy] ${proxy}${apiUrl}`);
-                    const r = await fetch(proxy + encodeURIComponent(apiUrl), { headers: { 'User-Agent': UA } });
-                    if (!r.ok) { console.warn(`[Videasy] HTTP ${r.status}`); continue; }
-                    const encrypted = await r.text();
-                    if (!encrypted || encrypted.length < 10 || encrypted.startsWith('<')) { console.warn(`[Videasy] bad response`); continue; }
-                    const decR = await fetch(proxy + encodeURIComponent(`https://enc-dec.app/api/dec-videasy`), {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ text: encrypted, id: String(tmdbId) }),
-                    });
-                    // corsproxy doesn't support POST well — fall back to Netlify proxy for decrypt
-                    const decrypted = decR.ok ? await decR.json() : await pFetch('https://enc-dec.app/api/dec-videasy', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ text: encrypted, id: String(tmdbId) }),
-                    });
-                    const data = typeof decrypted === 'string' ? JSON.parse(decrypted) : decrypted;
-                    const stream = (data.sources || [])[0];
-                    if (stream?.url) { console.log(`[Videasy] ✅ ${srv}`); return { url: stream.url, headers: {}, type: 'hls' }; }
-                } catch(e) { console.warn(`[Videasy] ${srv}/${proxy} error:`, e.message); }
-            }
-        }
-        throw new Error('Videasy: all servers/proxies failed');
+        throw new Error('Videasy: source API blocks proxy servers. Try Server 2+.');
     }
 
     // Server 2: Vidlink — resolves OK but HLS segments are CORS-blocked.
@@ -286,7 +254,7 @@ $(document).ready(function() {
         return { url, headers: { referer: 'https://smashyplayer.top/' }, type: 'hls' };
     }
 
-    // Server 5: XPass — API returns empty string "". Try alternate URL patterns.
+    // Server 5: XPass — Try multiple URL patterns; parse both JSON and M3U8 text responses
     async function resolveXPass({ tmdbId, mediaType = 'movie', season, episode }) {
         const urls = mediaType === 'tv' ? [
             `https://play.xpass.top/meg/tv/${tmdbId}/${season}/${episode}/playlist.json`,
@@ -294,21 +262,32 @@ $(document).ready(function() {
         ] : [
             `https://play.xpass.top/feb/${tmdbId}/0/0/0/playlist.json`,
             `https://play.xpass.top/api/movie/${tmdbId}`,
-            `https://play.xpass.top/api/${tmdbId}/playlist.json`,
+            `https://play.xpass.top/${tmdbId}/playlist.json`,
         ];
         for (const apiUrl of urls) {
             try {
-                const raw = await pFetch(apiUrl, { headers: { 'User-Agent': UA } });
-                console.log('[XPass] raw from', apiUrl, ':', JSON.stringify(raw).slice(0, 200));
-                if (!raw || (typeof raw === 'string' && raw.length < 5)) continue;
+                // Fetch as text first to check what we get
+                const rawText = await pFetch(apiUrl, { headers: { 'User-Agent': UA } }, 'text');
+                console.log('[XPass] raw text from', apiUrl, ':', String(rawText).slice(0, 150));
+                if (!rawText || rawText.length < 5) continue;
+                // If it looks like an M3U8, return it directly
+                if (rawText.includes('#EXTM3U')) {
+                    return { url: apiUrl, headers: { origin: 'https://play.xpass.top', referer: 'https://play.xpass.top/' }, type: 'hls' };
+                }
+                // Try to parse as JSON
+                let raw;
+                try { raw = JSON.parse(rawText); } catch(e) {
+                    console.warn('[XPass] not JSON:', rawText.slice(0,50));
+                    continue;
+                }
                 const list = raw?.playlist || raw?.data?.playlist || (Array.isArray(raw) ? raw : null);
                 const item = Array.isArray(list) ? list[0] : list;
                 const sources = item?.sources || [];
-                const file = sources.find(s => s?.type === 'hls')?.file || sources[0]?.file || item?.file || raw?.file;
+                const file = sources.find(s => s?.type === 'hls')?.file || sources[0]?.file || item?.file || raw?.file || raw?.url;
                 if (file) return { url: file, headers: { origin: 'https://play.xpass.top', referer: 'https://play.xpass.top/' }, type: 'hls' };
             } catch(e) { console.warn('[XPass] failed:', apiUrl, e.message); }
         }
-        throw new Error('XPass: no file found from any endpoint');
+        throw new Error('XPass: no stream found from any endpoint');
     }
 
     // Server 6: YFlix — solarmovie.fi returns Cloudflare "Just a moment..." challenge page.
@@ -418,38 +397,25 @@ $(document).ready(function() {
         return { url: cdnUrl, headers: {}, type: 'hls' };
     }
 
-    // Server 8: Vixsrc — page is SPA (JS-rendered), proxy gets empty shell without masterPlaylist.
-    // Use the embed API endpoint instead of scraping the page HTML.
+    // Server 8: Vixsrc — page HTML works via proxy (34214 chars). Extract playlist URL and serve via proxy.
     async function resolveVixsrc({ tmdbId, mediaType = 'movie', season, episode }) {
-        // Try the direct embed/API endpoint (no JS rendering needed)
-        const apiUrls = mediaType === 'tv' ? [
-            `https://vixsrc.to/api/episode?tmdb=${tmdbId}&season=${season}&episode=${episode}`,
-            `https://vixsrc.to/api/tv?id=${tmdbId}&s=${season}&e=${episode}`,
-        ] : [
-            `https://vixsrc.to/api/movie?tmdb=${tmdbId}`,
-            `https://vixsrc.to/api/film?id=${tmdbId}`,
-        ];
-        for (const apiUrl of apiUrls) {
-            try {
-                const data = await pFetch(apiUrl, { headers: { 'User-Agent': UA, Referer: 'https://vixsrc.to/' } });
-                console.log('[Vixsrc] api response from', apiUrl, ':', JSON.stringify(data).slice(0, 200));
-                const url = data?.url || data?.stream || data?.playlist || data?.sources?.[0]?.url || data?.sources?.[0]?.file;
-                if (url) return { url, headers: {}, type: 'hls' };
-            } catch(e) { console.warn('[Vixsrc] api failed:', apiUrl, e.message); }
-        }
-        // Last resort: try fetching page with extra headers — some proxies pass JS execution
         const pageUrl = mediaType === 'tv' ? `https://vixsrc.to/tv/${tmdbId}/${season}/${episode}` : `https://vixsrc.to/movie/${tmdbId}`;
         const html = await pFetch(pageUrl, {
             headers: { 'User-Agent': UA, Accept: 'text/html,application/xhtml+xml,*/*', 'Accept-Language': 'en-US,en;q=0.9', Referer: 'https://vixsrc.to/' }
         }, 'text');
-        console.log('[Vixsrc] page html length:', html?.length, 'has playlist:', html?.includes('playlist'));
-        const sc = Array.from(new DOMParser().parseFromString(html, 'text/html').querySelectorAll('script')).find(s => s.textContent?.includes('playlist'))?.textContent;
-        if (!sc) throw new Error('Vixsrc: page is JS-rendered, cannot extract stream without a headless browser');
-        const tokenM = sc.match(/['"]token['"]:\s*['"]([^'"]+)['"]/);
-        const expiresM = sc.match(/['"]expires['"]:\s*['"]([^'"]+)['"]/);
-        const vidM = sc.match(/\/playlist\/(\d+)/) || sc.match(/window\.video\s*=\s*\{[^}]*id:\s*['"]([^'"]+)['"]/s);
-        if (!tokenM || !expiresM || !vidM) throw new Error('Vixsrc: could not extract token/expires/videoId from page');
+        console.log('[Vixsrc] html length:', html?.length, 'has playlist:', html?.includes('playlist'));
+        if (!html || !html.includes('playlist')) throw new Error('Vixsrc: page did not contain playlist data');
+        // Search all script content, not just <script> tags (some sites inline in attributes)
+        const tokenM   = html.match(/["']token["']\s*:\s*["']([^"']{10,})["']/);
+        const expiresM = html.match(/["']expires["']\s*:\s*["']([^"']+)["']/);
+        const vidM     = html.match(/\/playlist\/(\d+)/) || html.match(/window\.video\s*=\s*\{[^}]*id:\s*["'](\d+)["']/s);
+        console.log('[Vixsrc] token:', tokenM?.[1]?.slice(0,20), 'expires:', expiresM?.[1], 'videoId:', vidM?.[1]);
+        if (!tokenM || !expiresM || !vidM) throw new Error('Vixsrc: could not extract token/expires/videoId');
         const playlistUrl = `https://vixsrc.to/playlist/${vidM[1]}?token=${encodeURIComponent(tokenM[1])}&expires=${encodeURIComponent(expiresM[1])}&h=1&lang=en`;
+        console.log('[Vixsrc] playlistUrl:', playlistUrl);
+        // The playlist URL needs CORS headers — return it for HLS.js to fetch directly.
+        // vixsrc.to does NOT send CORS headers, so this may still fail in-browser.
+        // But try it — some CDN-backed playlists work fine.
         return { url: playlistUrl, headers: {}, type: 'hls' };
     }
 
