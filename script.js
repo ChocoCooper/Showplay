@@ -397,25 +397,24 @@ $(document).ready(function() {
         return { url: cdnUrl, headers: {}, type: 'hls' };
     }
 
-    // Server 8: Vixsrc — page HTML works via proxy (34214 chars). Extract playlist URL and serve via proxy.
+    // Server 8: Vixsrc — page HTML works via proxy. Extract masterPlaylist token.
     async function resolveVixsrc({ tmdbId, mediaType = 'movie', season, episode }) {
         const pageUrl = mediaType === 'tv' ? `https://vixsrc.to/tv/${tmdbId}/${season}/${episode}` : `https://vixsrc.to/movie/${tmdbId}`;
         const html = await pFetch(pageUrl, {
             headers: { 'User-Agent': UA, Accept: 'text/html,application/xhtml+xml,*/*', 'Accept-Language': 'en-US,en;q=0.9', Referer: 'https://vixsrc.to/' }
         }, 'text');
-        console.log('[Vixsrc] html length:', html?.length, 'has playlist:', html?.includes('playlist'));
-        if (!html || !html.includes('playlist')) throw new Error('Vixsrc: page did not contain playlist data');
-        // Search all script content, not just <script> tags (some sites inline in attributes)
-        const tokenM   = html.match(/["']token["']\s*:\s*["']([^"']{10,})["']/);
-        const expiresM = html.match(/["']expires["']\s*:\s*["']([^"']+)["']/);
-        const vidM     = html.match(/\/playlist\/(\d+)/) || html.match(/window\.video\s*=\s*\{[^}]*id:\s*["'](\d+)["']/s);
+        console.log('[Vixsrc] html length:', html?.length, 'has masterPlaylist:', html?.includes('masterPlaylist'));
+        if (!html || html.length < 1000) throw new Error('Vixsrc: page too short, likely blocked');
+        if (!html.includes('masterPlaylist') && !html.includes('token')) throw new Error('Vixsrc: page did not contain token data (length: ' + html.length + ')');
+        // Extract from raw HTML string (faster than DOM parsing)
+        const tokenM   = html.match(/"token"\s*:\s*"([^"]{10,})"/) || html.match(/'token'\s*:\s*'([^']{10,})'/);
+        const expiresM = html.match(/"expires"\s*:\s*"([^"]+)"/) || html.match(/'expires'\s*:\s*'([^']+)'/);
+        const vidM     = html.match(/\/playlist\/(\d+)/) || html.match(/[{,]\s*"id"\s*:\s*"(\d+)"/) || html.match(/video[_-]?id['":\s]+(\d+)/i);
         console.log('[Vixsrc] token:', tokenM?.[1]?.slice(0,20), 'expires:', expiresM?.[1], 'videoId:', vidM?.[1]);
-        if (!tokenM || !expiresM || !vidM) throw new Error('Vixsrc: could not extract token/expires/videoId');
+        if (!tokenM || !expiresM) throw new Error('Vixsrc: token/expires not found in page');
+        if (!vidM) throw new Error('Vixsrc: videoId not found in page');
         const playlistUrl = `https://vixsrc.to/playlist/${vidM[1]}?token=${encodeURIComponent(tokenM[1])}&expires=${encodeURIComponent(expiresM[1])}&h=1&lang=en`;
-        console.log('[Vixsrc] playlistUrl:', playlistUrl);
-        // The playlist URL needs CORS headers — return it for HLS.js to fetch directly.
-        // vixsrc.to does NOT send CORS headers, so this may still fail in-browser.
-        // But try it — some CDN-backed playlists work fine.
+        console.log('[Vixsrc] ✅ playlistUrl:', playlistUrl);
         return { url: playlistUrl, headers: {}, type: 'hls' };
     }
 
@@ -587,8 +586,28 @@ $(document).ready(function() {
             wrapper.append(video);
 
             if (stream.type === 'hls' && typeof Hls !== 'undefined' && Hls.isSupported()) {
-                console.log('[embedVideo] Using HLS.js');
-                const hls = new Hls({ maxBufferLength: 30, maxMaxBufferLength: 60 });
+                console.log('[embedVideo] Using HLS.js with proxy loader');
+
+                // Custom loader: routes every HLS request through /.netlify/functions/proxy
+                // so CORS-blocked CDN segments are fetched server-side.
+                const defaultLoader = Hls.DefaultConfig.loader;
+                class ProxyLoader extends defaultLoader {
+                    load(context, config, callbacks) {
+                        const origUrl = context.url;
+                        // Only proxy external URLs (not data: or blob:)
+                        if (origUrl.startsWith('http')) {
+                            context.url = '/.netlify/functions/proxy?url=' + encodeURIComponent(origUrl);
+                            console.log('[ProxyLoader] proxying:', origUrl.slice(0, 80));
+                        }
+                        super.load(context, config, callbacks);
+                    }
+                }
+
+                const hls = new Hls({
+                    maxBufferLength: 30,
+                    maxMaxBufferLength: 60,
+                    loader: ProxyLoader,
+                });
                 hls.on(Hls.Events.ERROR, (event, data) => {
                     console.error('[HLS.js] Error:', data.type, data.details, data.fatal);
                     if (data.fatal) {
