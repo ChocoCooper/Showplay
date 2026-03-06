@@ -204,430 +204,57 @@ $(document).ready(function() {
     const initializeServers = function() { selectors.serverGrid.empty().hide(); };
 
 
-    // ── Custom Player Builder ─────────────────────────────────────────────────
-    function buildPlayer(wrapper, videoEl, hlsInstance, levels) {
-        var vid = videoEl[0];
-        var hls = hlsInstance;
-        var currentQuality = -1;
-
-        // ── Subtitle state ────────────────────────────────────────────────────
-        var subEnabled  = false;
-        var subSettings = { fontSize:'18px', edgeStyle:'none', bgColor:'#000000', bgOpacity:'0.7' };
-
-        function fmtTime(s) {
-            if (isNaN(s)||s<0) return '0:00';
-            var h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=Math.floor(s%60);
-            if (h>0) return h+':'+String(m).padStart(2,'0')+':'+String(sec).padStart(2,'0');
-            return m+':'+String(sec).padStart(2,'0');
-        }
-
-        // ── Wrap video ────────────────────────────────────────────────────────
-        var wrap = $('<div class="sp-player-wrap"></div>');
-        videoEl.css({width:'100%',height:'100%',display:'block'});
-        wrap.append(videoEl);
-
-        // ── Big play/pause centre ─────────────────────────────────────────────
-        var bigPlay = $('<div class="sp-big-play always"><div class="sp-big-play-btn"><i class="fa-solid fa-play"></i></div></div>');
-        wrap.append(bigPlay);
-
-        // ── Subtitle display layer ────────────────────────────────────────────
-        var subLayer = $('<div class="sp-sub-layer" style="position:absolute;bottom:60px;left:0;right:0;text-align:center;z-index:14;pointer-events:none;padding:0 16px;"></div>');
-        wrap.append(subLayer);
-
-        // ── Controls bar ──────────────────────────────────────────────────────
-        var ctrl = $('<div class="sp-controls"></div>');
-        var progRow = $('<div class="sp-progress"><div class="sp-progress-buf"></div><div class="sp-progress-fill" style="width:0%"></div><div class="sp-progress-thumb" style="left:0%"></div></div>');
-        ctrl.append(progRow);
-
-        var bottom = $('<div class="sp-bottom"></div>');
-
-        // Buttons
-        var btnPlay  = $('<button class="sp-btn sp-play-btn" title="Play/Pause (Space)"><i class="fa-solid fa-play"></i></button>');
-        var timeEl   = $('<span class="sp-time">0:00 / 0:00</span>');
-        var spacer   = $('<span class="sp-spacer"></span>');
-
-        // Volume
-        var volWrap   = $('<div class="sp-volume-wrap"></div>');
-        var btnVol    = $('<button class="sp-btn sp-vol-btn" title="Mute (M)"><i class="fa-solid fa-volume-high"></i></button>');
-        var volSlider = $('<input type="range" class="sp-volume-slider" min="0" max="1" step="0.05" value="1" title="Volume">');
-        volWrap.append(btnVol, volSlider);
-
-        // Quality
-        var qualWrap = $('<div class="sp-quality-wrap"></div>');
-        var qualBtn  = $('<button class="sp-btn sp-quality-btn active" title="Quality">AUTO</button>');
-        var qualMenu = $('<div class="sp-menu sp-quality-menu"></div>');
-        qualWrap.append(qualBtn, qualMenu);
-
-        // Subtitles
-        var subWrap  = $('<div class="sp-quality-wrap" style="position:relative"></div>');
-        var btnSub   = $('<button class="sp-btn sp-sub-btn" title="Subtitles / CC"><i class="fa-solid fa-closed-captioning"></i></button>');
-        var subPanel = $('<div class="sp-sub-panel"></div>');
-        subWrap.append(btnSub, subPanel);
-
-        // Fullscreen
-        var btnFS = $('<button class="sp-btn sp-fs-btn" title="Fullscreen (F)"><i class="fa-solid fa-expand"></i></button>');
-
-        bottom.append(btnPlay, timeEl, spacer, volWrap);
-        if (levels && levels.length > 1) bottom.append(qualWrap);
-        bottom.append(subWrap, btnFS);
-        ctrl.append(bottom);
-        wrap.append(ctrl);
-
-        // ── Quality menu ──────────────────────────────────────────────────────
-        if (levels && levels.length > 1) {
-            var autoQBtn = $('<button class="selected">Auto</button>');
-            autoQBtn.on('click', function() {
-                currentQuality = -1;
-                hls.currentLevel = -1;  // re-enables ABR
-                hls.loadLevel    = -1;
-                qualBtn.text('AUTO').addClass('active');
-                qualMenu.find('button').removeClass('selected');
-                autoQBtn.addClass('selected');
-                qualMenu.removeClass('open');
-                console.log('[Quality] Auto ABR');
-            });
-            qualMenu.append(autoQBtn);
-
-            var sortedLvls = levels.map(function(lv,i){ return {idx:i,h:lv.height||0,bw:lv.bitrate||0}; })
-                .sort(function(a,b){ return b.h - a.h; });
-
-            sortedLvls.forEach(function(lv) {
-                var label = lv.h ? lv.h+'p' : Math.round(lv.bw/1000)+'kbps';
-                var qb = $('<button>'+label+'</button>');
-                qb.on('click', function() {
-                    currentQuality = lv.idx;
-                    // HLS.js: currentLevel = idx forces immediate switch + disables ABR
-                    // nextLevel = idx ensures next fragment comes from that level
-                    // loadLevel = idx pins the loader
-                    hls.currentLevel = lv.idx;
-                    hls.nextLevel    = lv.idx;
-                    hls.loadLevel    = lv.idx;
-                    qualBtn.text(label).addClass('active');
-                    qualMenu.find('button').removeClass('selected');
-                    qb.addClass('selected');
-                    qualMenu.removeClass('open');
-                    console.log('[Quality] -> level', lv.idx, label, 'currentLevel:', hls.currentLevel);
-                });
-                qualMenu.append(qb);
-            });
-
-            if (hls) {
-                hls.on(Hls.Events.LEVEL_SWITCHED, function(ev, data) {
-                    var lv = levels[data.level];
-                    var label = lv && lv.height ? lv.height+'p' : '';
-                    if (currentQuality === -1 && label) qualBtn.text('AUTO '+label);
-                });
-            }
-        }
-
-        // ── Subtitle panel ────────────────────────────────────────────────────
-        // Build track list from video element
-        function buildSubPanel() {
-            subPanel.empty();
-            subPanel.append('<h4>Subtitles</h4>');
-
-            // Toggle row
-            var toggleRow = $('<div class="sp-sub-toggle"></div>');
-            var toggleLabel = $('<label>Enable Subtitles</label>');
-            var toggleWrap = $('<label class="sp-toggle"></label>');
-            var toggleInput = $('<input type="checkbox">');
-            var toggleTrack = $('<div class="sp-toggle-track"></div>');
-            var toggleThumb = $('<div class="sp-toggle-thumb"></div>');
-            toggleWrap.append(toggleInput, toggleTrack, toggleThumb);
-            toggleRow.append(toggleLabel, toggleWrap);
-            subPanel.append(toggleRow);
-
-            // Track selector
-            var tracks = vid.textTracks ? Array.from(vid.textTracks) : [];
-            if (tracks.length > 0) {
-                var trackRow = $('<div class="sp-sub-row"></div>');
-                trackRow.append('<label>Track</label>');
-                var trackSel = $('<select></select>');
-                tracks.forEach(function(t, i) {
-                    trackSel.append('<option value="'+i+'">'+(t.label || t.language || 'Track '+(i+1))+'</option>');
-                });
-                trackRow.append(trackSel);
-                subPanel.append(trackRow);
-                trackSel.on('change', function() {
-                    var idx = parseInt(this.value);
-                    Array.from(vid.textTracks).forEach(function(t,i){ t.mode = (subEnabled && i===idx) ? 'showing' : 'hidden'; });
-                });
-            }
-
-            // Font size
-            var fsRow = $('<div class="sp-sub-row"></div>');
-            fsRow.append('<label>Font Size</label>');
-            var fsSel = $('<select></select>');
-            ['12px','14px','16px','18px','20px','24px','28px','32px'].forEach(function(sz) {
-                fsSel.append('<option value="'+sz+'"'+(sz===subSettings.fontSize?' selected':'')+'>'+sz+'</option>');
-            });
-            fsSel.on('change', function(){ subSettings.fontSize = this.value; applySubStyle(); });
-            fsRow.append(fsSel); subPanel.append(fsRow);
-
-            // Edge style
-            var edRow = $('<div class="sp-sub-row"></div>');
-            edRow.append('<label>Edge Style</label>');
-            var edSel = $('<select></select>');
-            [{v:'none',l:'None'},{v:'drop-shadow(1px 1px 2px #000)',l:'Drop Shadow'},{v:'1px 1px 0 #000,-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000',l:'Outline'},{v:'2px 2px 4px rgba(0,0,0,.9)',l:'Raised'}].forEach(function(e) {
-                edSel.append('<option value="'+e.v+'"'+(e.v===subSettings.edgeStyle?' selected':'')+'>'+e.l+'</option>');
-            });
-            edSel.on('change', function(){ subSettings.edgeStyle = this.value; applySubStyle(); });
-            edRow.append(edSel); subPanel.append(edRow);
-
-            // Background color
-            var bgRow = $('<div class="sp-sub-row"></div>');
-            bgRow.append('<label>BG Color</label>');
-            var bgInput = $('<input type="color" value="'+subSettings.bgColor+'" style="width:40px;height:28px;padding:2px;border:1px solid #333;border-radius:4px;background:#252525;cursor:pointer">');
-            bgInput.on('input', function(){ subSettings.bgColor = this.value; applySubStyle(); });
-            bgRow.append(bgInput); subPanel.append(bgRow);
-
-            // BG opacity
-            var opRow = $('<div class="sp-sub-row"><label>BG Opacity</label></div>');
-            var opSlider = $('<input type="range" min="0" max="1" step="0.05" value="'+subSettings.bgOpacity+'">');
-            var opVal = $('<span style="color:#2af598;font-size:11px;min-width:28px;text-align:right">'+Math.round(subSettings.bgOpacity*100)+'%</span>');
-            opSlider.on('input', function(){ subSettings.bgOpacity = this.value; opVal.text(Math.round(this.value*100)+'%'); applySubStyle(); });
-            opRow.append(opSlider, opVal); subPanel.append(opRow);
-
-            // Toggle handler
-            toggleInput.on('change', function() {
-                subEnabled = this.checked;
-                var selTrackIdx = subPanel.find('select').first().val();
-                selTrackIdx = selTrackIdx !== undefined ? parseInt(selTrackIdx) : 0;
-                Array.from(vid.textTracks||[]).forEach(function(t,i){ t.mode = (subEnabled && i===selTrackIdx) ? 'showing' : 'hidden'; });
-                btnSub.find('i').css('color', subEnabled ? '#2af598' : '');
-                applySubStyle();
-            });
-            toggleInput.prop('checked', subEnabled);
-        }
-
-        function applySubStyle() {
-            if (!subEnabled) { subLayer.hide(); return; }
-            subLayer.show();
-            var bgRgb = subSettings.bgColor;
-            var op = parseFloat(subSettings.bgOpacity);
-            // Parse hex to rgb
-            var r=parseInt(bgRgb.slice(1,3),16), g=parseInt(bgRgb.slice(3,5),16), b=parseInt(bgRgb.slice(5,7),16);
-            var isDropShadow = subSettings.edgeStyle.indexOf('drop-shadow') > -1;
-            subLayer.css({
-                fontSize: subSettings.fontSize,
-                textShadow: isDropShadow ? subSettings.edgeStyle : 'none',
-                filter: isDropShadow ? subSettings.edgeStyle : 'none',
-                '--sub-edge': subSettings.edgeStyle
-            });
-            // Apply to each cue span
-            subLayer.find('.sp-cue').css({
-                background: 'rgba('+r+','+g+','+b+','+op+')',
-                padding: '2px 8px',
-                borderRadius: '3px',
-                fontSize: subSettings.fontSize,
-                textShadow: isDropShadow ? 'none' : subSettings.edgeStyle,
-                lineHeight: '1.5',
-                display: 'inline-block',
-                color: '#fff',
-                fontWeight: '600'
-            });
-        }
-
-        // Hook native text track cues to render in subLayer
-        function hookTextTracks() {
-            var tracks = vid.textTracks ? Array.from(vid.textTracks) : [];
-            tracks.forEach(function(track) {
-                track.addEventListener('cuechange', function() {
-                    subLayer.empty();
-                    if (!subEnabled || track.mode !== 'showing') return;
-                    var cues = track.activeCues ? Array.from(track.activeCues) : [];
-                    cues.forEach(function(cue) {
-                        var text = cue.text || (cue.getCueAsHTML ? cue.getCueAsHTML().textContent : '');
-                        if (text) {
-                            var span = $('<span class="sp-cue"></span>').text(text);
-                            subLayer.append(span);
-                            applySubStyle();
-                        }
-                    });
-                    if (!cues.length) subLayer.empty();
-                });
-            });
-        }
-
-        buildSubPanel();
-
-        // Place in DOM
-        wrapper.find('.sp-player-wrap, .sp-overlay-loading, .sp-overlay-error').remove();
-        wrapper.css('position','relative').append(wrap);
-
-        // ── Buffering spinner overlay ─────────────────────────────────────────
-        var bufSpinner = $('<div class="sp-buf-spin" style="position:absolute;inset:0;display:none;align-items:center;justify-content:center;z-index:12;pointer-events:none"><div class="sp-spinner"></div></div>');
-        wrap.append(bufSpinner);
-
-        vid.addEventListener('waiting',  function(){ bufSpinner.css('display','flex'); });
-        vid.addEventListener('playing',  function(){ bufSpinner.hide(); });
-        vid.addEventListener('canplay',  function(){ bufSpinner.hide(); });
-        vid.addEventListener('stalled',  function(){ bufSpinner.css('display','flex'); });
-        vid.addEventListener('seeking',  function(){ bufSpinner.css('display','flex'); });
-        vid.addEventListener('seeked',   function(){ bufSpinner.hide(); });
-
-        // ── Controls auto-hide while playing ─────────────────────────────────
-        var hideTimer = null;
-        function showControls() {
-            ctrl.addClass('pinned');
-            clearTimeout(hideTimer);
-            hideTimer = setTimeout(function() {
-                if (!vid.paused && !isSeeking) ctrl.removeClass('pinned');
-            }, 3000);
-        }
-        wrap.on('mousemove touchstart', showControls);
-        // Show on load for 3s
-        showControls();
-
-        // Hook text tracks after DOM is ready
-        setTimeout(hookTextTracks, 500);
-
-        // ── Playback controls ─────────────────────────────────────────────────
-        var isSeeking = false;
-
-        function togglePlay() { if (vid.paused) vid.play().catch(function(){}); else vid.pause(); }
-
-        bigPlay.on('click', function(e){ e.stopPropagation(); togglePlay(); });
-        btnPlay.on('click', function(e){ e.stopPropagation(); togglePlay(); });
-
-        vid.addEventListener('play', function() {
-            btnPlay.find('i').attr('class','fa-solid fa-pause');
-            bigPlay.find('i').attr('class','fa-solid fa-pause');
-            bigPlay.removeClass('always');
-            // Start hide timer when playing
-            showControls();
+    // ── Artplayer + HLS.js ─────────────────────────────────────────────────────
+    // Dynamically load Artplayer from CDN if not already loaded
+    function loadArtplayer() {
+        return new Promise(function(resolve, reject) {
+            if (window.Artplayer) { resolve(); return; }
+            var s = document.createElement('script');
+            s.src = 'https://cdnjs.cloudflare.com/ajax/libs/artplayer/5.2.1/artplayer.js';
+            s.onload = resolve;
+            s.onerror = function() {
+                // Fallback CDN
+                var s2 = document.createElement('script');
+                s2.src = 'https://cdn.jsdelivr.net/npm/artplayer/dist/artplayer.js';
+                s2.onload = resolve;
+                s2.onerror = reject;
+                document.head.appendChild(s2);
+            };
+            document.head.appendChild(s);
         });
-        vid.addEventListener('pause', function() {
-            btnPlay.find('i').attr('class','fa-solid fa-play');
-            bigPlay.find('i').attr('class','fa-solid fa-play');
-            bigPlay.addClass('always');
-            // Always show controls when paused
-            clearTimeout(hideTimer);
-            ctrl.addClass('pinned');
-        });
-        vid.addEventListener('ended', function() {
-            bigPlay.addClass('always');
-            btnPlay.find('i').attr('class','fa-solid fa-rotate-right');
-            clearTimeout(hideTimer);
-            ctrl.addClass('pinned');
-        });
-
-        // ── Progress bar ──────────────────────────────────────────────────────
-        function setProgress(pct) {
-            progRow.find('.sp-progress-fill').css('width', pct+'%');
-            progRow.find('.sp-progress-thumb').css('left', pct+'%');
-        }
-        vid.addEventListener('timeupdate', function() {
-            if (isSeeking||!vid.duration) return;
-            setProgress((vid.currentTime/vid.duration)*100);
-            timeEl.text(fmtTime(vid.currentTime)+' / '+fmtTime(vid.duration));
-        });
-        vid.addEventListener('durationchange', function() {
-            timeEl.text(fmtTime(vid.currentTime)+' / '+fmtTime(vid.duration));
-        });
-        vid.addEventListener('progress', function() {
-            if (!vid.duration) return;
-            var buf=vid.buffered;
-            if (buf.length) progRow.find('.sp-progress-buf').css('width',(buf.end(buf.length-1)/vid.duration*100)+'%');
-        });
-
-        function seekFromEvent(clientX) {
-            var rect=progRow[0].getBoundingClientRect();
-            var pct=Math.max(0,Math.min(1,(clientX-rect.left)/rect.width));
-            if (vid.duration){vid.currentTime=pct*vid.duration; setProgress(pct*100);}
-        }
-        progRow.on('mousedown',function(e){isSeeking=true;ctrl.addClass('pinned');seekFromEvent(e.clientX);e.preventDefault();});
-        progRow.on('touchstart',function(e){isSeeking=true;ctrl.addClass('pinned');seekFromEvent(e.originalEvent.touches[0].clientX);});
-        $(document).on('mousemove.spprog',function(e){if(isSeeking) seekFromEvent(e.clientX);});
-        $(document).on('touchmove.spprog',function(e){if(isSeeking) seekFromEvent(e.originalEvent.touches[0].clientX);});
-        $(document).on('mouseup.spprog touchend.spprog',function(){if(isSeeking){isSeeking=false;showControls();}});
-
-        // ── Volume with fill ──────────────────────────────────────────────────
-        function updateVolume(val) {
-            vid.volume = val;
-            vid.muted = (val === 0);
-            volSlider.val(val);
-            volSlider.css('--vol', (val*100)+'%');
-            var ic = val===0||vid.muted ? 'fa-volume-xmark' : val<0.4 ? 'fa-volume-low' : 'fa-volume-high';
-            btnVol.find('i').attr('class','fa-solid '+ic);
-        }
-        volSlider.on('input', function(){ updateVolume(parseFloat(this.value)); });
-        btnVol.on('click', function(){
-            if (vid.muted) { updateVolume(vid.volume||1); }
-            else { vid.muted=true; volSlider.css('--vol','0%'); btnVol.find('i').attr('class','fa-solid fa-volume-xmark'); }
-        });
-        // Init volume fill
-        updateVolume(1);
-
-        // ── Quality menu toggle ───────────────────────────────────────────────
-        qualBtn.on('click', function(e){ e.stopPropagation(); qualMenu.toggleClass('open'); subPanel.removeClass('open'); });
-
-        // ── Subtitle panel toggle ─────────────────────────────────────────────
-        btnSub.on('click', function(e){ e.stopPropagation(); subPanel.toggleClass('open'); qualMenu.removeClass('open'); });
-        $(document).on('click.spmenus', function(){ qualMenu.removeClass('open'); subPanel.removeClass('open'); });
-
-        // ── Fullscreen ────────────────────────────────────────────────────────
-        btnFS.on('click', function() {
-            var el=wrap[0];
-            if (!document.fullscreenElement&&!document.webkitFullscreenElement){
-                (el.requestFullscreen||el.webkitRequestFullscreen||el.mozRequestFullScreen).call(el);
-            } else {
-                (document.exitFullscreen||document.webkitExitFullscreen||document.mozCancelFullScreen).call(document);
-            }
-        });
-        function onFSChange() {
-            var isFS=!!(document.fullscreenElement||document.webkitFullscreenElement);
-            btnFS.find('i').attr('class',isFS?'fa-solid fa-compress':'fa-solid fa-expand');
-            ctrl.addClass('pinned');
-            clearTimeout(ctrl[0]._fst);
-            ctrl[0]._fst=setTimeout(function(){if(!isSeeking) ctrl.removeClass('pinned');},3000);
-        }
-        document.addEventListener('fullscreenchange',onFSChange);
-        document.addEventListener('webkitfullscreenchange',onFSChange);
-
-        // ── Mobile double-tap seek ────────────────────────────────────────────
-        var lastTap=0;
-        wrap.on('touchend',function(e){
-            var now=Date.now();
-            if(now-lastTap<280){
-                var x=e.originalEvent.changedTouches[0].clientX;
-                var mid=wrap[0].getBoundingClientRect().width/2;
-                vid.currentTime=Math.max(0,Math.min(vid.duration||0,vid.currentTime+(x<mid?-10:10)));
-                e.preventDefault();
-            }
-            lastTap=now;
-        });
-
-        // ── Keyboard shortcuts ────────────────────────────────────────────────
-        $(document).off('keydown.sp').on('keydown.sp',function(e){
-            if($(e.target).is('input,textarea,select,details')) return;
-            if(e.key===' '||e.key==='k'){e.preventDefault();togglePlay();}
-            if(e.key==='ArrowRight') vid.currentTime=Math.min(vid.duration||0,vid.currentTime+10);
-            if(e.key==='ArrowLeft')  vid.currentTime=Math.max(0,vid.currentTime-10);
-            if(e.key==='ArrowUp'){vid.volume=Math.min(1,vid.volume+0.1);updateVolume(vid.volume);e.preventDefault();}
-            if(e.key==='ArrowDown'){vid.volume=Math.max(0,vid.volume-0.1);updateVolume(vid.volume);e.preventDefault();}
-            if(e.key==='f') btnFS.trigger('click');
-            if(e.key==='m') btnVol.trigger('click');
-            if(e.key==='c') btnSub.trigger('click');
-        });
-
-        return wrap;
     }
+
+    // Track current Artplayer instance so we can destroy it on next load
+    var currentArt = null;
 
     // ── Embed Video ───────────────────────────────────────────────────────────
     const embedVideo = async function() {
         if (!state.mediaId) { console.error('[embedVideo] mediaId not set'); return; }
         if (state.mediaType === 'tv' && (!state.season || !state.episode)) { console.error('[embedVideo] season/episode not set'); return; }
 
-        var server = config.servers[0];
+        var server  = config.servers[0];
         var wrapper = selectors.videoFrame.parent();
 
-        wrapper.find('.sp-player-wrap, .sp-overlay-loading, .sp-overlay-error').remove();
-        wrapper.find('video').each(function(){ this.pause(); this.src=''; }).remove();
+        // Destroy previous player
+        if (currentArt) {
+            try { currentArt.destroy(true); } catch(e) {}
+            currentArt = null;
+        }
+        wrapper.find('.art-container, .sp-overlay-loading, .sp-overlay-error, video').remove();
         selectors.videoFrame.hide();
 
-        var loadingEl = $('<div class="sp-overlay-loading"><div class="sp-spinner"></div><p>Loading stream\u2026</p></div>');
-        wrapper.css('position','relative').append(loadingEl);
+        // Loading overlay
+        wrapper.css('position','relative').html(
+            '<div class="sp-overlay-loading" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,.85);z-index:20;gap:14px;color:#fff;font-size:14px;border-radius:10px;">'
+            + '<div style="width:44px;height:44px;border:4px solid rgba(255,255,255,.15);border-top-color:#2af598;border-radius:50%;animation:sp-spin .8s linear infinite;"></div>'
+            + '<p>Loading stream\u2026</p></div>'
+        );
+        if (!document.getElementById('sp-spin-style')) {
+            var ss = document.createElement('style');
+            ss.id = 'sp-spin-style';
+            ss.textContent = '@keyframes sp-spin{to{transform:rotate(360deg)}} .art-container{border-radius:10px;overflow:hidden;} .art-video-player{background:#000;}';
+            document.head.appendChild(ss);
+        }
 
         var params = {
             tmdbId: state.mediaId, mediaType: state.mediaType,
@@ -637,118 +264,194 @@ $(document).ready(function() {
         };
 
         try {
-            var stream = await resolveStream(server.resolver, params);
+            // Load stream + Artplayer in parallel
+            var results = await Promise.all([
+                resolveStream(server.resolver, params),
+                loadArtplayer()
+            ]);
+            var stream = results[0];
             console.log('[embedVideo] stream:', stream.url);
-            loadingEl.remove();
+            console.log('[embedVideo] headers:', JSON.stringify(stream.headers || {}));
 
-            var videoEl = $('<video class="hls-player" playsinline></video>');
-            wrapper.append(videoEl);
+            wrapper.empty();
+            // Create mount div for Artplayer
+            var artDiv = $('<div class="art-container" style="width:100%;aspect-ratio:16/9;min-height:220px;background:#000;border-radius:10px;overflow:hidden;"></div>');
+            wrapper.append(artDiv);
 
-            if (typeof Hls !== 'undefined' && Hls.isSupported()) {
-                var streamHdrs = stream.headers || {};
+            var streamHdrs = stream.headers || {};
 
-                class ProxyLoader {
-                    constructor(cfg) {
-                        this.config = cfg; this._aborted = false;
+            // ── ProxyLoader (same as before) ──────────────────────────────────
+            class ProxyLoader {
+                constructor(cfg) {
+                    this.config = cfg; this._aborted = false;
+                    var now = performance.now();
+                    this.stats = {
+                        aborted:false, loaded:0, retry:0, total:0, chunkCount:0, bwEstimate:0,
+                        loading:  {start:now, first:0, end:0},
+                        parsing:  {start:0, end:0},
+                        buffering:{start:0, first:0, end:0}
+                    };
+                }
+                destroy(){ this._aborted = true; }
+                abort()  { this._aborted = true; this.stats.aborted = true; }
+                load(context, cfg, callbacks) {
+                    var origUrl = context.url, self = this;
+                    self.stats.loading.start = performance.now();
+                    fetch(NETLIFY_PROXY, {
+                        method: 'POST',
+                        headers: {'Content-Type':'application/json'},
+                        body: JSON.stringify({url: origUrl, method:'GET', headers: streamHdrs})
+                    })
+                    .then(function(r){ if(!r.ok) throw new Error('Proxy HTTP '+r.status); return r.json(); })
+                    .then(function(env) {
+                        if (self._aborted) return;
                         var now = performance.now();
-                        this.stats = {
-                            aborted:false, loaded:0, retry:0, total:0, chunkCount:0, bwEstimate:0,
-                            loading:  {start:now, first:0, end:0},
-                            parsing:  {start:0, end:0},
-                            buffering:{start:0, first:0, end:0}
-                        };
-                    }
-                    destroy(){ this._aborted=true; }
-                    abort()  { this._aborted=true; this.stats.aborted=true; }
-                    load(context, cfg, callbacks) {
-                        var origUrl = context.url, self = this;
-                        self.stats.loading.start = performance.now();
-                        fetch(NETLIFY_PROXY, {
-                            method:'POST',
-                            headers:{'Content-Type':'application/json'},
-                            body: JSON.stringify({url:origUrl, method:'GET', headers:streamHdrs})
-                        })
-                        .then(function(r){ if(!r.ok) throw new Error('Proxy HTTP '+r.status); return r.json(); })
-                        .then(function(env) {
-                            if(self._aborted) return;
-                            var now = performance.now();
-                            var urlNoQ = origUrl.split('?')[0].toLowerCase();
-                            var isBinary = context.responseType==='arraybuffer'
-                                || context.type==='key' || context.type==='initSegment'
-                                || urlNoQ.endsWith('.ts') || urlNoQ.endsWith('.m4s')
-                                || urlNoQ.endsWith('.mp4') || urlNoQ.endsWith('.m4a')
-                                || urlNoQ.endsWith('.aac') || urlNoQ.endsWith('.mp3')
-                                || urlNoQ.endsWith('.key');
-                            var data;
-                            if (isBinary && env.base64) {
-                                try {
-                                    var bin = atob(env.base64), bytes = new Uint8Array(bin.length);
-                                    for (var i=0; i<bin.length; i++) bytes[i]=bin.charCodeAt(i);
-                                    data = bytes.buffer;
-                                } catch(e){ data=env.text||''; }
-                            } else { data=env.text||''; }
-                            var len=(data&&data.byteLength!==undefined)?data.byteLength:(data?data.length:0);
-                            self.stats.loaded=len; self.stats.total=len;
-                            self.stats.loading.first=now; self.stats.loading.end=now;
-                            callbacks.onSuccess({data:data,url:origUrl}, self.stats, context, null);
-                        })
-                        .catch(function(err){
-                            if(self._aborted) return;
-                            console.error('[ProxyLoader]',err.message);
-                            callbacks.onError({code:0,text:err.message}, context, null, {});
+                        var urlNoQ = origUrl.split('?')[0].toLowerCase();
+                        var isBinary = context.responseType==='arraybuffer'
+                            || context.type==='key' || context.type==='initSegment'
+                            || urlNoQ.endsWith('.ts')  || urlNoQ.endsWith('.m4s')
+                            || urlNoQ.endsWith('.mp4') || urlNoQ.endsWith('.m4a')
+                            || urlNoQ.endsWith('.aac') || urlNoQ.endsWith('.mp3')
+                            || urlNoQ.endsWith('.key');
+                        var data;
+                        if (isBinary && env.base64) {
+                            try {
+                                var bin = atob(env.base64), bytes = new Uint8Array(bin.length);
+                                for (var i=0; i<bin.length; i++) bytes[i] = bin.charCodeAt(i);
+                                data = bytes.buffer;
+                            } catch(e){ data = env.text || ''; }
+                        } else { data = env.text || ''; }
+                        var len = (data && data.byteLength !== undefined) ? data.byteLength : (data ? data.length : 0);
+                        self.stats.loaded = len; self.stats.total = len;
+                        self.stats.loading.first = now; self.stats.loading.end = now;
+                        callbacks.onSuccess({data:data, url:origUrl}, self.stats, context, null);
+                    })
+                    .catch(function(err){
+                        if (self._aborted) return;
+                        console.error('[ProxyLoader]', err.message);
+                        callbacks.onError({code:0, text:err.message}, context, null, {});
+                    });
+                }
+            }
+
+            // ── Create HLS instance ───────────────────────────────────────────
+            var hls = new Hls({
+                maxBufferLength: 60,
+                maxMaxBufferLength: 120,
+                startLevel: -1,
+                abrEwmaDefaultEstimate: 4000000,
+                loader: ProxyLoader
+            });
+
+            // ── Build quality levels after manifest parsed ─────────────────────
+            var qualityLevels = [];
+            var artInstance   = null;
+
+            hls.on(Hls.Events.MANIFEST_PARSED, function(ev, data) {
+                qualityLevels = data.levels.map(function(lv, i) {
+                    return { html: lv.height ? lv.height+'p' : Math.round((lv.bitrate||0)/1000)+'kbps', default: i===0, url: i };
+                });
+                console.log('[embedVideo] quality levels:', qualityLevels.length, qualityLevels.map(function(q){return q.html;}));
+
+                // ── Init Artplayer ────────────────────────────────────────────
+                artInstance = new Artplayer({
+                    container: artDiv[0],
+                    url: stream.url,
+                    type: 'm3u8',
+                    volume: 1,
+                    autoplay: true,
+                    playbackRate: true,
+                    aspectRatio: true,
+                    fullscreen: true,
+                    fullscreenWeb: true,
+                    hotkey: true,
+                    pip: true,
+                    mutex: true,
+                    theme: '#2af598',
+                    lang: navigator.language.slice(0,2),
+                    moreVideoAttr: { crossOrigin: 'anonymous' },
+
+                    // Quality selector via Artplayer
+                    quality: qualityLevels.length > 1 ? qualityLevels : [],
+
+                    // Subtitle settings panel built-in
+                    subtitle: { style: { color: '#fff', fontSize: '20px', textShadow: '0 1px 4px rgba(0,0,0,.9)' } },
+
+                    // Settings menu: playback speed + more
+                    setting: true,
+
+                    // Attach HLS.js to Artplayer
+                    customType: {
+                        m3u8: function(video, url) {
+                            hls.loadSource(url);
+                            hls.attachMedia(video);
+                        }
+                    },
+
+                    // Layers, controls, settings customizations
+                    controls: [{
+                        position: 'right',
+                        html: '<i class="fas fa-closed-captioning" style="font-size:18px;cursor:pointer;" title="Subtitles"></i>',
+                        tooltip: 'Subtitles',
+                        click: function(art) {
+                            art.setting.show = !art.setting.show;
+                        }
+                    }]
+                });
+
+                // ── Quality switching via Artplayer's quality event ────────────
+                artInstance.on('quality', function(newQuality) {
+                    // Find the level index matching the selected quality label
+                    var idx = -1;
+                    if (newQuality === 'Auto') {
+                        idx = -1;
+                    } else {
+                        data.levels.forEach(function(lv, i) {
+                            var label = lv.height ? lv.height+'p' : Math.round((lv.bitrate||0)/1000)+'kbps';
+                            if (label === newQuality) idx = i;
                         });
                     }
-                }
-
-                var hls = new Hls({
-                    maxBufferLength: 30, maxMaxBufferLength: 120,
-                    startLevel: -1, abrEwmaDefaultEstimate: 2000000,
-                    loader: ProxyLoader
+                    // Apply to HLS.js
+                    hls.currentLevel = idx;
+                    hls.nextLevel    = idx;
+                    hls.loadLevel    = idx;
+                    console.log('[Quality] switched to', newQuality, '-> HLS level', idx, '| actual currentLevel:', hls.currentLevel);
                 });
 
-                hls.on(Hls.Events.ERROR, function(ev, data) {
-                    console.error('[HLS.js]', data.type, data.details, 'fatal:', data.fatal);
-                    if (data.fatal) {
-                        wrapper.find('.sp-player-wrap').remove();
-                        wrapper.append($('<div class="sp-overlay-error"><i class="fas fa-exclamation-triangle"></i><p>' + data.details + '</p></div>'));
+                // ── HLS errors ────────────────────────────────────────────────
+                hls.on(Hls.Events.ERROR, function(ev, errData) {
+                    console.error('[HLS.js]', errData.type, errData.details, 'fatal:', errData.fatal);
+                    if (errData.fatal) {
+                        wrapper.empty().html(
+                            '<div style="position:relative;aspect-ratio:16/9;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0a0a0a;border-radius:10px;color:#ff6b6b;gap:12px;padding:20px;text-align:center;">'
+                            + '<i class="fas fa-exclamation-triangle" style="font-size:32px;"></i>'
+                            + '<p>' + errData.details + '</p></div>'
+                        );
                     }
                 });
 
-                hls.loadSource(stream.url);
-                hls.attachMedia(videoEl[0]);
-
-                hls.on(Hls.Events.MANIFEST_PARSED, function(ev, data) {
-                    console.log('[HLS.js] Manifest parsed, levels:', data.levels.length);
-                    var playerWrap = buildPlayer(wrapper, videoEl, hls, data.levels);
-                    videoEl[0].play().catch(function(e){
-                        console.warn('[HLS] autoplay blocked:', e.message);
-                        // Show play button and controls prominently
-                        playerWrap.find('.sp-big-play').addClass('always');
-                        playerWrap.find('.sp-controls').addClass('pinned');
+                // ── Auto-add quality option "Auto" to Artplayer quality list ──
+                if (qualityLevels.length > 1) {
+                    artInstance.on('ready', function() {
+                        console.log('[Artplayer] Ready. Levels:', qualityLevels.length);
                     });
-                });
+                }
 
-            } else if (videoEl[0].canPlayType('application/vnd.apple.mpegurl')) {
-                videoEl[0].src = stream.url;
-                var wrap2 = buildPlayer(wrapper, videoEl, null, []);
-                videoEl[0].play().catch(function(){
-                    wrap2.find('.sp-big-play').addClass('always');
-                    wrap2.find('.sp-controls').addClass('pinned');
-                });
-            } else {
-                videoEl[0].src = stream.url;
-                var wrap3 = buildPlayer(wrapper, videoEl, null, []);
-                videoEl[0].play().catch(function(){
-                    wrap3.find('.sp-big-play').addClass('always');
-                    wrap3.find('.sp-controls').addClass('pinned');
-                });
-            }
+                currentArt = artInstance;
+            });
+
+            hls.loadSource(stream.url);
+
         } catch(err) {
             console.error('[embedVideo]', err.message);
-            loadingEl.remove();
-            wrapper.append($('<div class="sp-overlay-error"><i class="fas fa-exclamation-triangle"></i><p>' + err.message + '</p></div>'));
+            wrapper.empty().html(
+                '<div style="position:relative;aspect-ratio:16/9;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0a0a0a;border-radius:10px;color:#ff6b6b;gap:12px;padding:20px;text-align:center;">'
+                + '<i class="fas fa-exclamation-triangle" style="font-size:32px;"></i>'
+                + '<p>' + err.message + '</p></div>'
+            );
         }
     };
+
 
     // ── Media Fetching ────────────────────────────────────────────────────────
     const fetchMedia = async function(type, isPreview) {
