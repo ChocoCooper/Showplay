@@ -347,12 +347,27 @@ $(document).ready(function() {
                 console.log('[embedVideo] Using HLS.js with POST proxy loader');
 
                 class ProxyLoader {
-                    constructor(cfg) { this.config = cfg; this._aborted = false; }
+                    constructor(cfg) {
+                        this.config = cfg;
+                        this._aborted = false;
+                        const now = performance.now();
+                        // HLS.js ABR controller reads loader.stats.loading directly
+                        // Must be initialized in constructor and updated during load
+                        this.stats = {
+                            aborted: false, loaded: 0, retry: 0, total: 0,
+                            chunkCount: 0, bwEstimate: 0,
+                            loading:   { start: now, first: 0, end: 0 },
+                            parsing:   { start: 0, end: 0 },
+                            buffering: { start: 0, first: 0, end: 0 }
+                        };
+                    }
                     destroy() { this._aborted = true; }
-                    abort()   { this._aborted = true; }
+                    abort()   { this._aborted = true; this.stats.aborted = true; }
                     load(context, cfg, callbacks) {
                         const origUrl = context.url;
                         const self = this;
+                        const startTime = performance.now();
+                        self.stats.loading.start = startTime;
                         console.log('[ProxyLoader] fetching:', origUrl.slice(0,80));
                         fetch(NETLIFY_PROXY, {
                             method: 'POST',
@@ -362,17 +377,14 @@ $(document).ready(function() {
                         .then(function(r) { if (!r.ok) throw new Error('Proxy HTTP ' + r.status); return r.json(); })
                         .then(function(env) {
                             if (self._aborted) return;
-                            const text = env.text || '';
                             const now = performance.now();
-                            // HLS.js v1+ expects nested loading/parsing/buffering objects
-                            const stats = {
-                                aborted: false, loaded: text.length, retry: 0,
-                                total: text.length, chunkCount: 0, bwEstimate: 0,
-                                loading:   { start: now, first: now, end: now },
-                                parsing:   { start: 0, end: 0 },
-                                buffering: { start: 0, first: 0, end: 0 }
-                            };
-                            callbacks.onSuccess({ data: text, url: origUrl }, stats, context, null);
+                            const text = env.text || '';
+                            // Update instance stats (read by ABR controller)
+                            self.stats.loaded = text.length;
+                            self.stats.total  = text.length;
+                            self.stats.loading.first = now;
+                            self.stats.loading.end   = now;
+                            callbacks.onSuccess({ data: text, url: origUrl }, self.stats, context, null);
                         })
                         .catch(function(err) {
                             if (self._aborted) return;
