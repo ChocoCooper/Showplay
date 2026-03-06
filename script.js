@@ -193,6 +193,7 @@ $(document).ready(function() {
     }
 
     async function resolveVixsrc(p) {
+        throw new Error('Vixsrc: Cloudflare blocks server-side access. Use Server 2, 3, 4, or 7.');
         const pageUrl = p.mediaType === 'tv'
             ? 'https://vixsrc.to/tv/' + p.tmdbId + '/' + p.season + '/' + p.episode
             : 'https://vixsrc.to/movie/' + p.tmdbId;
@@ -363,7 +364,15 @@ $(document).ready(function() {
                             if (self._aborted) return;
                             const text = env.text || '';
                             const now = performance.now();
-                            callbacks.onSuccess({ data: text, url: origUrl }, { trequest: now, tfirst: now, tload: now, loaded: text.length, total: text.length, retry: 0 }, context, null);
+                            // HLS.js v1+ expects nested loading/parsing/buffering objects
+                            const stats = {
+                                aborted: false, loaded: text.length, retry: 0,
+                                total: text.length, chunkCount: 0, bwEstimate: 0,
+                                loading:   { start: now, first: now, end: now },
+                                parsing:   { start: 0, end: 0 },
+                                buffering: { start: 0, first: 0, end: 0 }
+                            };
+                            callbacks.onSuccess({ data: text, url: origUrl }, stats, context, null);
                         })
                         .catch(function(err) {
                             if (self._aborted) return;
