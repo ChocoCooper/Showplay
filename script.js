@@ -1,4 +1,17 @@
 $(document).ready(function() {
+    /* Injected quality selector styles */
+if (!document.getElementById('sp-quality-style')) {
+    var s = document.createElement('style');
+    s.id = 'sp-quality-style';
+    s.textContent = [
+        'video.hls-player { width:100%; background:#000; }',
+        '.quality-bar { position:absolute; bottom:8px; right:8px; z-index:99; }',
+        '.quality-select { background:rgba(0,0,0,0.75); color:#2af598; border:1px solid #2af598; border-radius:6px; padding:4px 8px; font-size:13px; cursor:pointer; outline:none; }',
+        '.quality-select option { background:#111; color:#fff; }'
+    ].join(' ');
+    document.head.appendChild(s);
+}
+
     // DOM Selectors
     const selectors = {
         videoPage: $('#videoPage'),
@@ -120,7 +133,7 @@ $(document).ready(function() {
         console.log('[Vidlink] response:', JSON.stringify(data).slice(0,200));
         const url = data && ((data.stream && (data.stream.playlist || data.stream.url)) || data.playlist || data.url);
         if (!url) throw new Error('Vidlink: no playlist. Got: ' + JSON.stringify(data).slice(0,150));
-        return { url: url, type: 'hls' };
+        return { url: url, type: 'hls', headers: { Referer: 'https://vidlink.pro/', Origin: 'https://vidlink.pro' } };
     }
 
     async function resolveHexa(p) {
@@ -136,7 +149,7 @@ $(document).ready(function() {
         const sources = (d && (d.result && d.result.sources || d.sources || (d.data && d.data.sources))) || [];
         const url = sources[0] && (sources[0].url || sources[0].file);
         if (!url) throw new Error('Hexa: no url. Got: ' + JSON.stringify(d).slice(0,200));
-        return { url: url, type: 'hls' };
+        return { url: url, type: 'hls', headers: { Referer: 'https://hexa.watch/', Origin: 'https://hexa.watch' } };
     }
 
     async function resolveSmashy(p) {
@@ -160,7 +173,7 @@ $(document).ready(function() {
         const si = (sd && (sd.result || sd)) || {};
         const url = si.source || si.url || (si.sources && si.sources[0] && si.sources[0].file);
         if (!url) throw new Error('Smashy: no source. Got: ' + JSON.stringify(sd).slice(0,150));
-        return { url: url, type: 'hls' };
+        return { url: url, type: 'hls', headers: { Referer: 'https://smashystream.com/', Origin: 'https://smashystream.com' } };
     }
 
     async function resolveXPass(p) {
@@ -189,7 +202,7 @@ $(document).ready(function() {
             ? 'https://cdn.madplay.site/api/hls/unknown/' + p.tmdbId + '/season_' + p.season + '/episode_' + p.episode + '/master.m3u8'
             : 'https://cdn.madplay.site/api/hls/unknown/' + p.tmdbId + '/master.m3u8';
         console.log('[MadPlay] CDN:', cdnUrl);
-        return { url: cdnUrl, type: 'hls' };
+        return { url: cdnUrl, type: 'hls', headers: { Referer: 'https://madplay.site/', Origin: 'https://madplay.site' } };
     }
 
     async function resolveVixsrc(p) {
@@ -346,13 +359,15 @@ $(document).ready(function() {
             if (stream.type === 'hls' && typeof Hls !== 'undefined' && Hls.isSupported()) {
                 console.log('[embedVideo] Using HLS.js with POST proxy loader');
 
+                // ProxyLoader: routes all HLS requests through Netlify proxy.
+                // Passes per-stream headers (Referer/Origin) so CDNs don't reject requests.
+                // Decodes binary segments (TS/fMP4/AES keys) via base64.
+                var streamHdrs = stream.headers || {};
                 class ProxyLoader {
                     constructor(cfg) {
                         this.config = cfg;
                         this._aborted = false;
                         const now = performance.now();
-                        // HLS.js ABR controller reads loader.stats.loading directly
-                        // Must be initialized in constructor and updated during load
                         this.stats = {
                             aborted: false, loaded: 0, retry: 0, total: 0,
                             chunkCount: 0, bwEstimate: 0,
@@ -372,19 +387,23 @@ $(document).ready(function() {
                         fetch(NETLIFY_PROXY, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ url: origUrl, method: 'GET' })
+                            body: JSON.stringify({ url: origUrl, method: 'GET', headers: streamHdrs })
                         })
                         .then(function(r) { if (!r.ok) throw new Error('Proxy HTTP ' + r.status); return r.json(); })
                         .then(function(env) {
                             if (self._aborted) return;
                             const now = performance.now();
-                            // TS segments and MP4 fragments are binary — must pass ArrayBuffer
-                            // Manifests are text — pass as string
+                            // Detect binary: TS/fMP4/AES-key must be ArrayBuffer.
+                            // Manifests (.m3u8) and playlists start with #EXTM3U — text.
                             var urlNoQ = origUrl.split('?')[0].toLowerCase();
                             var isBinary = context.responseType === 'arraybuffer'
-                                || urlNoQ.endsWith('.ts') || urlNoQ.endsWith('.m4s')
+                                || context.type === 'key'
+                                || context.type === 'initSegment'
+                                || urlNoQ.endsWith('.ts')  || urlNoQ.endsWith('.m4s')
                                 || urlNoQ.endsWith('.mp4') || urlNoQ.endsWith('.m4a')
-                                || urlNoQ.endsWith('.aac') || urlNoQ.endsWith('.mp3');
+                                || urlNoQ.endsWith('.aac') || urlNoQ.endsWith('.mp3')
+                                || urlNoQ.endsWith('.key')
+                                || (env.text && !env.text.trimStart().startsWith('#') && !env.text.trimStart().startsWith('{') && env.base64 && env.base64.length > 100);
                             var data;
                             if (isBinary && env.base64) {
                                 try {
@@ -392,11 +411,15 @@ $(document).ready(function() {
                                     var bytes = new Uint8Array(bin.length);
                                     for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
                                     data = bytes.buffer;
-                                } catch(e) { data = env.text || ''; }
+                                    console.log('[ProxyLoader] binary', bytes.length, 'bytes for', urlNoQ.split('/').pop());
+                                } catch(e) {
+                                    console.warn('[ProxyLoader] base64 decode failed:', e.message);
+                                    data = env.text || '';
+                                }
                             } else {
                                 data = env.text || '';
                             }
-                            var len = data.byteLength !== undefined ? data.byteLength : (data.length || 0);
+                            var len = (data && data.byteLength !== undefined) ? data.byteLength : (data ? data.length : 0);
                             self.stats.loaded = len;
                             self.stats.total  = len;
                             self.stats.loading.first = now;
@@ -415,16 +438,39 @@ $(document).ready(function() {
                 hls.on(Hls.Events.ERROR, function(event, data) {
                     console.error('[HLS.js] Error:', data.type, data.details, data.fatal);
                     if (data.fatal) {
-                        loadingEl.remove();
+                        wrapper.find('.quality-bar').remove();
                         wrapper.find('video.hls-player').remove();
                         wrapper.append($('<div class="stream-error"><i class="fas fa-exclamation-triangle"></i><p>HLS error: ' + data.details + '. Try another server.</p></div>'));
                     }
                 });
                 hls.loadSource(stream.url);
                 hls.attachMedia(video[0]);
-                hls.on(Hls.Events.MANIFEST_PARSED, function() {
-                    console.log('[HLS.js] Manifest parsed, playing');
+                hls.on(Hls.Events.MANIFEST_PARSED, function(e, d) {
+                    console.log('[HLS.js] Manifest parsed, levels:', d.levels.length);
                     video[0].play().catch(function(e){ console.warn('[HLS.js] Autoplay blocked:', e.message); });
+
+                    // ── Quality selector ──────────────────────────────────
+                    wrapper.find('.quality-bar').remove();
+                    if (d.levels.length > 1) {
+                        var bar = $('<div class="quality-bar"></div>');
+                        var sel = $('<select class="quality-select" title="Quality"></select>');
+                        sel.append('<option value="-1">&#x2699; Auto</option>');
+                        d.levels.forEach(function(lv, i) {
+                            var label = lv.height ? lv.height + 'p' : (lv.bitrate ? Math.round(lv.bitrate/1000) + 'k' : 'Level ' + i);
+                            sel.append('<option value="' + i + '">' + label + '</option>');
+                        });
+                        sel.on('change', function() {
+                            var lvl = parseInt($(this).val());
+                            hls.currentLevel = lvl;
+                            console.log('[Quality] switched to level', lvl, lvl === -1 ? '(auto)' : d.levels[lvl].height + 'p');
+                        });
+                        bar.append(sel);
+                        wrapper.append(bar);
+                    }
+                });
+                hls.on(Hls.Events.LEVEL_SWITCHED, function(e, data) {
+                    var sel = wrapper.find('.quality-select');
+                    if (sel.length && hls.currentLevel === -1) sel.val('-1');
                 });
             } else if (video[0].canPlayType('application/vnd.apple.mpegurl')) {
                 console.log('[embedVideo] Using native HLS');
