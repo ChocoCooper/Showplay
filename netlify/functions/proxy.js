@@ -132,12 +132,13 @@ exports.handler = function(event, context, callback) {
     doRequest(parsed, method, hdrs, bodyData, 0, function(err, result) {
         if (err) return callback(null, { statusCode: 502, headers: CORS, body: JSON.stringify({ error: err.message }) });
         var text = result.rawBody.toString('utf8');
+        var b64  = result.rawBody.toString('base64');
         var json = null;
         try { json = JSON.parse(text); } catch(e) {}
         callback(null, {
             statusCode: 200,
             headers: CORS,
-            body: JSON.stringify({ ok: result.statusCode >= 200 && result.statusCode < 300, status: result.statusCode, text: text, json: json })
+            body: JSON.stringify({ ok: result.statusCode >= 200 && result.statusCode < 300, status: result.statusCode, text: text, base64: b64, json: json })
         });
     });
 };
