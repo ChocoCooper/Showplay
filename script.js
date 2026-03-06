@@ -378,13 +378,30 @@ $(document).ready(function() {
                         .then(function(env) {
                             if (self._aborted) return;
                             const now = performance.now();
-                            const text = env.text || '';
-                            // Update instance stats (read by ABR controller)
-                            self.stats.loaded = text.length;
-                            self.stats.total  = text.length;
+                            // TS segments and MP4 fragments are binary — must pass ArrayBuffer
+                            // Manifests are text — pass as string
+                            var urlNoQ = origUrl.split('?')[0].toLowerCase();
+                            var isBinary = context.responseType === 'arraybuffer'
+                                || urlNoQ.endsWith('.ts') || urlNoQ.endsWith('.m4s')
+                                || urlNoQ.endsWith('.mp4') || urlNoQ.endsWith('.m4a')
+                                || urlNoQ.endsWith('.aac') || urlNoQ.endsWith('.mp3');
+                            var data;
+                            if (isBinary && env.base64) {
+                                try {
+                                    var bin = atob(env.base64);
+                                    var bytes = new Uint8Array(bin.length);
+                                    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+                                    data = bytes.buffer;
+                                } catch(e) { data = env.text || ''; }
+                            } else {
+                                data = env.text || '';
+                            }
+                            var len = data.byteLength !== undefined ? data.byteLength : (data.length || 0);
+                            self.stats.loaded = len;
+                            self.stats.total  = len;
                             self.stats.loading.first = now;
                             self.stats.loading.end   = now;
-                            callbacks.onSuccess({ data: text, url: origUrl }, self.stats, context, null);
+                            callbacks.onSuccess({ data: data, url: origUrl }, self.stats, context, null);
                         })
                         .catch(function(err) {
                             if (self._aborted) return;
