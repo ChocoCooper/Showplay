@@ -5,7 +5,7 @@ $(document).ready(function() {
         var s = document.createElement('style');
         s.id = 'sp-player-style';
         s.textContent = '\
-.sp-player-wrap{position:relative;width:100%;background:#000;border-radius:10px;overflow:hidden;user-select:none}\
+.sp-player-wrap{position:relative;width:100%;background:#000;border-radius:10px;overflow:hidden;user-select:none;aspect-ratio:16/9;min-height:200px}\
 .sp-player-wrap video{width:100%;display:block;background:#000}\
 .sp-overlay-loading{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,.75);z-index:20;gap:12px;color:#fff;font-size:14px}\
 .sp-spinner{width:44px;height:44px;border:4px solid rgba(255,255,255,.15);border-top-color:#2af598;border-radius:50%;animation:sp-spin .8s linear infinite}\
@@ -17,8 +17,8 @@ $(document).ready(function() {
 .sp-big-play-btn{width:64px;height:64px;background:rgba(0,0,0,.55);border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid rgba(255,255,255,.7);transition:transform .15s,background .15s}\
 .sp-big-play-btn:hover{transform:scale(1.1);background:rgba(42,245,152,.25);border-color:#2af598}\
 .sp-big-play-btn i{color:#fff;font-size:24px;margin-left:3px}\
-.sp-controls{position:absolute;bottom:0;left:0;right:0;z-index:15;padding:6px 12px 10px;background:linear-gradient(to top,rgba(0,0,0,.92) 0%,transparent 100%);transform:translateY(100%);transition:transform .25s}\
-.sp-player-wrap:hover .sp-controls,.sp-controls.pinned{transform:translateY(0)}\
+.sp-controls{position:absolute;bottom:0;left:0;right:0;z-index:15;padding:6px 12px 10px;background:linear-gradient(to top,rgba(0,0,0,.92) 0%,transparent 100%);opacity:0;transition:opacity .3s}\
+.sp-player-wrap:hover .sp-controls,.sp-controls.pinned{opacity:1}\
 .sp-progress{position:relative;height:4px;background:rgba(255,255,255,.2);border-radius:2px;cursor:pointer;margin-bottom:8px;transition:height .15s}\
 .sp-player-wrap:hover .sp-progress{height:6px}\
 .sp-progress-fill{height:100%;background:#2af598;border-radius:2px;pointer-events:none;transition:width .1s linear}\
@@ -286,9 +286,12 @@ $(document).ready(function() {
             }
         }
 
-        // Place in DOM
-        wrapper.find('.sp-player-wrap, .sp-overlay-loading, .sp-overlay-error, video').remove();
+        // Place in DOM — do NOT remove video since it's already inside wrap
+        wrapper.find('.sp-player-wrap, .sp-overlay-loading, .sp-overlay-error').remove();
         wrapper.css('position','relative').append(wrap);
+        // Show controls immediately, then auto-hide after 3s
+        ctrl.addClass('pinned');
+        setTimeout(function(){ if(!isSeeking) ctrl.removeClass('pinned'); }, 3000);
 
         // ── Playback controls ─────────────────────────────────────────────────
         function togglePlay() { if (vid.paused) vid.play().catch(function(){}); else vid.pause(); }
@@ -506,18 +509,29 @@ $(document).ready(function() {
 
                 hls.on(Hls.Events.MANIFEST_PARSED, function(ev, data) {
                     console.log('[HLS.js] Manifest parsed, levels:', data.levels.length);
-                    buildPlayer(wrapper, videoEl, hls, data.levels);
-                    videoEl[0].play().catch(function(e){ console.warn('[HLS] autoplay blocked:', e.message); });
+                    var playerWrap = buildPlayer(wrapper, videoEl, hls, data.levels);
+                    videoEl[0].play().catch(function(e){
+                        console.warn('[HLS] autoplay blocked:', e.message);
+                        // Show play button and controls prominently
+                        playerWrap.find('.sp-big-play').addClass('always');
+                        playerWrap.find('.sp-controls').addClass('pinned');
+                    });
                 });
 
             } else if (videoEl[0].canPlayType('application/vnd.apple.mpegurl')) {
                 videoEl[0].src = stream.url;
-                buildPlayer(wrapper, videoEl, null, []);
-                videoEl[0].play().catch(function(){});
+                var wrap2 = buildPlayer(wrapper, videoEl, null, []);
+                videoEl[0].play().catch(function(){
+                    wrap2.find('.sp-big-play').addClass('always');
+                    wrap2.find('.sp-controls').addClass('pinned');
+                });
             } else {
                 videoEl[0].src = stream.url;
-                buildPlayer(wrapper, videoEl, null, []);
-                videoEl[0].play().catch(function(){});
+                var wrap3 = buildPlayer(wrapper, videoEl, null, []);
+                videoEl[0].play().catch(function(){
+                    wrap3.find('.sp-big-play').addClass('always');
+                    wrap3.find('.sp-controls').addClass('pinned');
+                });
             }
         } catch(err) {
             console.error('[embedVideo]', err.message);
