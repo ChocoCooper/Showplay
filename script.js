@@ -28,15 +28,15 @@ $(document).ready(function() {
 .sp-bottom{display:flex;align-items:center;gap:6px}\
 .sp-btn{background:none;border:none;color:#fff;cursor:pointer;padding:4px 5px;font-size:16px;opacity:.85;transition:opacity .15s,color .15s;flex-shrink:0}\
 .sp-btn:hover{opacity:1;color:#2af598}\
-.sp-time{color:rgba(255,255,255,.75);font-size:12px;white-space:nowrap;flex-shrink:0;font-variant-numeric:tabular-nums;margin:0 4px}\
+.sp-time{color:rgba(255,255,255,.75);font-size:12px;white-space:nowrap;flex-shrink:0;font-variant-numeric:tabular-nums}\
 .sp-spacer{flex:1}\
 .sp-volume-wrap{display:flex;align-items:center;gap:4px}\
 .sp-volume-slider{width:64px;height:4px;-webkit-appearance:none;appearance:none;border-radius:2px;outline:none;cursor:pointer;background:linear-gradient(to right,#2af598 var(--vol,100%),rgba(255,255,255,.3) var(--vol,100%))}\
 .sp-volume-slider::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;background:#2af598;border-radius:50%;cursor:pointer;box-shadow:0 0 4px rgba(42,245,152,.6)}\
 .sp-volume-slider::-moz-range-thumb{width:12px;height:12px;background:#2af598;border-radius:50%;border:none;cursor:pointer}\
 .sp-quality-wrap{position:relative}\
-.sp-quality-btn,.sp-speed-btn{font-size:11px;font-weight:700;padding:3px 7px;border:1px solid rgba(255,255,255,.35);border-radius:4px;letter-spacing:.3px;color:#fff;background:rgba(0,0,0,.4)}\
-.sp-quality-btn.active,.sp-speed-btn:hover{color:#2af598;border-color:#2af598;background:rgba(42,245,152,.1)}\
+.sp-quality-btn{font-size:11px;font-weight:700;padding:3px 7px;border:1px solid rgba(255,255,255,.35);border-radius:4px;letter-spacing:.3px;color:#fff;background:rgba(0,0,0,.4)}\
+.sp-quality-btn.active{color:#2af598;border-color:#2af598;background:rgba(42,245,152,.1)}\
 .sp-sub-btn{font-size:13px;padding:3px 6px}\
 .sp-menu{position:absolute;bottom:calc(100% + 8px);right:0;background:#181818;border:1px solid #2a2a2a;border-radius:8px;overflow:hidden;min-width:120px;z-index:50;display:none;box-shadow:0 8px 30px rgba(0,0,0,.9)}\
 .sp-menu.open{display:block}\
@@ -61,10 +61,6 @@ $(document).ready(function() {
 .sp-toggle input:checked + .sp-toggle-track{background:#2af598}\
 .sp-toggle-thumb{position:absolute;top:3px;left:3px;width:14px;height:14px;background:#fff;border-radius:50%;transition:left .2s;pointer-events:none}\
 .sp-toggle input:checked ~ .sp-toggle-thumb{left:19px}\
-.sp-dt-overlay{position:absolute;inset:0;pointer-events:none;display:flex;z-index:12}\
-.sp-dt-left,.sp-dt-right{flex:1;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity 0.2s}\
-.sp-dt-icon{background:rgba(0,0,0,0.65);border-radius:50px;padding:15px 25px;color:#fff;font-size:20px;font-weight:600;display:flex;align-items:center;gap:10px;transform:scale(0.8);transition:transform 0.2s}\
-.sp-dt-overlay .active{transform:scale(1)}\
 ';
         document.head.appendChild(s);
     }
@@ -124,6 +120,7 @@ $(document).ready(function() {
                 if (r.status === 404) continue;
                 if (r.ok) {
                     var env = await r.json();
+                    console.log('[pFetch] OK ' + proxyUrl + ' -> ' + env.status + ' ' + url);
                     if (responseType === 'text') return env.text;
                     if (env.json !== null && env.json !== undefined) return env.json;
                     try { return JSON.parse(env.text); } catch(e) { return env.text; }
@@ -154,7 +151,7 @@ $(document).ready(function() {
         var d = typeof dec === 'string' ? JSON.parse(dec) : dec;
         var sources = (d && (d.result && d.result.sources || d.sources || (d.data && d.data.sources))) || [];
         var url = sources[0] && (sources[0].url || sources[0].file);
-        if (!url) throw new Error('Hexa: no stream URL.');
+        if (!url) throw new Error('Hexa: no stream URL. Got: ' + JSON.stringify(d).slice(0,200));
         return { url: url, type: 'hls', headers: { Referer: 'https://hexa.watch/', Origin: 'https://hexa.watch' } };
     }
 
@@ -204,13 +201,16 @@ $(document).ready(function() {
         obs.observe(element[0]);
     };
 
+    const initializeServers = function() { selectors.serverGrid.empty().hide(); };
+
+
     // ── Custom Player Builder ─────────────────────────────────────────────────
     function buildPlayer(wrapper, videoEl, hlsInstance, levels) {
         var vid = videoEl[0];
         var hls = hlsInstance;
         var currentQuality = -1;
 
-        // Subtitle state
+        // ── Subtitle state ────────────────────────────────────────────────────
         var subEnabled  = false;
         var subSettings = { fontSize:'18px', edgeStyle:'none', bgColor:'#000000', bgOpacity:'0.7' };
 
@@ -221,115 +221,92 @@ $(document).ready(function() {
             return m+':'+String(sec).padStart(2,'0');
         }
 
+        // ── Wrap video ────────────────────────────────────────────────────────
         var wrap = $('<div class="sp-player-wrap"></div>');
         videoEl.css({width:'100%',height:'100%',display:'block'});
         wrap.append(videoEl);
 
-        // DT Overlays
-        var dtOverlay = $('<div class="sp-dt-overlay"><div class="sp-dt-left"><div class="sp-dt-icon"><i class="fa-solid fa-rotate-left"></i> 10s</div></div><div class="sp-dt-right"><div class="sp-dt-icon">10s <i class="fa-solid fa-rotate-right"></i></div></div></div>');
-        wrap.append(dtOverlay);
-
-        function showDT(side) {
-            var el = dtOverlay.find('.sp-dt-' + side);
-            el.css('opacity', '1').find('.sp-dt-icon').addClass('active');
-            clearTimeout(el[0]._dtTimer);
-            el[0]._dtTimer = setTimeout(function(){ 
-                el.css('opacity', '0').find('.sp-dt-icon').removeClass('active'); 
-            }, 400);
-        }
-
+        // ── Big play/pause centre ─────────────────────────────────────────────
         var bigPlay = $('<div class="sp-big-play always"><div class="sp-big-play-btn"><i class="fa-solid fa-play"></i></div></div>');
         wrap.append(bigPlay);
 
+        // ── Subtitle display layer ────────────────────────────────────────────
         var subLayer = $('<div class="sp-sub-layer" style="position:absolute;bottom:60px;left:0;right:0;text-align:center;z-index:14;pointer-events:none;padding:0 16px;"></div>');
         wrap.append(subLayer);
 
+        // ── Controls bar ──────────────────────────────────────────────────────
         var ctrl = $('<div class="sp-controls"></div>');
         var progRow = $('<div class="sp-progress"><div class="sp-progress-buf"></div><div class="sp-progress-fill" style="width:0%"></div><div class="sp-progress-thumb" style="left:0%"></div></div>');
         ctrl.append(progRow);
 
         var bottom = $('<div class="sp-bottom"></div>');
 
+        // Buttons
         var btnPlay  = $('<button class="sp-btn sp-play-btn" title="Play/Pause (Space)"><i class="fa-solid fa-play"></i></button>');
-        var btnSkipB = $('<button class="sp-btn" title="Backward 10s"><i class="fa-solid fa-rotate-left"></i></button>');
-        var btnSkipF = $('<button class="sp-btn" title="Forward 10s"><i class="fa-solid fa-rotate-right"></i></button>');
         var timeEl   = $('<span class="sp-time">0:00 / 0:00</span>');
         var spacer   = $('<span class="sp-spacer"></span>');
 
+        // Volume
         var volWrap   = $('<div class="sp-volume-wrap"></div>');
         var btnVol    = $('<button class="sp-btn sp-vol-btn" title="Mute (M)"><i class="fa-solid fa-volume-high"></i></button>');
         var volSlider = $('<input type="range" class="sp-volume-slider" min="0" max="1" step="0.05" value="1" title="Volume">');
         volWrap.append(btnVol, volSlider);
 
-        // Speed Menu
-        var speedWrap = $('<div class="sp-quality-wrap"></div>');
-        var btnSpeed  = $('<button class="sp-btn sp-speed-btn" title="Playback Speed">1x</button>');
-        var speedMenu = $('<div class="sp-menu sp-speed-menu"></div>');
-        [0.5, 0.75, 1, 1.25, 1.5, 2].forEach(function(rate) {
-            var sb = $('<button>'+rate+'x</button>');
-            if(rate===1) sb.addClass('selected');
-            sb.on('click', function(){
-                vid.playbackRate = rate;
-                speedMenu.find('button').removeClass('selected');
-                sb.addClass('selected');
-                btnSpeed.text(rate+'x');
-                speedMenu.removeClass('open');
-            });
-            speedMenu.append(sb);
-        });
-        speedWrap.append(btnSpeed, speedMenu);
-
-        // Quality Menu
+        // Quality
         var qualWrap = $('<div class="sp-quality-wrap"></div>');
         var qualBtn  = $('<button class="sp-btn sp-quality-btn active" title="Quality">AUTO</button>');
         var qualMenu = $('<div class="sp-menu sp-quality-menu"></div>');
         qualWrap.append(qualBtn, qualMenu);
 
-        // Subtitles Menu
+        // Subtitles
         var subWrap  = $('<div class="sp-quality-wrap" style="position:relative"></div>');
         var btnSub   = $('<button class="sp-btn sp-sub-btn" title="Subtitles / CC"><i class="fa-solid fa-closed-captioning"></i></button>');
         var subPanel = $('<div class="sp-sub-panel"></div>');
         subWrap.append(btnSub, subPanel);
 
-        // PiP & Fullscreen
-        var btnPiP = $('<button class="sp-btn sp-pip-btn" title="Picture in Picture (P)"><i class="fa-regular fa-window-restore"></i></button>');
-        if(!document.pictureInPictureEnabled) btnPiP.hide();
-        
+        // Fullscreen
         var btnFS = $('<button class="sp-btn sp-fs-btn" title="Fullscreen (F)"><i class="fa-solid fa-expand"></i></button>');
 
-        bottom.append(btnPlay, btnSkipB, btnSkipF, timeEl, spacer, volWrap, speedWrap);
+        bottom.append(btnPlay, timeEl, spacer, volWrap);
         if (levels && levels.length > 1) bottom.append(qualWrap);
-        bottom.append(subWrap, btnPiP, btnFS);
+        bottom.append(subWrap, btnFS);
         ctrl.append(bottom);
         wrap.append(ctrl);
 
-        // ── Quality Setup ─────────────────────────────
+        // ── Quality menu ──────────────────────────────────────────────────────
         if (levels && levels.length > 1) {
             var autoQBtn = $('<button class="selected">Auto</button>');
             autoQBtn.on('click', function() {
                 currentQuality = -1;
-                hls.loadLevel = -1;
+                hls.loadLevel = -1;   // re-enables ABR
                 qualBtn.text('AUTO').addClass('active');
                 qualMenu.find('button').removeClass('selected');
                 autoQBtn.addClass('selected');
                 qualMenu.removeClass('open');
+                console.log('[Quality] Auto ABR');
             });
             qualMenu.append(autoQBtn);
-            var sortedLvls = levels.map(function(lv,i){ return {idx:i,h:lv.height||0,bw:lv.bitrate||0}; }).sort(function(a,b){ return b.h - a.h; });
+
+            var sortedLvls = levels.map(function(lv,i){ return {idx:i,h:lv.height||0,bw:lv.bitrate||0}; })
+                .sort(function(a,b){ return b.h - a.h; });
+
             sortedLvls.forEach(function(lv) {
                 var label = lv.h ? lv.h+'p' : Math.round(lv.bw/1000)+'kbps';
                 var qb = $('<button>'+label+'</button>');
                 qb.on('click', function() {
                     currentQuality = lv.idx;
+                    // Pin quality: loadLevel disables ABR, nextLevel switches seamlessly
                     hls.loadLevel = lv.idx;
                     hls.nextLevel = lv.idx;
                     qualBtn.text(label).addClass('active');
                     qualMenu.find('button').removeClass('selected');
                     qb.addClass('selected');
                     qualMenu.removeClass('open');
+                    console.log('[Quality] -> level', lv.idx, label);
                 });
                 qualMenu.append(qb);
             });
+
             if (hls) {
                 hls.on(Hls.Events.LEVEL_SWITCHED, function(ev, data) {
                     var lv = levels[data.level];
@@ -339,146 +316,153 @@ $(document).ready(function() {
             }
         }
 
-        // ── Subtitle Engine Setup ──────────────────────
-        function buildSubPanelUI() {
+        // ── Subtitle panel ────────────────────────────────────────────────────
+        // Build track list from video element
+        function buildSubPanel() {
             subPanel.empty();
             subPanel.append('<h4>Subtitles</h4>');
-            var toggleRow = $('<div class="sp-sub-toggle"><label>Enable Subtitles</label><label class="sp-toggle"><input type="checkbox"><div class="sp-toggle-track"></div><div class="sp-toggle-thumb"></div></label></div>');
+
+            // Toggle row
+            var toggleRow = $('<div class="sp-sub-toggle"></div>');
+            var toggleLabel = $('<label>Enable Subtitles</label>');
+            var toggleWrap = $('<label class="sp-toggle"></label>');
+            var toggleInput = $('<input type="checkbox">');
+            var toggleTrack = $('<div class="sp-toggle-track"></div>');
+            var toggleThumb = $('<div class="sp-toggle-thumb"></div>');
+            toggleWrap.append(toggleInput, toggleTrack, toggleThumb);
+            toggleRow.append(toggleLabel, toggleWrap);
             subPanel.append(toggleRow);
 
-            var trackRow = $('<div class="sp-sub-row sp-track-row" style="display:none"><label>Track</label><select></select></div>');
-            subPanel.append(trackRow);
+            // Track selector
+            var tracks = vid.textTracks ? Array.from(vid.textTracks) : [];
+            if (tracks.length > 0) {
+                var trackRow = $('<div class="sp-sub-row"></div>');
+                trackRow.append('<label>Track</label>');
+                var trackSel = $('<select></select>');
+                tracks.forEach(function(t, i) {
+                    trackSel.append('<option value="'+i+'">'+(t.label || t.language || 'Track '+(i+1))+'</option>');
+                });
+                trackRow.append(trackSel);
+                subPanel.append(trackRow);
+                trackSel.on('change', function() {
+                    var idx = parseInt(this.value);
+                    Array.from(vid.textTracks).forEach(function(t,i){ t.mode = (subEnabled && i===idx) ? 'showing' : 'hidden'; });
+                });
+            }
 
-            var fsRow = $('<div class="sp-sub-row"><label>Font Size</label><select></select></div>');
+            // Font size
+            var fsRow = $('<div class="sp-sub-row"></div>');
+            fsRow.append('<label>Font Size</label>');
+            var fsSel = $('<select></select>');
             ['12px','14px','16px','18px','20px','24px','28px','32px'].forEach(function(sz) {
-                fsRow.find('select').append('<option value="'+sz+'"'+(sz===subSettings.fontSize?' selected':'')+'>'+sz+'</option>');
+                fsSel.append('<option value="'+sz+'"'+(sz===subSettings.fontSize?' selected':'')+'>'+sz+'</option>');
             });
-            fsRow.find('select').on('change', function(){ subSettings.fontSize = this.value; applySubStyle(); });
-            subPanel.append(fsRow);
+            fsSel.on('change', function(){ subSettings.fontSize = this.value; applySubStyle(); });
+            fsRow.append(fsSel); subPanel.append(fsRow);
 
-            var edRow = $('<div class="sp-sub-row"><label>Edge Style</label><select></select></div>');
+            // Edge style
+            var edRow = $('<div class="sp-sub-row"></div>');
+            edRow.append('<label>Edge Style</label>');
+            var edSel = $('<select></select>');
             [{v:'none',l:'None'},{v:'drop-shadow(1px 1px 2px #000)',l:'Drop Shadow'},{v:'1px 1px 0 #000,-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000',l:'Outline'},{v:'2px 2px 4px rgba(0,0,0,.9)',l:'Raised'}].forEach(function(e) {
-                edRow.find('select').append('<option value="'+e.v+'"'+(e.v===subSettings.edgeStyle?' selected':'')+'>'+e.l+'</option>');
+                edSel.append('<option value="'+e.v+'"'+(e.v===subSettings.edgeStyle?' selected':'')+'>'+e.l+'</option>');
             });
-            edRow.find('select').on('change', function(){ subSettings.edgeStyle = this.value; applySubStyle(); });
-            subPanel.append(edRow);
+            edSel.on('change', function(){ subSettings.edgeStyle = this.value; applySubStyle(); });
+            edRow.append(edSel); subPanel.append(edRow);
 
-            var bgRow = $('<div class="sp-sub-row"><label>BG Color</label><input type="color" value="'+subSettings.bgColor+'" style="width:40px;height:28px;padding:2px;border:1px solid #333;border-radius:4px;background:#252525;cursor:pointer"></div>');
-            bgRow.find('input').on('input', function(){ subSettings.bgColor = this.value; applySubStyle(); });
-            subPanel.append(bgRow);
+            // Background color
+            var bgRow = $('<div class="sp-sub-row"></div>');
+            bgRow.append('<label>BG Color</label>');
+            var bgInput = $('<input type="color" value="'+subSettings.bgColor+'" style="width:40px;height:28px;padding:2px;border:1px solid #333;border-radius:4px;background:#252525;cursor:pointer">');
+            bgInput.on('input', function(){ subSettings.bgColor = this.value; applySubStyle(); });
+            bgRow.append(bgInput); subPanel.append(bgRow);
 
+            // BG opacity
             var opRow = $('<div class="sp-sub-row"><label>BG Opacity</label></div>');
             var opSlider = $('<input type="range" min="0" max="1" step="0.05" value="'+subSettings.bgOpacity+'">');
             var opVal = $('<span style="color:#2af598;font-size:11px;min-width:28px;text-align:right">'+Math.round(subSettings.bgOpacity*100)+'%</span>');
             opSlider.on('input', function(){ subSettings.bgOpacity = this.value; opVal.text(Math.round(this.value*100)+'%'); applySubStyle(); });
             opRow.append(opSlider, opVal); subPanel.append(opRow);
 
-            toggleRow.find('input').on('change', function() {
+            // Toggle handler
+            toggleInput.on('change', function() {
                 subEnabled = this.checked;
-                applyTrackModes();
+                var selTrackIdx = subPanel.find('select').first().val();
+                selTrackIdx = selTrackIdx !== undefined ? parseInt(selTrackIdx) : 0;
+                Array.from(vid.textTracks||[]).forEach(function(t,i){ t.mode = (subEnabled && i===selTrackIdx) ? 'showing' : 'hidden'; });
                 btnSub.find('i').css('color', subEnabled ? '#2af598' : '');
-                if(!subEnabled) subLayer.empty();
                 applySubStyle();
             });
-
-            trackRow.find('select').on('change', applyTrackModes);
-        }
-
-        function updateTracks() {
-            var tList = [];
-            if (hls && hls.subtitleTracks && hls.subtitleTracks.length > 0) {
-                tList = hls.subtitleTracks.map((t,i) => ({ id: i, label: t.name || t.language || 'Track '+(i+1) }));
-            } else if (vid.textTracks && vid.textTracks.length > 0) {
-                tList = Array.from(vid.textTracks).map((t,i) => ({ id: i, label: t.label || t.language || 'Track '+(i+1) }));
-            }
-            var trackRow = subPanel.find('.sp-track-row');
-            var trackSel = trackRow.find('select');
-            if (tList.length > 0) {
-                trackRow.show();
-                var curVal = trackSel.val();
-                trackSel.empty();
-                tList.forEach(t => trackSel.append('<option value="'+t.id+'">'+t.label+'</option>'));
-                if(curVal && trackSel.find('option[value="'+curVal+'"]').length) trackSel.val(curVal);
-            } else {
-                trackRow.hide();
-            }
-        }
-
-        function applyTrackModes() {
-            var idx = parseInt(subPanel.find('.sp-track-row select').val());
-            if (isNaN(idx)) idx = 0;
-            if (hls) { hls.subtitleTrack = subEnabled ? idx : -1; }
-            if (vid.textTracks) {
-                Array.from(vid.textTracks).forEach((t, i) => {
-                    // mode hidden: triggers cuechange but hides browser native rendering
-                    t.mode = (subEnabled && i === idx) ? 'hidden' : 'disabled';
-                });
-            }
-        }
-
-        function hookAllTracks() {
-            if (!vid.textTracks) return;
-            Array.from(vid.textTracks).forEach(function(track) {
-                if (track._spHooked) return;
-                track._spHooked = true;
-                track.addEventListener('cuechange', function() {
-                    if (!subEnabled || track.mode !== 'hidden') return;
-                    subLayer.empty();
-                    var cues = track.activeCues ? Array.from(track.activeCues) : [];
-                    cues.forEach(function(cue) {
-                        var text = cue.text || (cue.getCueAsHTML ? cue.getCueAsHTML().textContent : '');
-                        if (text) {
-                            var span = $('<span class="sp-cue"></span>').html(text.replace(/\n/g, '<br>'));
-                            subLayer.append(span);
-                            applySubStyle();
-                        }
-                    });
-                });
-            });
-            updateTracks();
+            toggleInput.prop('checked', subEnabled);
         }
 
         function applySubStyle() {
             if (!subEnabled) { subLayer.hide(); return; }
             subLayer.show();
-            var bgRgb = subSettings.bgColor, op = parseFloat(subSettings.bgOpacity);
+            var bgRgb = subSettings.bgColor;
+            var op = parseFloat(subSettings.bgOpacity);
+            // Parse hex to rgb
             var r=parseInt(bgRgb.slice(1,3),16), g=parseInt(bgRgb.slice(3,5),16), b=parseInt(bgRgb.slice(5,7),16);
             var isDropShadow = subSettings.edgeStyle.indexOf('drop-shadow') > -1;
             subLayer.css({
                 fontSize: subSettings.fontSize,
                 textShadow: isDropShadow ? subSettings.edgeStyle : 'none',
-                filter: isDropShadow ? subSettings.edgeStyle : 'none'
+                filter: isDropShadow ? subSettings.edgeStyle : 'none',
+                '--sub-edge': subSettings.edgeStyle
             });
+            // Apply to each cue span
             subLayer.find('.sp-cue').css({
                 background: 'rgba('+r+','+g+','+b+','+op+')',
-                padding: '2px 8px', borderRadius: '3px',
-                fontSize: subSettings.fontSize, lineHeight: '1.5',
-                display: 'inline-block', color: '#fff', fontWeight: '600',
-                textShadow: isDropShadow ? 'none' : subSettings.edgeStyle
+                padding: '2px 8px',
+                borderRadius: '3px',
+                fontSize: subSettings.fontSize,
+                textShadow: isDropShadow ? 'none' : subSettings.edgeStyle,
+                lineHeight: '1.5',
+                display: 'inline-block',
+                color: '#fff',
+                fontWeight: '600'
             });
         }
 
-        buildSubPanelUI();
+        // Hook native text track cues to render in subLayer
+        function hookTextTracks() {
+            var tracks = vid.textTracks ? Array.from(vid.textTracks) : [];
+            tracks.forEach(function(track) {
+                track.addEventListener('cuechange', function() {
+                    subLayer.empty();
+                    if (!subEnabled || track.mode !== 'showing') return;
+                    var cues = track.activeCues ? Array.from(track.activeCues) : [];
+                    cues.forEach(function(cue) {
+                        var text = cue.text || (cue.getCueAsHTML ? cue.getCueAsHTML().textContent : '');
+                        if (text) {
+                            var span = $('<span class="sp-cue"></span>').text(text);
+                            subLayer.append(span);
+                            applySubStyle();
+                        }
+                    });
+                    if (!cues.length) subLayer.empty();
+                });
+            });
+        }
+
+        buildSubPanel();
+
+        // Place in DOM
         wrapper.find('.sp-player-wrap, .sp-overlay-loading, .sp-overlay-error').remove();
         wrapper.css('position','relative').append(wrap);
         ctrl.addClass('pinned');
         setTimeout(function(){ if(!isSeeking) ctrl.removeClass('pinned'); }, 3000);
 
-        if (vid.textTracks) vid.textTracks.addEventListener('addtrack', hookAllTracks);
-        if (hls) {
-            hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, updateTracks);
-            hls.on(Hls.Events.SUBTITLE_TRACK_SWITCH, applyTrackModes);
-        }
-        setTimeout(hookAllTracks, 1000);
+        // Hook text tracks after DOM is ready
+        setTimeout(hookTextTracks, 500);
 
-        // ── Controls Logic ────────────────────────────
+        // ── Playback controls ─────────────────────────────────────────────────
         var isSeeking = false;
+
         function togglePlay() { if (vid.paused) vid.play().catch(function(){}); else vid.pause(); }
 
         bigPlay.on('click', function(e){ e.stopPropagation(); togglePlay(); });
         btnPlay.on('click', function(e){ e.stopPropagation(); togglePlay(); });
-        btnSkipB.on('click', function(e){ e.stopPropagation(); vid.currentTime=Math.max(0,vid.currentTime-10); showDT('left'); });
-        btnSkipF.on('click', function(e){ e.stopPropagation(); vid.currentTime=Math.min(vid.duration||0,vid.currentTime+10); showDT('right'); });
 
         vid.addEventListener('play', function() {
             btnPlay.find('i').attr('class','fa-solid fa-pause');
@@ -495,7 +479,7 @@ $(document).ready(function() {
             btnPlay.find('i').attr('class','fa-solid fa-rotate-right');
         });
 
-        // Progress
+        // ── Progress bar ──────────────────────────────────────────────────────
         function setProgress(pct) {
             progRow.find('.sp-progress-fill').css('width', pct+'%');
             progRow.find('.sp-progress-thumb').css('left', pct+'%');
@@ -525,41 +509,38 @@ $(document).ready(function() {
         $(document).on('touchmove.spprog',function(e){if(isSeeking) seekFromEvent(e.originalEvent.touches[0].clientX);});
         $(document).on('mouseup.spprog touchend.spprog',function(){if(isSeeking){isSeeking=false;ctrl.removeClass('pinned');}});
 
-        // Volume
+        // ── Volume with fill ──────────────────────────────────────────────────
         function updateVolume(val) {
-            vid.volume = val; vid.muted = (val === 0);
-            volSlider.val(val).css('--vol', (val*100)+'%');
+            vid.volume = val;
+            vid.muted = (val === 0);
+            volSlider.val(val);
+            volSlider.css('--vol', (val*100)+'%');
             var ic = val===0||vid.muted ? 'fa-volume-xmark' : val<0.4 ? 'fa-volume-low' : 'fa-volume-high';
             btnVol.find('i').attr('class','fa-solid '+ic);
         }
         volSlider.on('input', function(){ updateVolume(parseFloat(this.value)); });
         btnVol.on('click', function(){
-            if (vid.muted) updateVolume(vid.volume||1);
+            if (vid.muted) { updateVolume(vid.volume||1); }
             else { vid.muted=true; volSlider.css('--vol','0%'); btnVol.find('i').attr('class','fa-solid fa-volume-xmark'); }
         });
+        // Init volume fill
         updateVolume(1);
 
-        // Menus
-        qualBtn.on('click', function(e){ e.stopPropagation(); qualMenu.toggleClass('open'); subPanel.removeClass('open'); speedMenu.removeClass('open'); });
-        btnSpeed.on('click', function(e){ e.stopPropagation(); speedMenu.toggleClass('open'); qualMenu.removeClass('open'); subPanel.removeClass('open'); });
-        btnSub.on('click', function(e){ e.stopPropagation(); subPanel.toggleClass('open'); qualMenu.removeClass('open'); speedMenu.removeClass('open'); });
-        $(document).on('click.spmenus', function(e){ 
-            if($(e.target).closest('.sp-menu, .sp-sub-panel, .sp-quality-btn, .sp-sub-btn, .sp-speed-btn').length === 0) {
-                qualMenu.removeClass('open'); subPanel.removeClass('open'); speedMenu.removeClass('open'); 
-            }
-        });
+        // ── Quality menu toggle ───────────────────────────────────────────────
+        qualBtn.on('click', function(e){ e.stopPropagation(); qualMenu.toggleClass('open'); subPanel.removeClass('open'); });
 
-        // Fullscreen & PiP
+        // ── Subtitle panel toggle ─────────────────────────────────────────────
+        btnSub.on('click', function(e){ e.stopPropagation(); subPanel.toggleClass('open'); qualMenu.removeClass('open'); });
+        $(document).on('click.spmenus', function(){ qualMenu.removeClass('open'); subPanel.removeClass('open'); });
+
+        // ── Fullscreen ────────────────────────────────────────────────────────
         btnFS.on('click', function() {
             var el=wrap[0];
-            if (!document.fullscreenElement&&!document.webkitFullscreenElement) (el.requestFullscreen||el.webkitRequestFullscreen||el.mozRequestFullScreen).call(el);
-            else (document.exitFullscreen||document.webkitExitFullscreen||document.mozCancelFullScreen).call(document);
-        });
-        btnPiP.on('click', async function() {
-            try {
-                if (document.pictureInPictureElement) await document.exitPictureInPicture();
-                else await vid.requestPictureInPicture();
-            } catch(e) { console.warn('PiP not supported'); }
+            if (!document.fullscreenElement&&!document.webkitFullscreenElement){
+                (el.requestFullscreen||el.webkitRequestFullscreen||el.mozRequestFullScreen).call(el);
+            } else {
+                (document.exitFullscreen||document.webkitExitFullscreen||document.mozCancelFullScreen).call(document);
+            }
         });
         function onFSChange() {
             var isFS=!!(document.fullscreenElement||document.webkitFullscreenElement);
@@ -571,31 +552,28 @@ $(document).ready(function() {
         document.addEventListener('fullscreenchange',onFSChange);
         document.addEventListener('webkitfullscreenchange',onFSChange);
 
-        // Double Tap / Click logic
+        // ── Mobile double-tap seek ────────────────────────────────────────────
         var lastTap=0;
-        wrap.on('touchend click', function(e) {
-            if ($(e.target).closest('.sp-controls, .sp-big-play, .sp-menu, .sp-sub-panel').length) return;
+        wrap.on('touchend',function(e){
             var now=Date.now();
-            if(now-lastTap<300){
-                var x = e.type === 'touchend' ? e.originalEvent.changedTouches[0].clientX : e.clientX;
+            if(now-lastTap<280){
+                var x=e.originalEvent.changedTouches[0].clientX;
                 var mid=wrap[0].getBoundingClientRect().width/2;
-                if(x < mid){ vid.currentTime=Math.max(0,vid.currentTime-10); showDT('left'); }
-                else{ vid.currentTime=Math.min(vid.duration||0,vid.currentTime+10); showDT('right'); }
+                vid.currentTime=Math.max(0,Math.min(vid.duration||0,vid.currentTime+(x<mid?-10:10)));
                 e.preventDefault();
             }
             lastTap=now;
         });
 
-        // Shortcuts
+        // ── Keyboard shortcuts ────────────────────────────────────────────────
         $(document).off('keydown.sp').on('keydown.sp',function(e){
             if($(e.target).is('input,textarea,select,details')) return;
             if(e.key===' '||e.key==='k'){e.preventDefault();togglePlay();}
-            if(e.key==='ArrowRight') {vid.currentTime=Math.min(vid.duration||0,vid.currentTime+10); showDT('right');}
-            if(e.key==='ArrowLeft')  {vid.currentTime=Math.max(0,vid.currentTime-10); showDT('left');}
+            if(e.key==='ArrowRight') vid.currentTime=Math.min(vid.duration||0,vid.currentTime+10);
+            if(e.key==='ArrowLeft')  vid.currentTime=Math.max(0,vid.currentTime-10);
             if(e.key==='ArrowUp'){vid.volume=Math.min(1,vid.volume+0.1);updateVolume(vid.volume);e.preventDefault();}
             if(e.key==='ArrowDown'){vid.volume=Math.max(0,vid.volume-0.1);updateVolume(vid.volume);e.preventDefault();}
             if(e.key==='f') btnFS.trigger('click');
-            if(e.key==='p') btnPiP.trigger('click');
             if(e.key==='m') btnVol.trigger('click');
             if(e.key==='c') btnSub.trigger('click');
         });
@@ -605,8 +583,8 @@ $(document).ready(function() {
 
     // ── Embed Video ───────────────────────────────────────────────────────────
     const embedVideo = async function() {
-        if (!state.mediaId) return;
-        if (state.mediaType === 'tv' && (!state.season || !state.episode)) return;
+        if (!state.mediaId) { console.error('[embedVideo] mediaId not set'); return; }
+        if (state.mediaType === 'tv' && (!state.season || !state.episode)) { console.error('[embedVideo] season/episode not set'); return; }
 
         var server = config.servers[0];
         var wrapper = selectors.videoFrame.parent();
@@ -627,13 +605,15 @@ $(document).ready(function() {
 
         try {
             var stream = await resolveStream(server.resolver, params);
+            console.log('[embedVideo] stream:', stream.url);
             loadingEl.remove();
 
-            var videoEl = $('<video class="hls-player" playsinline crossorigin="anonymous"></video>');
+            var videoEl = $('<video class="hls-player" playsinline></video>');
             wrapper.append(videoEl);
 
             if (typeof Hls !== 'undefined' && Hls.isSupported()) {
                 var streamHdrs = stream.headers || {};
+
                 class ProxyLoader {
                     constructor(cfg) {
                         this.config = cfg; this._aborted = false;
@@ -681,13 +661,20 @@ $(document).ready(function() {
                         })
                         .catch(function(err){
                             if(self._aborted) return;
+                            console.error('[ProxyLoader]',err.message);
                             callbacks.onError({code:0,text:err.message}, context, null, {});
                         });
                     }
                 }
 
-                var hls = new Hls({ maxBufferLength: 30, maxMaxBufferLength: 120, startLevel: -1, loader: ProxyLoader });
+                var hls = new Hls({
+                    maxBufferLength: 30, maxMaxBufferLength: 120,
+                    startLevel: -1, abrEwmaDefaultEstimate: 2000000,
+                    loader: ProxyLoader
+                });
+
                 hls.on(Hls.Events.ERROR, function(ev, data) {
+                    console.error('[HLS.js]', data.type, data.details, 'fatal:', data.fatal);
                     if (data.fatal) {
                         wrapper.find('.sp-player-wrap').remove();
                         wrapper.append($('<div class="sp-overlay-error"><i class="fas fa-exclamation-triangle"></i><p>' + data.details + '</p></div>'));
@@ -698,8 +685,11 @@ $(document).ready(function() {
                 hls.attachMedia(videoEl[0]);
 
                 hls.on(Hls.Events.MANIFEST_PARSED, function(ev, data) {
+                    console.log('[HLS.js] Manifest parsed, levels:', data.levels.length);
                     var playerWrap = buildPlayer(wrapper, videoEl, hls, data.levels);
-                    videoEl[0].play().catch(function(){
+                    videoEl[0].play().catch(function(e){
+                        console.warn('[HLS] autoplay blocked:', e.message);
+                        // Show play button and controls prominently
                         playerWrap.find('.sp-big-play').addClass('always');
                         playerWrap.find('.sp-controls').addClass('pinned');
                     });
@@ -721,6 +711,7 @@ $(document).ready(function() {
                 });
             }
         } catch(err) {
+            console.error('[embedVideo]', err.message);
             loadingEl.remove();
             wrapper.append($('<div class="sp-overlay-error"><i class="fas fa-exclamation-triangle"></i><p>' + err.message + '</p></div>'));
         }
@@ -743,7 +734,7 @@ $(document).ready(function() {
             let items = [], page = 1, maxPages = isPreview ? 5 : 2, desiredCount = isPreview ? 10 : 12;
             while (items.length < desiredCount && page <= maxPages) {
                 const data = await fetchWithRetry(url + '&page=' + page);
-                if (!data || !data.results) return items;
+                if (!data || !data.results) { console.error('No results for', type); return items; }
                 let valid = data.results.filter(function(i){ return i.id && (i.title || i.name) && i.poster_path && i.vote_average; })
                     .map(function(i){ return Object.assign({}, i, { type: isPreview ? i.media_type : mediaType }); });
                 if (isPreview) {
@@ -762,7 +753,7 @@ $(document).ready(function() {
                 page++;
             }
             return items.slice(0, desiredCount);
-        } catch(e) { return []; }
+        } catch(e) { console.error('Failed to load', type, e); return []; }
     };
 
     // ── Render Item ───────────────────────────────────────────────────────────
@@ -919,7 +910,7 @@ $(document).ready(function() {
                         btn.addClass('active');
                         state.season = season.season_number;
                         state.episode = ep.episode_number;
-                        embedVideo().catch(function(){});
+                        embedVideo().catch(function(e){ console.error('embedVideo error:', e); });
                         selectors.downloadBtn.attr('href', 'https://dl.vidsrc.vip/tv/' + state.mediaId + '/' + state.season + '/' + state.episode);
                         addToHistory({ id: state.mediaId, type: state.mediaType, title: selectors.videoPage.data('title'), poster: selectors.videoPage.data('poster'), year: selectors.videoPage.data('year'), season: state.season, episode: state.episode, rating: data.vote_average });
                     });
@@ -929,7 +920,7 @@ $(document).ready(function() {
             selectors.seasonEpisodeAccordion.find('summary').on('click', function() {
                 selectors.seasonEpisodeAccordion.find('details').not($(this).parent()).removeAttr('open');
             });
-        } catch(e) { selectors.seasonEpisodeAccordion.html('<p class="empty-message">Failed to load seasons/episodes.</p>'); }
+        } catch(e) { console.error('Failed to load seasons/episodes', e); selectors.seasonEpisodeAccordion.html('<p class="empty-message">Failed to load seasons/episodes.</p>'); }
     };
 
     const resetVideoPlayerState = function() {
@@ -1053,15 +1044,15 @@ $(document).ready(function() {
         try {
             const data = await fetchWithRetry('https://api.themoviedb.org/3/' + type + '/' + id + '?api_key=' + config.apiKey);
             mediaCache.set(id, type, data); updateUI(data);
-        } catch(e) {}
+        } catch(e) { console.error('Failed to fetch media details', e); }
 
         if (type === 'movie') {
-            embedVideo().catch(function(){});
+            embedVideo().catch(function(e){ console.error('embedVideo error:', e); });
         } else {
             await loadSeasonEpisodeAccordion();
             if (season && episode) {
                 $('.episode-btn[data-season="' + season + '"][data-episode="' + episode + '"]').addClass('active');
-                   embedVideo().catch(function(){});
+                   embedVideo().catch(function(e){ console.error('embedVideo error:', e); });
                 selectors.downloadBtn.attr('href', 'https://dl.vidsrc.vip/tv/' + id + '/' + season + '/' + episode);
             }
         }
@@ -1158,7 +1149,7 @@ $(document).ready(function() {
             selectors.searchResults.empty();
             if (!results.length) selectors.searchResults.html('<p class="text-center" style="color:#ccc;">No results found.</p>');
             else results.forEach(function(i){ renderItem(i, selectors.searchResults); });
-        } catch(e) { selectors.searchResults.html('<p class="text-center" style="color:#ccc;">Failed to load results.</p>'); }
+        } catch(e) { console.error('Search failed', e); selectors.searchResults.html('<p class="text-center" style="color:#ccc;">Failed to load results.</p>'); }
     };
 
     selectors.searchInput.on('input', function() { clearTimeout(searchTimeout); searchTimeout = setTimeout(performSearch, 500); });
