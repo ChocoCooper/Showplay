@@ -6,22 +6,22 @@ $(document).ready(function() {
         s.id = 'sp-player-style';
         s.textContent = '\
 .sp-player-wrap{position:relative;width:100%;background:#000;border-radius:10px;overflow:hidden;user-select:none;aspect-ratio:16/9;min-height:200px}\
-.sp-player-wrap video{width:100%;display:block;background:#000}\
+.sp-player-wrap video{width:100%;height:100%;display:block;object-fit:contain;background:#000}\
 .sp-overlay-loading{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,.75);z-index:20;gap:12px;color:#fff;font-size:14px}\
 .sp-spinner{width:44px;height:44px;border:4px solid rgba(255,255,255,.15);border-top-color:#2af598;border-radius:50%;animation:sp-spin .8s linear infinite}\
 @keyframes sp-spin{to{transform:rotate(360deg)}}\
 .sp-overlay-error{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,.85);z-index:20;color:#ff6b6b;font-size:14px;gap:10px;padding:20px;text-align:center}\
 .sp-overlay-error i{font-size:32px}\
-.sp-big-play{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:10;cursor:pointer;opacity:0;transition:opacity .2s}\
-.sp-player-wrap:hover .sp-big-play,.sp-big-play.always{opacity:1}\
-.sp-big-play-btn{width:64px;height:64px;background:rgba(0,0,0,.55);border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid rgba(255,255,255,.7);transition:transform .15s,background .15s}\
+.sp-big-play{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:10;cursor:pointer;opacity:0;transition:opacity .2s;pointer-events:none}\
+.sp-player-wrap:hover .sp-big-play,.sp-big-play.always{opacity:1;pointer-events:auto}\
+.sp-big-play-btn{width:68px;height:68px;background:rgba(0,0,0,.55);border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid rgba(255,255,255,.7);transition:transform .15s,background .15s}\
 .sp-big-play-btn:hover{transform:scale(1.1);background:rgba(42,245,152,.25);border-color:#2af598}\
-.sp-big-play-btn i{color:#fff;font-size:24px;margin-left:3px}\
+.sp-big-play-btn i{color:#fff;font-size:26px;margin-left:3px}\
 .sp-controls{position:absolute;bottom:0;left:0;right:0;z-index:15;padding:6px 12px 10px;background:linear-gradient(to top,rgba(0,0,0,.92) 0%,transparent 100%);opacity:0;transition:opacity .3s}\
 .sp-player-wrap:hover .sp-controls,.sp-controls.pinned{opacity:1}\
 .sp-progress{position:relative;height:4px;background:rgba(255,255,255,.2);border-radius:2px;cursor:pointer;margin-bottom:8px;transition:height .15s}\
 .sp-player-wrap:hover .sp-progress{height:6px}\
-.sp-progress-fill{height:100%;background:#2af598;border-radius:2px;pointer-events:none;transition:width .1s linear}\
+.sp-progress-fill{height:100%;background:#2af598;border-radius:2px;pointer-events:none}\
 .sp-progress-buf{position:absolute;top:0;left:0;height:100%;background:rgba(255,255,255,.15);border-radius:2px;pointer-events:none}\
 .sp-progress-thumb{position:absolute;top:50%;width:14px;height:14px;background:#2af598;border-radius:50%;transform:translate(-50%,-50%) scale(0);transition:transform .15s;pointer-events:none;box-shadow:0 0 8px rgba(42,245,152,.8)}\
 .sp-player-wrap:hover .sp-progress-thumb{transform:translate(-50%,-50%) scale(1)}\
@@ -31,17 +31,36 @@ $(document).ready(function() {
 .sp-time{color:rgba(255,255,255,.75);font-size:12px;white-space:nowrap;flex-shrink:0;font-variant-numeric:tabular-nums}\
 .sp-spacer{flex:1}\
 .sp-volume-wrap{display:flex;align-items:center;gap:4px}\
-.sp-volume-slider{width:60px;height:4px;-webkit-appearance:none;appearance:none;background:rgba(255,255,255,.3);border-radius:2px;outline:none;cursor:pointer}\
-.sp-volume-slider::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;background:#2af598;border-radius:50%;cursor:pointer}\
+.sp-volume-slider{width:64px;height:4px;-webkit-appearance:none;appearance:none;border-radius:2px;outline:none;cursor:pointer;background:linear-gradient(to right,#2af598 var(--vol,100%),rgba(255,255,255,.3) var(--vol,100%))}\
+.sp-volume-slider::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;background:#2af598;border-radius:50%;cursor:pointer;box-shadow:0 0 4px rgba(42,245,152,.6)}\
+.sp-volume-slider::-moz-range-thumb{width:12px;height:12px;background:#2af598;border-radius:50%;border:none;cursor:pointer}\
 .sp-quality-wrap{position:relative}\
 .sp-quality-btn{font-size:11px;font-weight:700;padding:3px 7px;border:1px solid rgba(255,255,255,.35);border-radius:4px;letter-spacing:.3px;color:#fff;background:rgba(0,0,0,.4)}\
 .sp-quality-btn.active{color:#2af598;border-color:#2af598;background:rgba(42,245,152,.1)}\
-.sp-quality-menu{position:absolute;bottom:calc(100% + 8px);right:0;background:#181818;border:1px solid #2a2a2a;border-radius:8px;overflow:hidden;min-width:110px;z-index:50;display:none;box-shadow:0 8px 30px rgba(0,0,0,.9)}\
-.sp-quality-menu.open{display:block}\
-.sp-quality-menu button{display:block;width:100%;text-align:left;background:none;border:none;color:#ccc;padding:9px 16px;font-size:13px;cursor:pointer;transition:background .15s,color .15s}\
-.sp-quality-menu button:hover{background:rgba(42,245,152,.1);color:#2af598}\
-.sp-quality-menu button.selected{color:#2af598;font-weight:700;background:rgba(42,245,152,.05)}\
-.sp-quality-menu button.selected::before{content:"\\2713  "}\
+.sp-sub-btn{font-size:13px;padding:3px 6px}\
+.sp-menu{position:absolute;bottom:calc(100% + 8px);right:0;background:#181818;border:1px solid #2a2a2a;border-radius:8px;overflow:hidden;min-width:120px;z-index:50;display:none;box-shadow:0 8px 30px rgba(0,0,0,.9)}\
+.sp-menu.open{display:block}\
+.sp-menu button{display:block;width:100%;text-align:left;background:none;border:none;color:#ccc;padding:9px 16px;font-size:13px;cursor:pointer;transition:background .15s,color .15s}\
+.sp-menu button:hover{background:rgba(42,245,152,.1);color:#2af598}\
+.sp-menu button.selected{color:#2af598;font-weight:700;background:rgba(42,245,152,.05)}\
+.sp-menu button.selected::before{content:"\\2713  "}\
+.sp-sub-panel{position:absolute;bottom:calc(100% + 8px);right:0;width:260px;background:#181818;border:1px solid #2a2a2a;border-radius:10px;z-index:50;display:none;padding:12px;box-shadow:0 8px 30px rgba(0,0,0,.9)}\
+.sp-sub-panel.open{display:block}\
+.sp-sub-panel h4{color:#2af598;font-size:12px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;margin:0 0 10px}\
+.sp-sub-row{display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.06)}\
+.sp-sub-row:last-child{border-bottom:none}\
+.sp-sub-row label{color:#aaa;font-size:12px;flex-shrink:0}\
+.sp-sub-row select,.sp-sub-row input[type=range]{background:#252525;color:#fff;border:1px solid #333;border-radius:4px;padding:3px 6px;font-size:12px;outline:none;cursor:pointer;max-width:130px}\
+.sp-sub-row input[type=range]{-webkit-appearance:none;height:4px;background:rgba(255,255,255,.2);border:none;border-radius:2px;padding:0;width:100px}\
+.sp-sub-row input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;background:#2af598;border-radius:50%;cursor:pointer}\
+.sp-sub-toggle{display:flex;align-items:center;gap:8px;margin-bottom:10px}\
+.sp-sub-toggle label{color:#fff;font-size:13px;font-weight:600}\
+.sp-toggle{position:relative;width:36px;height:20px;cursor:pointer;flex-shrink:0}\
+.sp-toggle input{opacity:0;width:0;height:0;position:absolute}\
+.sp-toggle-track{width:36px;height:20px;background:#333;border-radius:10px;transition:background .2s}\
+.sp-toggle input:checked + .sp-toggle-track{background:#2af598}\
+.sp-toggle-thumb{position:absolute;top:3px;left:3px;width:14px;height:14px;background:#fff;border-radius:50%;transition:left .2s;pointer-events:none}\
+.sp-toggle input:checked ~ .sp-toggle-thumb{left:19px}\
 ';
         document.head.appendChild(s);
     }
@@ -191,109 +210,255 @@ $(document).ready(function() {
         var hls = hlsInstance;
         var currentQuality = -1;
 
+        // ── Subtitle state ────────────────────────────────────────────────────
+        var subEnabled  = false;
+        var subSettings = { fontSize:'18px', edgeStyle:'none', bgColor:'#000000', bgOpacity:'0.7' };
+
         function fmtTime(s) {
-            if (isNaN(s) || s < 0) return '0:00';
-            var h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = Math.floor(s%60);
-            if (h > 0) return h+':'+String(m).padStart(2,'0')+':'+String(sec).padStart(2,'0');
+            if (isNaN(s)||s<0) return '0:00';
+            var h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=Math.floor(s%60);
+            if (h>0) return h+':'+String(m).padStart(2,'0')+':'+String(sec).padStart(2,'0');
             return m+':'+String(sec).padStart(2,'0');
         }
 
-        // Wrap video in player shell
+        // ── Wrap video ────────────────────────────────────────────────────────
         var wrap = $('<div class="sp-player-wrap"></div>');
-        videoEl.css({width:'100%',display:'block'});
+        videoEl.css({width:'100%',height:'100%',display:'block'});
         wrap.append(videoEl);
 
-        // Big play/pause centre overlay
+        // ── Big play/pause centre ─────────────────────────────────────────────
         var bigPlay = $('<div class="sp-big-play always"><div class="sp-big-play-btn"><i class="fa-solid fa-play"></i></div></div>');
         wrap.append(bigPlay);
 
-        // Controls
+        // ── Subtitle display layer ────────────────────────────────────────────
+        var subLayer = $('<div class="sp-sub-layer" style="position:absolute;bottom:60px;left:0;right:0;text-align:center;z-index:14;pointer-events:none;padding:0 16px;"></div>');
+        wrap.append(subLayer);
+
+        // ── Controls bar ──────────────────────────────────────────────────────
         var ctrl = $('<div class="sp-controls"></div>');
         var progRow = $('<div class="sp-progress"><div class="sp-progress-buf"></div><div class="sp-progress-fill" style="width:0%"></div><div class="sp-progress-thumb" style="left:0%"></div></div>');
         ctrl.append(progRow);
 
         var bottom = $('<div class="sp-bottom"></div>');
-        var btnPlay   = $('<button class="sp-btn sp-play-btn" title="Play/Pause (Space)"><i class="fa-solid fa-play"></i></button>');
-        var timeEl    = $('<span class="sp-time">0:00 / 0:00</span>');
-        var spacer    = $('<span class="sp-spacer"></span>');
+
+        // Buttons
+        var btnPlay  = $('<button class="sp-btn sp-play-btn" title="Play/Pause (Space)"><i class="fa-solid fa-play"></i></button>');
+        var timeEl   = $('<span class="sp-time">0:00 / 0:00</span>');
+        var spacer   = $('<span class="sp-spacer"></span>');
+
+        // Volume
         var volWrap   = $('<div class="sp-volume-wrap"></div>');
         var btnVol    = $('<button class="sp-btn sp-vol-btn" title="Mute (M)"><i class="fa-solid fa-volume-high"></i></button>');
         var volSlider = $('<input type="range" class="sp-volume-slider" min="0" max="1" step="0.05" value="1" title="Volume">');
         volWrap.append(btnVol, volSlider);
-        var qualWrap  = $('<div class="sp-quality-wrap"></div>');
-        var qualBtn   = $('<button class="sp-btn sp-quality-btn active" title="Quality">AUTO</button>');
-        var qualMenu  = $('<div class="sp-quality-menu"></div>');
+
+        // Quality
+        var qualWrap = $('<div class="sp-quality-wrap"></div>');
+        var qualBtn  = $('<button class="sp-btn sp-quality-btn active" title="Quality">AUTO</button>');
+        var qualMenu = $('<div class="sp-menu sp-quality-menu"></div>');
         qualWrap.append(qualBtn, qualMenu);
-        var btnFS     = $('<button class="sp-btn sp-fs-btn" title="Fullscreen (F)"><i class="fa-solid fa-expand"></i></button>');
+
+        // Subtitles
+        var subWrap  = $('<div class="sp-quality-wrap" style="position:relative"></div>');
+        var btnSub   = $('<button class="sp-btn sp-sub-btn" title="Subtitles / CC"><i class="fa-solid fa-closed-captioning"></i></button>');
+        var subPanel = $('<div class="sp-sub-panel"></div>');
+        subWrap.append(btnSub, subPanel);
+
+        // Fullscreen
+        var btnFS = $('<button class="sp-btn sp-fs-btn" title="Fullscreen (F)"><i class="fa-solid fa-expand"></i></button>');
 
         bottom.append(btnPlay, timeEl, spacer, volWrap);
         if (levels && levels.length > 1) bottom.append(qualWrap);
-        bottom.append(btnFS);
+        bottom.append(subWrap, btnFS);
         ctrl.append(bottom);
         wrap.append(ctrl);
 
         // ── Quality menu ──────────────────────────────────────────────────────
         if (levels && levels.length > 1) {
-            var autoBtn = $('<button class="selected">Auto</button>');
-            autoBtn.on('click', function() {
+            var autoQBtn = $('<button class="selected">Auto</button>');
+            autoQBtn.on('click', function() {
                 currentQuality = -1;
-                hls.loadLevel = -1;  // re-enable ABR
+                hls.loadLevel = -1;   // re-enables ABR
                 qualBtn.text('AUTO').addClass('active');
                 qualMenu.find('button').removeClass('selected');
-                autoBtn.addClass('selected');
+                autoQBtn.addClass('selected');
                 qualMenu.removeClass('open');
-                console.log('[Quality] Auto (ABR)');
+                console.log('[Quality] Auto ABR');
             });
-            qualMenu.append(autoBtn);
+            qualMenu.append(autoQBtn);
 
-            var sortedLevels = levels.map(function(lv, i){ return { idx:i, h:lv.height||0, bw:lv.bitrate||0 }; })
+            var sortedLvls = levels.map(function(lv,i){ return {idx:i,h:lv.height||0,bw:lv.bitrate||0}; })
                 .sort(function(a,b){ return b.h - a.h; });
 
-            sortedLevels.forEach(function(lv) {
+            sortedLvls.forEach(function(lv) {
                 var label = lv.h ? lv.h+'p' : Math.round(lv.bw/1000)+'kbps';
-                var qBtn = $('<button>'+label+'</button>');
-                qBtn.on('click', function() {
+                var qb = $('<button>'+label+'</button>');
+                qb.on('click', function() {
                     currentQuality = lv.idx;
-
-                    // HLS.js quality switch:
-                    // loadLevel pins a specific level and disables ABR.
-                    // nextLevel switches at the next segment boundary (no buffer flush = seamless).
-                    hls.loadLevel = lv.idx;  // pin this level, disable ABR
-                    hls.nextLevel = lv.idx;  // switch at next segment (no seek/flush needed)
-
+                    // Pin quality: loadLevel disables ABR, nextLevel switches seamlessly
+                    hls.loadLevel = lv.idx;
+                    hls.nextLevel = lv.idx;
                     qualBtn.text(label).addClass('active');
                     qualMenu.find('button').removeClass('selected');
-                    qBtn.addClass('selected');
+                    qb.addClass('selected');
                     qualMenu.removeClass('open');
                     console.log('[Quality] -> level', lv.idx, label);
                 });
-                qualMenu.append(qBtn);
+                qualMenu.append(qb);
             });
 
-            // Update display when HLS switches level (auto mode)
             if (hls) {
                 hls.on(Hls.Events.LEVEL_SWITCHED, function(ev, data) {
                     var lv = levels[data.level];
                     var label = lv && lv.height ? lv.height+'p' : '';
                     if (currentQuality === -1 && label) qualBtn.text('AUTO '+label);
-                    // Sync menu selection
-                    qualMenu.find('button').removeClass('selected');
-                    if (currentQuality === -1) qualMenu.find('button').first().addClass('selected');
-                    else qualMenu.find('button').eq(
-                        sortedLevels.findIndex(function(s){ return s.idx === currentQuality; }) + 1
-                    ).addClass('selected');
                 });
             }
         }
 
-        // Place in DOM — do NOT remove video since it's already inside wrap
+        // ── Subtitle panel ────────────────────────────────────────────────────
+        // Build track list from video element
+        function buildSubPanel() {
+            subPanel.empty();
+            subPanel.append('<h4>Subtitles</h4>');
+
+            // Toggle row
+            var toggleRow = $('<div class="sp-sub-toggle"></div>');
+            var toggleLabel = $('<label>Enable Subtitles</label>');
+            var toggleWrap = $('<label class="sp-toggle"></label>');
+            var toggleInput = $('<input type="checkbox">');
+            var toggleTrack = $('<div class="sp-toggle-track"></div>');
+            var toggleThumb = $('<div class="sp-toggle-thumb"></div>');
+            toggleWrap.append(toggleInput, toggleTrack, toggleThumb);
+            toggleRow.append(toggleLabel, toggleWrap);
+            subPanel.append(toggleRow);
+
+            // Track selector
+            var tracks = vid.textTracks ? Array.from(vid.textTracks) : [];
+            if (tracks.length > 0) {
+                var trackRow = $('<div class="sp-sub-row"></div>');
+                trackRow.append('<label>Track</label>');
+                var trackSel = $('<select></select>');
+                tracks.forEach(function(t, i) {
+                    trackSel.append('<option value="'+i+'">'+(t.label || t.language || 'Track '+(i+1))+'</option>');
+                });
+                trackRow.append(trackSel);
+                subPanel.append(trackRow);
+                trackSel.on('change', function() {
+                    var idx = parseInt(this.value);
+                    Array.from(vid.textTracks).forEach(function(t,i){ t.mode = (subEnabled && i===idx) ? 'showing' : 'hidden'; });
+                });
+            }
+
+            // Font size
+            var fsRow = $('<div class="sp-sub-row"></div>');
+            fsRow.append('<label>Font Size</label>');
+            var fsSel = $('<select></select>');
+            ['12px','14px','16px','18px','20px','24px','28px','32px'].forEach(function(sz) {
+                fsSel.append('<option value="'+sz+'"'+(sz===subSettings.fontSize?' selected':'')+'>'+sz+'</option>');
+            });
+            fsSel.on('change', function(){ subSettings.fontSize = this.value; applySubStyle(); });
+            fsRow.append(fsSel); subPanel.append(fsRow);
+
+            // Edge style
+            var edRow = $('<div class="sp-sub-row"></div>');
+            edRow.append('<label>Edge Style</label>');
+            var edSel = $('<select></select>');
+            [{v:'none',l:'None'},{v:'drop-shadow(1px 1px 2px #000)',l:'Drop Shadow'},{v:'1px 1px 0 #000,-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000',l:'Outline'},{v:'2px 2px 4px rgba(0,0,0,.9)',l:'Raised'}].forEach(function(e) {
+                edSel.append('<option value="'+e.v+'"'+(e.v===subSettings.edgeStyle?' selected':'')+'>'+e.l+'</option>');
+            });
+            edSel.on('change', function(){ subSettings.edgeStyle = this.value; applySubStyle(); });
+            edRow.append(edSel); subPanel.append(edRow);
+
+            // Background color
+            var bgRow = $('<div class="sp-sub-row"></div>');
+            bgRow.append('<label>BG Color</label>');
+            var bgInput = $('<input type="color" value="'+subSettings.bgColor+'" style="width:40px;height:28px;padding:2px;border:1px solid #333;border-radius:4px;background:#252525;cursor:pointer">');
+            bgInput.on('input', function(){ subSettings.bgColor = this.value; applySubStyle(); });
+            bgRow.append(bgInput); subPanel.append(bgRow);
+
+            // BG opacity
+            var opRow = $('<div class="sp-sub-row"><label>BG Opacity</label></div>');
+            var opSlider = $('<input type="range" min="0" max="1" step="0.05" value="'+subSettings.bgOpacity+'">');
+            var opVal = $('<span style="color:#2af598;font-size:11px;min-width:28px;text-align:right">'+Math.round(subSettings.bgOpacity*100)+'%</span>');
+            opSlider.on('input', function(){ subSettings.bgOpacity = this.value; opVal.text(Math.round(this.value*100)+'%'); applySubStyle(); });
+            opRow.append(opSlider, opVal); subPanel.append(opRow);
+
+            // Toggle handler
+            toggleInput.on('change', function() {
+                subEnabled = this.checked;
+                var selTrackIdx = subPanel.find('select').first().val();
+                selTrackIdx = selTrackIdx !== undefined ? parseInt(selTrackIdx) : 0;
+                Array.from(vid.textTracks||[]).forEach(function(t,i){ t.mode = (subEnabled && i===selTrackIdx) ? 'showing' : 'hidden'; });
+                btnSub.find('i').css('color', subEnabled ? '#2af598' : '');
+                applySubStyle();
+            });
+            toggleInput.prop('checked', subEnabled);
+        }
+
+        function applySubStyle() {
+            if (!subEnabled) { subLayer.hide(); return; }
+            subLayer.show();
+            var bgRgb = subSettings.bgColor;
+            var op = parseFloat(subSettings.bgOpacity);
+            // Parse hex to rgb
+            var r=parseInt(bgRgb.slice(1,3),16), g=parseInt(bgRgb.slice(3,5),16), b=parseInt(bgRgb.slice(5,7),16);
+            var isDropShadow = subSettings.edgeStyle.indexOf('drop-shadow') > -1;
+            subLayer.css({
+                fontSize: subSettings.fontSize,
+                textShadow: isDropShadow ? subSettings.edgeStyle : 'none',
+                filter: isDropShadow ? subSettings.edgeStyle : 'none',
+                '--sub-edge': subSettings.edgeStyle
+            });
+            // Apply to each cue span
+            subLayer.find('.sp-cue').css({
+                background: 'rgba('+r+','+g+','+b+','+op+')',
+                padding: '2px 8px',
+                borderRadius: '3px',
+                fontSize: subSettings.fontSize,
+                textShadow: isDropShadow ? 'none' : subSettings.edgeStyle,
+                lineHeight: '1.5',
+                display: 'inline-block',
+                color: '#fff',
+                fontWeight: '600'
+            });
+        }
+
+        // Hook native text track cues to render in subLayer
+        function hookTextTracks() {
+            var tracks = vid.textTracks ? Array.from(vid.textTracks) : [];
+            tracks.forEach(function(track) {
+                track.addEventListener('cuechange', function() {
+                    subLayer.empty();
+                    if (!subEnabled || track.mode !== 'showing') return;
+                    var cues = track.activeCues ? Array.from(track.activeCues) : [];
+                    cues.forEach(function(cue) {
+                        var text = cue.text || (cue.getCueAsHTML ? cue.getCueAsHTML().textContent : '');
+                        if (text) {
+                            var span = $('<span class="sp-cue"></span>').text(text);
+                            subLayer.append(span);
+                            applySubStyle();
+                        }
+                    });
+                    if (!cues.length) subLayer.empty();
+                });
+            });
+        }
+
+        buildSubPanel();
+
+        // Place in DOM
         wrapper.find('.sp-player-wrap, .sp-overlay-loading, .sp-overlay-error').remove();
         wrapper.css('position','relative').append(wrap);
-        // Show controls immediately, then auto-hide after 3s
         ctrl.addClass('pinned');
         setTimeout(function(){ if(!isSeeking) ctrl.removeClass('pinned'); }, 3000);
 
+        // Hook text tracks after DOM is ready
+        setTimeout(hookTextTracks, 500);
+
         // ── Playback controls ─────────────────────────────────────────────────
+        var isSeeking = false;
+
         function togglePlay() { if (vid.paused) vid.play().catch(function(){}); else vid.pause(); }
 
         bigPlay.on('click', function(e){ e.stopPropagation(); togglePlay(); });
@@ -315,13 +480,12 @@ $(document).ready(function() {
         });
 
         // ── Progress bar ──────────────────────────────────────────────────────
-        var isSeeking = false;
         function setProgress(pct) {
             progRow.find('.sp-progress-fill').css('width', pct+'%');
             progRow.find('.sp-progress-thumb').css('left', pct+'%');
         }
         vid.addEventListener('timeupdate', function() {
-            if (isSeeking || !vid.duration) return;
+            if (isSeeking||!vid.duration) return;
             setProgress((vid.currentTime/vid.duration)*100);
             timeEl.text(fmtTime(vid.currentTime)+' / '+fmtTime(vid.duration));
         });
@@ -330,75 +494,88 @@ $(document).ready(function() {
         });
         vid.addEventListener('progress', function() {
             if (!vid.duration) return;
-            var buf = vid.buffered;
+            var buf=vid.buffered;
             if (buf.length) progRow.find('.sp-progress-buf').css('width',(buf.end(buf.length-1)/vid.duration*100)+'%');
         });
 
         function seekFromEvent(clientX) {
-            var rect = progRow[0].getBoundingClientRect();
-            var pct = Math.max(0, Math.min(1, (clientX-rect.left)/rect.width));
-            if (vid.duration) { vid.currentTime = pct*vid.duration; setProgress(pct*100); }
+            var rect=progRow[0].getBoundingClientRect();
+            var pct=Math.max(0,Math.min(1,(clientX-rect.left)/rect.width));
+            if (vid.duration){vid.currentTime=pct*vid.duration; setProgress(pct*100);}
         }
-        progRow.on('mousedown', function(e){ isSeeking=true; ctrl.addClass('pinned'); seekFromEvent(e.clientX); e.preventDefault(); });
-        progRow.on('touchstart', function(e){ isSeeking=true; ctrl.addClass('pinned'); seekFromEvent(e.originalEvent.touches[0].clientX); });
-        $(document).on('mousemove.spprog', function(e){ if(isSeeking) seekFromEvent(e.clientX); });
-        $(document).on('touchmove.spprog', function(e){ if(isSeeking) seekFromEvent(e.originalEvent.touches[0].clientX); });
-        $(document).on('mouseup.spprog touchend.spprog', function(){ if(isSeeking){ isSeeking=false; ctrl.removeClass('pinned'); } });
+        progRow.on('mousedown',function(e){isSeeking=true;ctrl.addClass('pinned');seekFromEvent(e.clientX);e.preventDefault();});
+        progRow.on('touchstart',function(e){isSeeking=true;ctrl.addClass('pinned');seekFromEvent(e.originalEvent.touches[0].clientX);});
+        $(document).on('mousemove.spprog',function(e){if(isSeeking) seekFromEvent(e.clientX);});
+        $(document).on('touchmove.spprog',function(e){if(isSeeking) seekFromEvent(e.originalEvent.touches[0].clientX);});
+        $(document).on('mouseup.spprog touchend.spprog',function(){if(isSeeking){isSeeking=false;ctrl.removeClass('pinned');}});
 
-        // ── Volume ────────────────────────────────────────────────────────────
-        function updateVolIcon() {
-            var ic = vid.muted||vid.volume===0 ? 'fa-volume-xmark' : vid.volume<0.4 ? 'fa-volume-low' : 'fa-volume-high';
+        // ── Volume with fill ──────────────────────────────────────────────────
+        function updateVolume(val) {
+            vid.volume = val;
+            vid.muted = (val === 0);
+            volSlider.val(val);
+            volSlider.css('--vol', (val*100)+'%');
+            var ic = val===0||vid.muted ? 'fa-volume-xmark' : val<0.4 ? 'fa-volume-low' : 'fa-volume-high';
             btnVol.find('i').attr('class','fa-solid '+ic);
         }
-        volSlider.on('input', function(){ vid.volume=parseFloat(this.value); vid.muted=(vid.volume===0); updateVolIcon(); });
-        btnVol.on('click', function(){ vid.muted=!vid.muted; volSlider.val(vid.muted?0:vid.volume); updateVolIcon(); });
+        volSlider.on('input', function(){ updateVolume(parseFloat(this.value)); });
+        btnVol.on('click', function(){
+            if (vid.muted) { updateVolume(vid.volume||1); }
+            else { vid.muted=true; volSlider.css('--vol','0%'); btnVol.find('i').attr('class','fa-solid fa-volume-xmark'); }
+        });
+        // Init volume fill
+        updateVolume(1);
 
         // ── Quality menu toggle ───────────────────────────────────────────────
-        qualBtn.on('click', function(e){ e.stopPropagation(); qualMenu.toggleClass('open'); });
-        $(document).on('click.spqual', function(){ qualMenu.removeClass('open'); });
+        qualBtn.on('click', function(e){ e.stopPropagation(); qualMenu.toggleClass('open'); subPanel.removeClass('open'); });
+
+        // ── Subtitle panel toggle ─────────────────────────────────────────────
+        btnSub.on('click', function(e){ e.stopPropagation(); subPanel.toggleClass('open'); qualMenu.removeClass('open'); });
+        $(document).on('click.spmenus', function(){ qualMenu.removeClass('open'); subPanel.removeClass('open'); });
 
         // ── Fullscreen ────────────────────────────────────────────────────────
         btnFS.on('click', function() {
-            var el = wrap[0];
-            if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+            var el=wrap[0];
+            if (!document.fullscreenElement&&!document.webkitFullscreenElement){
                 (el.requestFullscreen||el.webkitRequestFullscreen||el.mozRequestFullScreen).call(el);
             } else {
                 (document.exitFullscreen||document.webkitExitFullscreen||document.mozCancelFullScreen).call(document);
             }
         });
         function onFSChange() {
-            var isFS = !!(document.fullscreenElement||document.webkitFullscreenElement);
-            btnFS.find('i').attr('class', isFS ? 'fa-solid fa-compress' : 'fa-solid fa-expand');
+            var isFS=!!(document.fullscreenElement||document.webkitFullscreenElement);
+            btnFS.find('i').attr('class',isFS?'fa-solid fa-compress':'fa-solid fa-expand');
             ctrl.addClass('pinned');
-            clearTimeout(ctrl._fsPinTimer);
-            ctrl._fsPinTimer = setTimeout(function(){ if(!isSeeking) ctrl.removeClass('pinned'); }, 3000);
+            clearTimeout(ctrl[0]._fst);
+            ctrl[0]._fst=setTimeout(function(){if(!isSeeking) ctrl.removeClass('pinned');},3000);
         }
-        document.addEventListener('fullscreenchange', onFSChange);
-        document.addEventListener('webkitfullscreenchange', onFSChange);
+        document.addEventListener('fullscreenchange',onFSChange);
+        document.addEventListener('webkitfullscreenchange',onFSChange);
 
         // ── Mobile double-tap seek ────────────────────────────────────────────
-        var lastTap = 0;
-        wrap.on('touchend', function(e) {
-            var now = Date.now();
-            if (now - lastTap < 280) {
-                var x = e.originalEvent.changedTouches[0].clientX;
-                var mid = wrap[0].getBoundingClientRect().width / 2;
-                vid.currentTime = Math.max(0, Math.min(vid.duration||0, vid.currentTime + (x<mid?-10:10)));
+        var lastTap=0;
+        wrap.on('touchend',function(e){
+            var now=Date.now();
+            if(now-lastTap<280){
+                var x=e.originalEvent.changedTouches[0].clientX;
+                var mid=wrap[0].getBoundingClientRect().width/2;
+                vid.currentTime=Math.max(0,Math.min(vid.duration||0,vid.currentTime+(x<mid?-10:10)));
                 e.preventDefault();
             }
-            lastTap = now;
+            lastTap=now;
         });
 
         // ── Keyboard shortcuts ────────────────────────────────────────────────
-        $(document).off('keydown.sp').on('keydown.sp', function(e) {
-            if ($(e.target).is('input,textarea,select,details')) return;
-            if (e.key===' '||e.key==='k'){ e.preventDefault(); togglePlay(); }
-            if (e.key==='ArrowRight') vid.currentTime=Math.min(vid.duration||0,vid.currentTime+10);
-            if (e.key==='ArrowLeft')  vid.currentTime=Math.max(0,vid.currentTime-10);
-            if (e.key==='ArrowUp')   { vid.volume=Math.min(1,vid.volume+0.1); volSlider.val(vid.volume); updateVolIcon(); e.preventDefault(); }
-            if (e.key==='ArrowDown') { vid.volume=Math.max(0,vid.volume-0.1); volSlider.val(vid.volume); updateVolIcon(); e.preventDefault(); }
-            if (e.key==='f') btnFS.trigger('click');
-            if (e.key==='m') btnVol.trigger('click');
+        $(document).off('keydown.sp').on('keydown.sp',function(e){
+            if($(e.target).is('input,textarea,select,details')) return;
+            if(e.key===' '||e.key==='k'){e.preventDefault();togglePlay();}
+            if(e.key==='ArrowRight') vid.currentTime=Math.min(vid.duration||0,vid.currentTime+10);
+            if(e.key==='ArrowLeft')  vid.currentTime=Math.max(0,vid.currentTime-10);
+            if(e.key==='ArrowUp'){vid.volume=Math.min(1,vid.volume+0.1);updateVolume(vid.volume);e.preventDefault();}
+            if(e.key==='ArrowDown'){vid.volume=Math.max(0,vid.volume-0.1);updateVolume(vid.volume);e.preventDefault();}
+            if(e.key==='f') btnFS.trigger('click');
+            if(e.key==='m') btnVol.trigger('click');
+            if(e.key==='c') btnSub.trigger('click');
         });
 
         return wrap;
