@@ -278,7 +278,8 @@ $(document).ready(function() {
             var autoQBtn = $('<button class="selected">Auto</button>');
             autoQBtn.on('click', function() {
                 currentQuality = -1;
-                hls.loadLevel = -1;   // re-enables ABR
+                hls.currentLevel = -1;  // re-enables ABR
+                hls.loadLevel    = -1;
                 qualBtn.text('AUTO').addClass('active');
                 qualMenu.find('button').removeClass('selected');
                 autoQBtn.addClass('selected');
@@ -295,14 +296,17 @@ $(document).ready(function() {
                 var qb = $('<button>'+label+'</button>');
                 qb.on('click', function() {
                     currentQuality = lv.idx;
-                    // Pin quality: loadLevel disables ABR, nextLevel switches seamlessly
-                    hls.loadLevel = lv.idx;
-                    hls.nextLevel = lv.idx;
+                    // HLS.js: currentLevel = idx forces immediate switch + disables ABR
+                    // nextLevel = idx ensures next fragment comes from that level
+                    // loadLevel = idx pins the loader
+                    hls.currentLevel = lv.idx;
+                    hls.nextLevel    = lv.idx;
+                    hls.loadLevel    = lv.idx;
                     qualBtn.text(label).addClass('active');
                     qualMenu.find('button').removeClass('selected');
                     qb.addClass('selected');
                     qualMenu.removeClass('open');
-                    console.log('[Quality] -> level', lv.idx, label);
+                    console.log('[Quality] -> level', lv.idx, label, 'currentLevel:', hls.currentLevel);
                 });
                 qualMenu.append(qb);
             });
@@ -450,8 +454,30 @@ $(document).ready(function() {
         // Place in DOM
         wrapper.find('.sp-player-wrap, .sp-overlay-loading, .sp-overlay-error').remove();
         wrapper.css('position','relative').append(wrap);
-        ctrl.addClass('pinned');
-        setTimeout(function(){ if(!isSeeking) ctrl.removeClass('pinned'); }, 3000);
+
+        // ── Buffering spinner overlay ─────────────────────────────────────────
+        var bufSpinner = $('<div class="sp-buf-spin" style="position:absolute;inset:0;display:none;align-items:center;justify-content:center;z-index:12;pointer-events:none"><div class="sp-spinner"></div></div>');
+        wrap.append(bufSpinner);
+
+        vid.addEventListener('waiting',  function(){ bufSpinner.css('display','flex'); });
+        vid.addEventListener('playing',  function(){ bufSpinner.hide(); });
+        vid.addEventListener('canplay',  function(){ bufSpinner.hide(); });
+        vid.addEventListener('stalled',  function(){ bufSpinner.css('display','flex'); });
+        vid.addEventListener('seeking',  function(){ bufSpinner.css('display','flex'); });
+        vid.addEventListener('seeked',   function(){ bufSpinner.hide(); });
+
+        // ── Controls auto-hide while playing ─────────────────────────────────
+        var hideTimer = null;
+        function showControls() {
+            ctrl.addClass('pinned');
+            clearTimeout(hideTimer);
+            hideTimer = setTimeout(function() {
+                if (!vid.paused && !isSeeking) ctrl.removeClass('pinned');
+            }, 3000);
+        }
+        wrap.on('mousemove touchstart', showControls);
+        // Show on load for 3s
+        showControls();
 
         // Hook text tracks after DOM is ready
         setTimeout(hookTextTracks, 500);
@@ -468,15 +494,22 @@ $(document).ready(function() {
             btnPlay.find('i').attr('class','fa-solid fa-pause');
             bigPlay.find('i').attr('class','fa-solid fa-pause');
             bigPlay.removeClass('always');
+            // Start hide timer when playing
+            showControls();
         });
         vid.addEventListener('pause', function() {
             btnPlay.find('i').attr('class','fa-solid fa-play');
             bigPlay.find('i').attr('class','fa-solid fa-play');
             bigPlay.addClass('always');
+            // Always show controls when paused
+            clearTimeout(hideTimer);
+            ctrl.addClass('pinned');
         });
         vid.addEventListener('ended', function() {
             bigPlay.addClass('always');
             btnPlay.find('i').attr('class','fa-solid fa-rotate-right');
+            clearTimeout(hideTimer);
+            ctrl.addClass('pinned');
         });
 
         // ── Progress bar ──────────────────────────────────────────────────────
@@ -507,7 +540,7 @@ $(document).ready(function() {
         progRow.on('touchstart',function(e){isSeeking=true;ctrl.addClass('pinned');seekFromEvent(e.originalEvent.touches[0].clientX);});
         $(document).on('mousemove.spprog',function(e){if(isSeeking) seekFromEvent(e.clientX);});
         $(document).on('touchmove.spprog',function(e){if(isSeeking) seekFromEvent(e.originalEvent.touches[0].clientX);});
-        $(document).on('mouseup.spprog touchend.spprog',function(){if(isSeeking){isSeeking=false;ctrl.removeClass('pinned');}});
+        $(document).on('mouseup.spprog touchend.spprog',function(){if(isSeeking){isSeeking=false;showControls();}});
 
         // ── Volume with fill ──────────────────────────────────────────────────
         function updateVolume(val) {
