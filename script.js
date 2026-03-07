@@ -221,316 +221,140 @@ $(document).ready(function() {
         catch(e) { await loadScript('https://cdn.jsdelivr.net/npm/artplayer@5.2.1/dist/artplayer.js'); }
     }
 
-    // ── Subtitle: uses HLS.js CUES_PARSED (works on all devices) ───────────────
-    // Instead of relying on video.textTracks.activeCues (broken on Android),
-    // we hook HLS.js's own CUES_PARSED event, store all cues ourselves,
-    // and poll video.currentTime to pick the right cue to display.
+    // ── Subtitle system ──────────────────────────────────────────────────────────
+    // Approach: track.mode="showing" → activeCues populated → read on timeupdate
     function injectSubtitleSetting(art, hls) {
+        if (!art || !art.video) return;
         var video = art.video;
-        if (!video || !hls) return;
 
-        // ── State ─────────────────────────────────────────────────────────────
-        var subState = {
-            enabled:   true,   // ON by default
-            fontSize:  '20px',
-            edgeStyle: 'none',
-            bgOpacity: 0.65,
-            bgColor:   '#000000',
-            color:     '#ffffff'
-        };
+        var enabled     = true;
+        var fontSize    = '20px';
+        var edgeStyle   = 'none';
+        var bgOpacity   = 0.65;
+        var subColor    = '#ffffff';
+        var activeTrack = null;
+        var lastText    = '';
 
-        // cueStore: Map of trackId -> sorted array of {start, end, text}
-        var cueStore  = {};
-        var pollTimer = null;
-        var lastText  = '';
-
-        // ── Subtitle overlay positioned above Artplayer controls ──────────────
+        // Overlay div above controls
         var subBox = document.createElement('div');
-        subBox.id  = 'sp-subbox';
-        subBox.style.cssText = [
-            'position:absolute',
-            'bottom:58px',
-            'left:0','right:0',
-            'text-align:center',
-            'z-index:250',
-            'pointer-events:none',
-            'padding:0 16px',
-            'line-height:0'   // collapsed when empty
-        ].join(';') + ';';
+        subBox.style.cssText = 'position:absolute;left:0;right:0;bottom:60px;'
+            + 'text-align:center;z-index:300;pointer-events:none;padding:0 12px;';
         art.template.$player.appendChild(subBox);
 
-        // ── Suppress native browser cue rendering ────────────────────────────
-        if (!document.getElementById('sp-nocue-css')) {
+        // Kill browser cue rendering + Artplayer subtitle layer
+        if (!document.getElementById('sp-cue-kill')) {
             var st = document.createElement('style');
-            st.id = 'sp-nocue-css';
-            // Zero-opacity on ::cue hides it on Chromium; display:none on the track element's
-            // shadow DOM isn't accessible, so we use font-size:0 as additional guard.
-            st.textContent = '::cue{font-size:0!important;color:transparent!important;background:transparent!important;text-shadow:none!important}';
+            st.id = 'sp-cue-kill';
+            st.textContent = '::cue{font-size:0!important;opacity:0!important}'
+                + '.art-subtitle{display:none!important}';
             document.head.appendChild(st);
         }
-        // Also hide any Artplayer built-in subtitle layer
-        if (!document.getElementById('sp-artsub-css')) {
-            var st2 = document.createElement('style');
-            st2.id = 'sp-artsub-css';
-            st2.textContent = '.art-subtitle{display:none!important}';
-            document.head.appendChild(st2);
-        }
 
-        // ── Render function ───────────────────────────────────────────────────
         function renderText(text) {
-            text = (text || '').replace(/<[^>]+>/g, '').trim();
+            text = (text || '').replace(/<[^>]+>/g,'')
+                .replace(/&amp;/g,'&').replace(/&lt;/g,'<')
+                .replace(/&gt;/g,'>').replace(/&nbsp;/g,' ').trim();
             if (text === lastText) return;
             lastText = text;
             subBox.innerHTML = '';
-            if (!text || !subState.enabled) return;
-
-            var isOutline    = subState.edgeStyle === 'outline';
-            var isDropShadow = subState.edgeStyle === 'dropshadow';
-            var isRaised     = subState.edgeStyle === 'raised';
-            var r = parseInt(subState.bgColor.slice(1,3)||'00',16);
-            var g = parseInt(subState.bgColor.slice(3,5)||'00',16);
-            var b = parseInt(subState.bgColor.slice(5,7)||'00',16);
-
-            var span = document.createElement('span');
-            span.textContent = text;
-            span.style.cssText = [
-                'display:inline-block',
-                'background:rgba('+r+','+g+','+b+','+subState.bgOpacity+')',
-                'color:'+subState.color,
-                'font-size:'+subState.fontSize,
-                'font-family:Arial,Helvetica,sans-serif',
-                'font-weight:600',
-                'line-height:1.6',
-                'padding:3px 12px',
-                'border-radius:4px',
-                'white-space:pre-wrap',
-                'word-break:break-word',
-                isDropShadow ? 'text-shadow:2px 2px 5px rgba(0,0,0,1)' :
-                isOutline    ? 'text-shadow:-2px -2px 0 #000,2px -2px 0 #000,-2px 2px 0 #000,2px 2px 0 #000' :
-                isRaised     ? 'text-shadow:1px 1px 0 rgba(0,0,0,.8),2px 2px 0 rgba(0,0,0,.5)' : 'text-shadow:none'
-            ].join(';') + ';';
-            subBox.appendChild(span);
+            if (!text || !enabled) return;
+            var shadow =
+                edgeStyle === 'dropshadow' ? '2px 2px 5px rgba(0,0,0,1)' :
+                edgeStyle === 'outline'    ? '-2px -2px 0 #000,2px -2px 0 #000,-2px 2px 0 #000,2px 2px 0 #000' :
+                edgeStyle === 'raised'     ? '1px 1px 0 rgba(0,0,0,.8),2px 2px 0 rgba(0,0,0,.5)' : 'none';
+            var el = document.createElement('span');
+            el.textContent = text;
+            el.style.cssText = 'display:inline-block;'
+                + 'background:rgba(0,0,0,' + bgOpacity + ');'
+                + 'color:' + subColor + ';'
+                + 'font-size:' + fontSize + ';'
+                + 'font-family:Arial,Helvetica,sans-serif;'
+                + 'font-weight:600;line-height:1.65;'
+                + 'padding:3px 12px;border-radius:4px;'
+                + 'white-space:pre-line;max-width:95%;'
+                + 'word-break:break-word;'
+                + 'text-shadow:' + shadow + ';';
+            subBox.appendChild(el);
         }
 
-        // ── Poll video.currentTime and pick matching cue ──────────────────────
-        var activeTrackId = -1;
-        function startPoll(trackId) {
-            activeTrackId = (trackId !== undefined) ? trackId : activeTrackId;
-            stopPoll();
-            if (activeTrackId < 0) return;
-            pollTimer = setInterval(function() {
-                if (!subState.enabled) { renderText(''); return; }
-                var now  = video.currentTime;
-                var cues = cueStore[activeTrackId] || [];
-                // Binary search for active cue
-                var text = '';
-                for (var i = 0; i < cues.length; i++) {
-                    if (cues[i].start <= now && cues[i].end > now) {
-                        text = cues[i].text;
-                        break;
-                    }
-                    if (cues[i].start > now + 0.5) break; // past current time
-                }
-                renderText(text);
-            }, 100);
-        }
-        function stopPoll() {
-            if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-            renderText('');
-        }
-
-        // ── Hook HLS.js CUES_PARSED — fires when subtitle fragment is parsed ──
-        // This is the only reliable way to get subtitle cues on all devices.
-        // Works regardless of browser's TextTrack implementation.
-        var hlsSubTracks = [];
-
-        hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, function(ev, data) {
-            hlsSubTracks = data.subtitleTracks || [];
-            console.log('[Subtitle] HLS subtitle tracks:', hlsSubTracks.length,
-                hlsSubTracks.map(function(t){ return t.name||t.lang||'?'; }));
-            if (hlsSubTracks.length > 0) {
-                // Activate first subtitle track in HLS.js so it downloads
-                hls.subtitleTrack = 0;
-                hls.subtitleDisplay = false; // we render, not HLS.js
+        function onTimeUpdate() {
+            if (!enabled || !activeTrack) {
+                if (!enabled) renderText('');
+                return;
             }
-        });
+            var cues = activeTrack.activeCues;
+            if (!cues || cues.length === 0) { renderText(''); return; }
+            var parts = [];
+            for (var i = 0; i < cues.length; i++) {
+                var c = cues[i], t = '';
+                try { t = c.getCueAsHTML ? c.getCueAsHTML().textContent : (c.text || ''); }
+                catch(e2) { t = c.text || ''; }
+                t = t.trim();
+                if (t) parts.push(t);
+            }
+            renderText(parts.join(' | '));
+        }
+        video.addEventListener('timeupdate', onTimeUpdate);
 
-        hls.on(Hls.Events.CUES_PARSED, function(ev, data) {
-            // data.type = 'subtitles', data.cues = VTTCue[], data.track = trackId string
-            if (data.type !== 'subtitles') return;
-            var trackId = data.track !== undefined ? data.track : 0;
-            if (!cueStore[trackId]) cueStore[trackId] = [];
-            data.cues.forEach(function(cue) {
-                var text = '';
-                try { text = cue.getCueAsHTML ? cue.getCueAsHTML().textContent : cue.text || ''; }
-                catch(e) { text = cue.text || ''; }
-                text = text.replace(/<[^>]+>/g, '').trim();
-                if (text) cueStore[trackId].push({ start: cue.startTime, end: cue.endTime, text: text });
+        function attachTrack(track) {
+            activeTrack = track;
+            track.mode = 'showing'; // MUST be showing for activeCues to populate
+            lastText = '';
+            console.log('[Subtitle] Attached:', track.label || track.language || '?',
+                'kind:', track.kind, 'cues:', track.cues ? track.cues.length : 0);
+        }
+
+        function tryHookNative() {
+            var tracks = Array.from(video.textTracks || []).filter(function(t) {
+                return t.kind === 'subtitles' || t.kind === 'captions' || t.kind === 'metadata';
             });
-            // Sort by start time
-            cueStore[trackId].sort(function(a,b){ return a.start - b.start; });
-            var totalCues = cueStore[trackId].length;
-            if (totalCues === 1 || totalCues % 20 === 0)
-                console.log('[Subtitle] Cues stored for track', trackId, ':', totalCues);
-            // Start polling this track if enabled and not already polling
-            if (subState.enabled && activeTrackId < 0) startPoll(trackId);
-        });
-
-        // ── Also try native textTracks as fallback ────────────────────────────
-        // Some HLS streams embed subtitle tracks directly without SUBTITLE_TRACKS_UPDATED
-        function hookNativeTracks() {
-            var tracks = Array.from(video.textTracks || []);
-            console.log('[Subtitle] Native textTracks:', tracks.length);
-            if (tracks.length === 0) return;
-            tracks.forEach(function(t) { t.mode = 'hidden'; }); // load cues
-            var track = tracks[0];
-            track.mode = 'hidden';
-            // Wait for cues to load then harvest them
-            function harvestCues() {
-                var cues = track.cues ? Array.from(track.cues) : [];
-                if (cues.length === 0) return;
-                var storeKey = 'native_0';
-                if (cueStore[storeKey] && cueStore[storeKey].length >= cues.length) return;
-                cueStore[storeKey] = [];
-                cues.forEach(function(cue) {
-                    var text = '';
-                    try { text = cue.getCueAsHTML ? cue.getCueAsHTML().textContent : cue.text || ''; }
-                    catch(e) { text = cue.text || ''; }
-                    text = text.replace(/<[^>]+>/g,'').trim();
-                    if (text) cueStore[storeKey].push({ start: cue.startTime, end: cue.endTime, text: text });
-                });
-                cueStore[storeKey].sort(function(a,b){ return a.start - b.start; });
-                console.log('[Subtitle] Native cues harvested:', cueStore[storeKey].length);
-                if (subState.enabled && activeTrackId < 0 && cueStore[storeKey].length > 0) {
-                    startPoll(storeKey);
-                }
-            }
-            track.addEventListener('cuechange', harvestCues);
-            // Poll for cues to appear on load
-            var natPollCount = 0;
-            var natPoll = setInterval(function() {
-                harvestCues();
-                natPollCount++;
-                if (natPollCount > 20 || (cueStore['native_0'] && cueStore['native_0'].length > 0)) {
-                    clearInterval(natPoll);
-                }
-            }, 500);
-        }
-        setTimeout(hookNativeTracks, 800);
-
-        // Auto-start polling — will pick up whichever track has cues first
-        subState.enabled = true;
-        // Use a deferred start: by the time 2s pass, CUES_PARSED should have fired
-        setTimeout(function() {
-            var keys = Object.keys(cueStore);
-            if (keys.length > 0 && activeTrackId < 0) {
-                startPoll(keys[0]);
-                console.log('[Subtitle] Auto-started on track:', keys[0], 'cues:', (cueStore[keys[0]]||[]).length);
-            } else if (activeTrackId < 0) {
-                // No cues yet — keep polling cueStore until something arrives
-                var waitPoll = setInterval(function() {
-                    var ks = Object.keys(cueStore);
-                    if (ks.length > 0) { clearInterval(waitPoll); startPoll(ks[0]); }
-                }, 500);
-            }
-        }, 2000);
-
-        // ── Load external subtitle ────────────────────────────────────────────
-        async function loadExternalVTT(url) {
-            try {
-                var res = await fetch(NETLIFY_PROXY, {
-                    method:'POST', headers:{'Content-Type':'application/json'},
-                    body: JSON.stringify({url:url, method:'GET', headers:{}})
-                });
-                var env = await res.json();
-                if (!env || !env.text) throw new Error('Empty subtitle');
-                // Parse VTT text ourselves into cueStore
-                var lines = env.text.split('\n');
-                var extCues = [];
-                for (var i = 0; i < lines.length; i++) {
-                    var line = lines[i].trim();
-                    if (line.indexOf(' --> ') > -1) {
-                        var times = line.split(' --> ');
-                        var start = vttTimeToSec(times[0].trim());
-                        var end   = vttTimeToSec(times[1].split(' ')[0].trim());
-                        var text  = '';
-                        while (++i < lines.length && lines[i].trim() !== '') {
-                            text += (text ? '\n' : '') + lines[i].trim().replace(/<[^>]+>/g,'');
-                        }
-                        if (text) extCues.push({ start:start, end:end, text:text });
-                    }
-                }
-                extCues.sort(function(a,b){ return a.start - b.start; });
-                cueStore['ext'] = extCues;
-                startPoll('ext');
-                console.log('[Subtitle] External VTT loaded:', extCues.length, 'cues');
+            if (tracks.length > 0) {
+                attachTrack(tracks[0]);
                 return true;
-            } catch(e) { console.warn('[Subtitle] External VTT failed:', e.message); return false; }
+            }
+            return false;
         }
 
-        function vttTimeToSec(ts) {
-            var p = ts.split(':');
-            if (p.length === 3) return parseFloat(p[0])*3600 + parseFloat(p[1])*60 + parseFloat(p[2].replace(',','.'));
-            if (p.length === 2) return parseFloat(p[0])*60 + parseFloat(p[1].replace(',','.'));
-            return parseFloat(ts);
+        // Watch for tracks added after load
+        if (video.textTracks) {
+            video.textTracks.addEventListener('addtrack', function(e) {
+                var t = e.track;
+                if (!activeTrack && t && (t.kind==='subtitles'||t.kind==='captions')) {
+                    console.log('[Subtitle] addtrack:', t.kind, t.label);
+                    attachTrack(t);
+                }
+            });
         }
 
-        // ── OpenSubtitles ─────────────────────────────────────────────────────
-        async function searchOpenSubtitles() {
-            var tmdbId = state.mediaId, mtype = state.mediaType;
-            if (!tmdbId) return null;
-            try {
-                var params = 'tmdb_id='+tmdbId+'&type='+(mtype==='tv'?'episode':'movie')+'&languages=en';
-                if (mtype==='tv' && state.season && state.episode)
-                    params += '&season_number='+state.season+'&episode_number='+state.episode;
-                var r = await fetch('https://api.opensubtitles.com/api/v1/subtitles?'+params, {
-                    headers:{'Api-Key':'srt9wCJJkKxRMHSgUUCY9nrSNjmpMNXV','Content-Type':'application/json','User-Agent':'ShowPlay v1.0'}
-                });
-                if (!r.ok) throw new Error('HTTP '+r.status);
-                var data = await r.json();
-                var files = (data.data||[]);
-                if (!files.length) return null;
-                var fileId = files[0].attributes.files[0].file_id;
-                var dl = await fetch('https://api.opensubtitles.com/api/v1/download', {
-                    method:'POST',
-                    headers:{'Api-Key':'srt9wCJJkKxRMHSgUUCY9nrSNjmpMNXV','Content-Type':'application/json','User-Agent':'ShowPlay v1.0'},
-                    body: JSON.stringify({file_id:fileId, sub_format:'webvtt'})
-                });
-                var dlData = await dl.json();
-                return dlData.link || null;
-            } catch(e) { console.warn('[Subtitle] OpenSubs:', e.message); return null; }
+        // Try immediately; retry after HLS has loaded tracks
+        if (!tryHookNative()) {
+            setTimeout(function() { if (!activeTrack) tryHookNative(); }, 1500);
+            setTimeout(function() { if (!activeTrack) tryHookNative(); }, 4000);
         }
 
-        // ── Settings ──────────────────────────────────────────────────────────
-        var trackOpts = [
-            {html:'Off',                   value:'off'},
-            {html:'Track 1 (Stream)',       value:'on',    default:true},
-            {html:'🔍 Search Online (EN)',  value:'search'}
-        ];
-
+        // Settings
         art.setting.add({
             html: 'Subtitles',
             icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-8 11H5v-2h7v2zm7 0h-5v-2h5v2zm-7-4H5V9h7v2zm7 0h-5V9h5v2z"/></svg>',
-            width: 200, tooltip: 'Subtitles',
-            selector: trackOpts,
-            onSelect: async function(item, $dom) {
+            width: 160, tooltip: 'Subtitles',
+            selector: [
+                {html:'Off',     value:'off'},
+                {html:'Track 1', value:'on', default:true}
+            ],
+            onSelect: function(item) {
                 if (item.value === 'off') {
-                    subState.enabled = false; stopPoll(); return 'Off';
+                    enabled = false;
+                    renderText('');
+                    if (activeTrack) activeTrack.mode = 'hidden';
+                    return 'Off';
                 }
-                if (item.value === 'on') {
-                    subState.enabled = true;
-                    var keys = Object.keys(cueStore);
-                    if (keys.length > 0) startPoll(keys[0]);
-                    return 'Track 1';
+                enabled = true;
+                if (activeTrack) {
+                    activeTrack.mode = 'showing';
+                } else {
+                    tryHookNative();
                 }
-                if (item.value === 'search') {
-                    if ($dom) $dom.innerHTML = '<span style="color:#2af598">Searching\u2026</span>';
-                    subState.enabled = true;
-                    var link = await searchOpenSubtitles();
-                    if (link) { var ok = await loadExternalVTT(link); return ok ? 'Online EN' : 'Not found'; }
-                    return 'Not found';
-                }
-                return item.html;
+                return 'Track 1';
             }
         });
 
@@ -544,11 +368,11 @@ $(document).ready(function() {
                 {html:'Large (22px)',  value:'22px'},
                 {html:'XLarge (28px)', value:'28px'}
             ],
-            onSelect: function(item) { subState.fontSize=item.value; lastText=''; return item.html; }
+            onSelect: function(item) { fontSize = item.value; lastText = ''; return item.html; }
         });
 
         art.setting.add({
-            html: 'Sub Edge Style',
+            html: 'Sub Edge',
             icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M2.53 19.65l1.34.56v-9.03l-2.43 5.86c-.41 1.02.08 2.19 1.09 2.61zm19.5-3.7L17.07 3.98c-.31-.75-1.04-1.21-1.81-1.23-.26 0-.53.04-.79.15L7.1 6.11c-.75.31-1.21 1.03-1.23 1.8-.01.27.04.54.15.8l4.96 11.97c.31.76 1.05 1.22 1.83 1.23.26 0 .52-.05.77-.15l7.36-3.05c1.02-.42 1.51-1.59 1.09-2.61z"/></svg>',
             width: 180, tooltip: 'Edge Style',
             selector: [
@@ -557,7 +381,7 @@ $(document).ready(function() {
                 {html:'Outline',     value:'outline'},
                 {html:'Raised',      value:'raised'}
             ],
-            onSelect: function(item) { subState.edgeStyle=item.value; lastText=''; return item.html; }
+            onSelect: function(item) { edgeStyle = item.value; lastText = ''; return item.html; }
         });
 
         art.setting.add({
@@ -565,20 +389,22 @@ $(document).ready(function() {
             icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9c0-.46-.04-.92-.1-1.36-.98 1.37-2.58 2.26-4.4 2.26-2.98 0-5.4-2.42-5.4-5.4 0-1.81.89-3.42 2.26-4.4-.44-.06-.9-.1-1.36-.1z"/></svg>',
             width: 180, tooltip: 'Background',
             selector: [
-                {html:'None (0%)',   value:'0'},
-                {html:'Low (35%)',   value:'0.35'},
-                {html:'Med (65%)',   value:'0.65', default:true},
-                {html:'High (90%)',  value:'0.90'}
+                {html:'None (0%)',  value:0},
+                {html:'Low (35%)',  value:0.35},
+                {html:'Med (65%)',  value:0.65, default:true},
+                {html:'High (90%)', value:0.90}
             ],
-            onSelect: function(item) { subState.bgOpacity=parseFloat(item.value); lastText=''; return item.html; }
+            onSelect: function(item) { bgOpacity = item.value; lastText = ''; return item.html; }
         });
 
-        art.on('destroy', stopPoll);
-        art.on('seek',    function() { lastText = ''; }); // force re-render after seek
+        art.on('destroy', function() {
+            video.removeEventListener('timeupdate', onTimeUpdate);
+            if (subBox.parentNode) subBox.parentNode.removeChild(subBox);
+        });
+        art.on('seek', function() { lastText = ''; });
 
-        console.log('[Subtitle] Initialized. Waiting for cues from HLS.js or native tracks.');
+        console.log('[Subtitle] Init. enabled=true, waiting for tracks.');
     }
-
 
     // ── Quality setting injector (called once) ────────────────────────────────
     function injectQualitySetting(art, hls, levels, defaultLevelIdx) {
