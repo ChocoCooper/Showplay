@@ -228,9 +228,11 @@ $(document).ready(function() {
         if (!art || !art.video) return;
         var video    = art.video;
         var enabled  = true;
-        var fontSize = '20px';
+        var fontSize = '18px';
         var edgeStyle= 'none';
         var bgOpacity= 0.65;
+        var bgColor  = '0,0,0';
+        var subColor = '#ffffff';
         var cues     = [];   // [{start,end,text}]
         var pollTimer= null;
         var lastText = '';
@@ -253,20 +255,22 @@ $(document).ready(function() {
         // ── Render one cue ────────────────────────────────────────────────────
         function show(text) {
             text = (text||'').replace(/<[^>]+>/g,'').replace(/&amp;/g,'&')
-                .replace(/&lt;/g,'<').replace(/&gt;/g,'>').trim();
+                .replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/\\N/g,'\n').trim();
             if (text === lastText) return;
             lastText = text;
             box.innerHTML = '';
             if (!text || !enabled) return;
             var shadow =
-                edgeStyle==='dropshadow' ? '2px 2px 4px #000' :
+                edgeStyle==='dropshadow' ? '2px 2px 5px rgba(0,0,0,1),1px 1px 3px rgba(0,0,0,.9)' :
                 edgeStyle==='outline'    ? '-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000,1px 1px 0 #000' :
-                edgeStyle==='raised'     ? '1px 1px 2px rgba(0,0,0,.9)' : 'none';
+                edgeStyle==='raised'     ? '0 1px 0 #000,0 2px 0 rgba(0,0,0,.6)' :
+                edgeStyle==='depressed'  ? '0 -1px 0 #000,0 -2px 0 rgba(0,0,0,.6)' : 'none';
+            var bg = bgColor === 'none' ? 'transparent' : 'rgba('+bgColor+','+bgOpacity+')';
             var sp = document.createElement('span');
             sp.textContent = text;
-            sp.style.cssText = 'display:inline-block;background:rgba(0,0,0,'+bgOpacity+');'
-                + 'color:#fff;font-size:'+fontSize+';font-family:Arial,sans-serif;font-weight:700;'
-                + 'line-height:1.6;padding:2px 10px;border-radius:3px;'
+            sp.style.cssText = 'display:inline-block;background:'+bg+';'
+                + 'color:'+subColor+';font-size:'+fontSize+';font-family:Arial,sans-serif;font-weight:700;'
+                + 'line-height:1.65;padding:3px 12px;border-radius:3px;'
                 + 'white-space:pre-line;max-width:98%;word-break:break-word;'
                 + 'text-shadow:'+shadow+';';
             box.appendChild(sp);
@@ -354,7 +358,7 @@ $(document).ready(function() {
             try {
                 // Build search URL — wyzie accepts TMDB id directly
                 var url = 'https://sub.wyzie.ru/search?id=' + state.mediaId
-                        + '&language=en&source=all';
+                        + '&language=en&source=all&format=srt';
                 if (state.mediaType === 'tv' && state.season && state.episode)
                     url += '&season=' + state.season + '&episode=' + state.episode;
 
@@ -370,7 +374,10 @@ $(document).ready(function() {
                     results.slice(0,3).map(function(x){ return x.display+'/'+x.format+'/'+x.source; }));
 
                 // Pick best: non-HI first, prefer srt/vtt, then first result
-                var pick = results.find(function(x){ return !x.isHearingImpaired; }) || results[0];
+                // Filter to English only, then prefer non-HI
+                var enResults = results.filter(function(x){ return x.language && x.language.toLowerCase().startsWith('en'); });
+                var pool = enResults.length ? enResults : results;
+                var pick = pool.find(function(x){ return !x.isHearingImpaired; }) || pool[0];
                 console.log('[Subtitle] Using:', pick.display, pick.format, pick.source, pick.release||'');
 
                 // Fetch subtitle file through proxy (CORS bypass)
@@ -401,11 +408,11 @@ $(document).ready(function() {
         art.setting.add({
             html: 'Subtitles',
             icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-8 11H5v-2h7v2zm7 0h-5v-2h5v2zm-7-4H5V9h7v2zm7 0h-5V9h5v2z"/></svg>',
-            width: 160, tooltip: 'Subtitles',
+            width: 180, tooltip: 'English',
             selector: [
-                {html:'Off',      value:'off'},
-                {html:'English',  value:'on', default:true},
-                {html:'Reload',   value:'reload'}
+                {html:'Off',             value:'off'},
+                {html:'English',         value:'on',     default:true},
+                {html:'↺ Reload',   value:'reload'}
             ],
             onSelect: function(item) {
                 if (item.value === 'off')    { enabled=false; stopPoll(); show(''); return 'Off'; }
@@ -416,43 +423,97 @@ $(document).ready(function() {
             }
         });
 
+        // Sub Font Size
         art.setting.add({
-            html: 'Sub Size',
+            html: 'Sub Font Size',
             icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M9 4v3h5v12h3V7h5V4H9zm-6 8h3v7h3v-7h3V9H3v3z"/></svg>',
-            width: 180, tooltip: 'Font Size',
+            width: 180, tooltip: 'Medium',
             selector: [
-                {html:'Small',  value:'14px'},
-                {html:'Medium', value:'20px', default:true},
-                {html:'Large',  value:'26px'},
-                {html:'XLarge', value:'32px'}
+                {html:'Small (14px)',  value:'14px'},
+                {html:'Medium (18px)',value:'18px', default:true},
+                {html:'Large (22px)', value:'22px'},
+                {html:'XL (28px)',    value:'28px'},
+                {html:'XXL (34px)',   value:'34px'}
             ],
-            onSelect: function(item) { fontSize=item.value; lastText=''; return item.html; }
+            onSelect: function(item) { fontSize=item.value; lastText=''; return item.html.split(' ')[0]; }
         });
 
+        // Sub Edge / Character Style
         art.setting.add({
-            html: 'Sub Edge',
+            html: 'Char Edge Style',
             icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M2.53 19.65l1.34.56v-9.03l-2.43 5.86c-.41 1.02.08 2.19 1.09 2.61zm19.5-3.7L17.07 3.98c-.31-.75-1.04-1.21-1.81-1.23-.26 0-.53.04-.79.15L7.1 6.11c-.75.31-1.21 1.03-1.23 1.8-.01.27.04.54.15.8l4.96 11.97c.31.76 1.05 1.22 1.83 1.23.26 0 .52-.05.77-.15l7.36-3.05c1.02-.42 1.51-1.59 1.09-2.61z"/></svg>',
-            width: 180, tooltip: 'Edge Style',
+            width: 180, tooltip: 'None',
             selector: [
-                {html:'None',        value:'none',       default:true},
+                {html:'None',        value:'none',        default:true},
                 {html:'Drop Shadow', value:'dropshadow'},
                 {html:'Outline',     value:'outline'},
-                {html:'Raised',      value:'raised'}
+                {html:'Raised',      value:'raised'},
+                {html:'Depressed',   value:'depressed'}
             ],
             onSelect: function(item) { edgeStyle=item.value; lastText=''; return item.html; }
         });
 
+        // Sub Font Color
         art.setting.add({
-            html: 'Sub BG',
-            icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9c0-.46-.04-.92-.1-1.36-.98 1.37-2.58 2.26-4.4 2.26-2.98 0-5.4-2.42-5.4-5.4 0-1.81.89-3.42 2.26-4.4-.44-.06-.9-.1-1.36-.1z"/></svg>',
-            width: 180, tooltip: 'Background',
+            html: 'Sub Color',
+            icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.86 0-7-3.14-7-7 0-1.9.76-3.63 2-4.9V17h2v-2h2v2h2v-2h2v2h1.89c.07-.32.11-.66.11-1 0-3.86-3.14-7-7-7z"/></svg>',
+            width: 180, tooltip: 'White',
             selector: [
-                {html:'None',   value:0},
-                {html:'Low',    value:0.4},
-                {html:'Medium', value:0.65, default:true},
-                {html:'High',   value:0.9}
+                {html:'White',       value:'#ffffff', default:true},
+                {html:'Yellow',      value:'#ffff00'},
+                {html:'Cyan',        value:'#00ffff'},
+                {html:'Green',       value:'#00ff7f'},
+                {html:'Light Grey',  value:'#cccccc'}
             ],
-            onSelect: function(item) { bgOpacity=item.value; lastText=''; return item.html; }
+            onSelect: function(item) { subColor=item.value; lastText=''; return item.html; }
+        });
+
+        // Sub BG Color
+        art.setting.add({
+            html: 'Sub BG Color',
+            icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M16.56 8.94L7.62 0 6.21 1.41l2.38 2.38-5.15 5.15a1.49 1.49 0 000 2.12l5.5 5.5c.29.29.68.44 1.06.44s.77-.15 1.06-.44l5.5-5.5c.59-.58.59-1.53 0-2.12zM5.21 10L10 5.21 14.79 10H5.21zM19 11.5s-2 2.17-2 3.5c0 1.1.9 2 2 2s2-.9 2-2c0-1.33-2-3.5-2-3.5z"/></svg>',
+            width: 180, tooltip: 'Black',
+            selector: [
+                {html:'Black',       value:'0,0,0',       default:true},
+                {html:'Dark Grey',   value:'30,30,30'},
+                {html:'Dark Blue',   value:'0,0,80'},
+                {html:'Dark Red',    value:'80,0,0'},
+                {html:'None',        value:'none'}
+            ],
+            onSelect: function(item) { bgColor=item.value; lastText=''; return item.html; }
+        });
+
+        // Sub BG Opacity
+        art.setting.add({
+            html: 'Sub BG Opacity',
+            icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9c0-.46-.04-.92-.1-1.36-.98 1.37-2.58 2.26-4.4 2.26-2.98 0-5.4-2.42-5.4-5.4 0-1.81.89-3.42 2.26-4.4-.44-.06-.9-.1-1.36-.1z"/></svg>',
+            width: 180, tooltip: 'Medium',
+            selector: [
+                {html:'None (0%)',   value:0},
+                {html:'Low (30%)',   value:0.3},
+                {html:'Medium (65%)',value:0.65, default:true},
+                {html:'High (85%)',  value:0.85},
+                {html:'Solid (100%)',value:1}
+            ],
+            onSelect: function(item) { bgOpacity=item.value; lastText=''; return item.html.split(' ')[0]; }
+        });
+
+        // Sub Elevation (bottom position)
+        art.setting.add({
+            html: 'Sub Position',
+            icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M4 15h16v-2H4v2zm0 4h16v-2H4v2zm0-8h16V9H4v2zm0-6v2h16V5H4z"/></svg>',
+            width: 180, tooltip: 'Low',
+            selector: [
+                {html:'Very Low',  value:'8px'},
+                {html:'Low',       value:'62px',  default:true},
+                {html:'Mid',       value:'110px'},
+                {html:'High',      value:'160px'},
+                {html:'Very High', value:'220px'}
+            ],
+            onSelect: function(item) {
+                box.style.bottom = item.value;
+                return item.html;
+            }
         });
 
         art.on('destroy', stopPoll);
@@ -472,11 +533,13 @@ $(document).ready(function() {
                 var isDefault = lv.idx === defaultIdx;
                 return { html: lv.h ? lv.h+'p' : Math.round(lv.bw/1000)+'k', value: lv.idx, default: isDefault };
             }));
+        // Find the default option label for initial tooltip
+        var defaultQLabel = (options.find(function(o){ return o.default; }) || options[0] || {html:'Quality'}).html;
         art.setting.add({
             html: 'Quality',
             icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14H8v-2h4v2zm4-4H8v-2h8v2zm0-4H8V7h8v2z"/></svg>',
             width: 150,
-            tooltip: 'Quality',
+            tooltip: defaultQLabel,
             selector: options,
             onSelect: function(item) {
                 var idx = item.value;
@@ -692,10 +755,8 @@ $(document).ready(function() {
                 screenshot:     false,
                 setting:        true,
                 playbackRate:   true,
-                aspectRatio:    true,
                 fullscreen:     true,
                 fullscreenWeb:  true,
-                subtitleOffset: true,
                 miniProgressBar:false,
                 mutex:          true,
                 playsInline:    true,
