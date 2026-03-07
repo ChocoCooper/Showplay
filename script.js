@@ -228,8 +228,8 @@ $(document).ready(function() {
         if (!art || !art.video) return;
         var video    = art.video;
         var enabled  = true;
-        var fontSize = '18px';
-        var edgeStyle= 'none';
+        var fontSize = '22px';
+        var edgeStyle= 'dropshadow';
         var bgOpacity= 0;
         var bgColor  = '0,0,0'; // fixed black
         var subColor = '#ffffff'; // fixed white
@@ -430,8 +430,8 @@ $(document).ready(function() {
             width: 180, tooltip: 'Medium',
             selector: [
                 {html:'Small (14px)',  value:'14px'},
-                {html:'Medium (18px)',value:'18px', default:true},
-                {html:'Large (22px)', value:'22px'},
+                {html:'Medium (18px)',value:'18px'},
+                {html:'Large (22px)', value:'22px', default:true},
                 {html:'XL (28px)',    value:'28px'},
                 {html:'XXL (34px)',   value:'34px'}
             ],
@@ -440,12 +440,12 @@ $(document).ready(function() {
 
         // Sub Edge / Character Style
         art.setting.add({
-            html: 'Char Edge Style',
+            html: 'Char Edge',
             icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M2.53 19.65l1.34.56v-9.03l-2.43 5.86c-.41 1.02.08 2.19 1.09 2.61zm19.5-3.7L17.07 3.98c-.31-.75-1.04-1.21-1.81-1.23-.26 0-.53.04-.79.15L7.1 6.11c-.75.31-1.21 1.03-1.23 1.8-.01.27.04.54.15.8l4.96 11.97c.31.76 1.05 1.22 1.83 1.23.26 0 .52-.05.77-.15l7.36-3.05c1.02-.42 1.51-1.59 1.09-2.61z"/></svg>',
             width: 180, tooltip: 'None',
             selector: [
-                {html:'None',        value:'none',        default:true},
-                {html:'Drop Shadow', value:'dropshadow'},
+                {html:'None',        value:'none'},
+                {html:'Drop Shadow', value:'dropshadow', default:true},
                 {html:'Outline',     value:'outline'},
                 {html:'Raised',      value:'raised'},
                 {html:'Depressed',   value:'depressed'}
@@ -697,10 +697,26 @@ $(document).ready(function() {
 
             // ── HLS instance ──────────────────────────────────────────────────
             var hls = new Hls({
-                maxBufferLength:60, maxMaxBufferLength:120,
-                startLevel: -1,  // will be overridden to 360p after manifest
-                abrEwmaDefaultEstimate:4000000,
-                loader:ProxyLoader
+                // Aggressive pre-buffering for smooth playback
+                maxBufferLength:          90,   // keep 90s buffered ahead
+                maxMaxBufferLength:       180,  // absolute ceiling
+                maxBufferSize:            120 * 1000 * 1000, // 120MB buffer
+                maxBufferHole:            0.5,
+                highBufferWatchdogPeriod: 3,
+                nudgeOffset:              0.2,
+                nudgeMaxRetry:            5,
+                startFragPrefetch:        true,  // pre-fetch first frag before play
+                testBandwidth:            true,
+                progressive:              true,
+                lowLatencyMode:           false,
+                backBufferLength:         30,    // keep 30s behind for seek
+                startLevel:              -1,     // overridden to 360p after manifest
+                abrEwmaDefaultEstimate:   8000000, // assume 8Mbps on first load
+                abrEwmaFastLive:          3,
+                abrEwmaSlowLive:          9,
+                abrBandWidthFactor:       0.85,
+                abrBandWidthUpFactor:     0.7,
+                loader:                   ProxyLoader
             });
 
             // Guard: inject quality only once
@@ -750,7 +766,6 @@ $(document).ready(function() {
                 autoSize:       false,
                 screenshot:     false,
                 setting:        true,
-                playbackRate:   true,
                 fullscreen:     true,
                 fullscreenWeb:  true,
                 miniProgressBar:false,
