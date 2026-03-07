@@ -222,117 +222,169 @@ $(document).ready(function() {
     }
 
     // ── Subtitle system ──────────────────────────────────────────────────────────
-    // Approach: track.mode="showing" → activeCues populated → read on timeupdate
+    // Approach: HLS.js SUBTITLE_TRACKS_UPDATED activates download,
+    // CUES_PARSED gives us VTTCue objects → stored in our own array.
+    // setInterval polls video.currentTime → renders in overlay div.
+    // Zero dependency on browser TextTrack API for display.
     function injectSubtitleSetting(art, hls) {
-        if (!art || !art.video) return;
+        if (!art || !art.video || !hls) return;
         var video = art.video;
 
-        var enabled     = true;
-        var fontSize    = '20px';
-        var edgeStyle   = 'none';
-        var bgOpacity   = 0.65;
-        var subColor    = '#ffffff';
-        var activeTrack = null;
-        var lastText    = '';
+        // ── Settings state ────────────────────────────────────────────────────
+        var enabled   = true;
+        var fontSize  = '20px';
+        var edgeStyle = 'none';
+        var bgOpacity = 0.65;
+        var lastText  = '';
 
-        // Overlay div above controls
-        var subBox = document.createElement('div');
-        subBox.style.cssText = 'position:absolute;left:0;right:0;bottom:60px;'
-            + 'text-align:center;z-index:300;pointer-events:none;padding:0 12px;';
-        art.template.$player.appendChild(subBox);
+        // ── Our own cue store (filled by CUES_PARSED) ─────────────────────────
+        // Array of {start:Number, end:Number, text:String}
+        var cues = [];
+        var pollTimer = null;
 
-        // Kill browser cue rendering + Artplayer subtitle layer
-        if (!document.getElementById('sp-cue-kill')) {
+        // ── Overlay ───────────────────────────────────────────────────────────
+        var box = document.createElement('div');
+        box.style.cssText = 'position:absolute;left:0;right:0;bottom:62px;'
+            + 'text-align:center;z-index:9999;pointer-events:none;padding:0 10px;';
+        art.template.$player.appendChild(box);
+
+        // Hide every competing subtitle renderer
+        if (!document.getElementById('sp-sub-css')) {
             var st = document.createElement('style');
-            st.id = 'sp-cue-kill';
-            st.textContent = '::cue{font-size:0!important;opacity:0!important}'
-                + '.art-subtitle{display:none!important}';
+            st.id  = 'sp-sub-css';
+            st.textContent = '::cue{visibility:hidden!important}'
+                + '.art-subtitle{visibility:hidden!important}';
             document.head.appendChild(st);
         }
 
-        function renderText(text) {
-            text = (text || '').replace(/<[^>]+>/g,'')
-                .replace(/&amp;/g,'&').replace(/&lt;/g,'<')
-                .replace(/&gt;/g,'>').replace(/&nbsp;/g,' ').trim();
+        // ── Render ────────────────────────────────────────────────────────────
+        function show(text) {
+            text = (text || '').replace(/<[^>]+>/g, '').trim();
             if (text === lastText) return;
             lastText = text;
-            subBox.innerHTML = '';
+            box.innerHTML = '';
             if (!text || !enabled) return;
             var shadow =
-                edgeStyle === 'dropshadow' ? '2px 2px 5px rgba(0,0,0,1)' :
-                edgeStyle === 'outline'    ? '-2px -2px 0 #000,2px -2px 0 #000,-2px 2px 0 #000,2px 2px 0 #000' :
-                edgeStyle === 'raised'     ? '1px 1px 0 rgba(0,0,0,.8),2px 2px 0 rgba(0,0,0,.5)' : 'none';
-            var el = document.createElement('span');
-            el.textContent = text;
-            el.style.cssText = 'display:inline-block;'
+                edgeStyle === 'dropshadow' ? '2px 2px 4px #000' :
+                edgeStyle === 'outline'    ? '-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000,1px 1px 0 #000' :
+                edgeStyle === 'raised'     ? '1px 1px 2px rgba(0,0,0,.9)' : 'none';
+            var sp = document.createElement('span');
+            sp.textContent = text;
+            sp.style.cssText = 'display:inline-block;'
                 + 'background:rgba(0,0,0,' + bgOpacity + ');'
-                + 'color:' + subColor + ';'
-                + 'font-size:' + fontSize + ';'
-                + 'font-family:Arial,Helvetica,sans-serif;'
-                + 'font-weight:600;line-height:1.65;'
-                + 'padding:3px 12px;border-radius:4px;'
-                + 'white-space:pre-line;max-width:95%;'
-                + 'word-break:break-word;'
+                + 'color:#fff;font-size:' + fontSize + ';'
+                + 'font-family:Arial,sans-serif;font-weight:700;'
+                + 'line-height:1.6;padding:2px 10px;border-radius:3px;'
+                + 'white-space:pre-line;max-width:98%;word-break:break-word;'
                 + 'text-shadow:' + shadow + ';';
-            subBox.appendChild(el);
+            box.appendChild(sp);
         }
 
-        function onTimeUpdate() {
-            if (!enabled || !activeTrack) {
-                if (!enabled) renderText('');
-                return;
-            }
-            var cues = activeTrack.activeCues;
-            if (!cues || cues.length === 0) { renderText(''); return; }
-            var parts = [];
-            for (var i = 0; i < cues.length; i++) {
-                var c = cues[i], t = '';
-                try { t = c.getCueAsHTML ? c.getCueAsHTML().textContent : (c.text || ''); }
-                catch(e2) { t = c.text || ''; }
-                t = t.trim();
-                if (t) parts.push(t);
-            }
-            renderText(parts.join(' | '));
-        }
-        video.addEventListener('timeupdate', onTimeUpdate);
-
-        function attachTrack(track) {
-            activeTrack = track;
-            track.mode = 'showing'; // MUST be showing for activeCues to populate
-            lastText = '';
-            console.log('[Subtitle] Attached:', track.label || track.language || '?',
-                'kind:', track.kind, 'cues:', track.cues ? track.cues.length : 0);
-        }
-
-        function tryHookNative() {
-            var tracks = Array.from(video.textTracks || []).filter(function(t) {
-                return t.kind === 'subtitles' || t.kind === 'captions' || t.kind === 'metadata';
-            });
-            if (tracks.length > 0) {
-                attachTrack(tracks[0]);
-                return true;
-            }
-            return false;
-        }
-
-        // Watch for tracks added after load
-        if (video.textTracks) {
-            video.textTracks.addEventListener('addtrack', function(e) {
-                var t = e.track;
-                if (!activeTrack && t && (t.kind==='subtitles'||t.kind==='captions')) {
-                    console.log('[Subtitle] addtrack:', t.kind, t.label);
-                    attachTrack(t);
+        // ── Poll loop: find active cue by currentTime ─────────────────────────
+        function startPoll() {
+            if (pollTimer) return;
+            pollTimer = setInterval(function () {
+                if (!enabled || !cues.length) { show(''); return; }
+                var t = video.currentTime;
+                var found = '';
+                // Linear scan (cues are sorted by start time)
+                for (var i = 0; i < cues.length; i++) {
+                    if (cues[i].start <= t && cues[i].end > t) {
+                        found = cues[i].text; break;
+                    }
+                    if (cues[i].start > t + 1) break; // past current position
                 }
+                show(found);
+            }, 150);
+        }
+        function stopPoll() {
+            if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+            show('');
+        }
+
+        // ── HLS.js events ─────────────────────────────────────────────────────
+        hls.subtitleDisplay = false; // prevent HLS.js adding its own <track>
+
+        hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, function (ev, data) {
+            var tracks = data.subtitleTracks || [];
+            console.log('[Subtitle] HLS subtitle tracks:', tracks.length,
+                JSON.stringify(tracks.map(function(t){ return {name:t.name,lang:t.lang}; })));
+            if (tracks.length > 0) {
+                hls.subtitleTrack = 0; // activate → triggers fragment download → CUES_PARSED
+                console.log('[Subtitle] Activated subtitleTrack=0');
+            }
+        });
+
+        hls.on(Hls.Events.CUES_PARSED, function (ev, data) {
+            if (!data || !data.cues) return;
+            console.log('[Subtitle] CUES_PARSED type=' + data.type + ' count=' + data.cues.length);
+            var added = 0;
+            data.cues.forEach(function (cue) {
+                var text = '';
+                try {
+                    text = typeof cue.text === 'string' ? cue.text
+                         : (cue.getCueAsHTML ? cue.getCueAsHTML().textContent : '');
+                } catch(e) { text = cue.text || ''; }
+                text = text.replace(/<[^>]+>/g, '').trim();
+                if (!text) return;
+                // Dedup
+                var exists = false;
+                for (var i = 0; i < cues.length; i++) {
+                    if (Math.abs(cues[i].start - cue.startTime) < 0.05 && cues[i].text === text) {
+                        exists = true; break;
+                    }
+                }
+                if (!exists) { cues.push({start: cue.startTime, end: cue.endTime, text: text}); added++; }
+            });
+            if (added > 0) {
+                cues.sort(function (a, b) { return a.start - b.start; });
+                console.log('[Subtitle] Total cues stored:', cues.length, '| sample:', cues[0] ? JSON.stringify(cues[0]) : 'none');
+                startPoll();
+            }
+        });
+
+        // ── Fallback: scrape all textTracks of every kind ─────────────────────
+        // Some streams embed VTT directly in the HLS stream as a subtitle/captions track
+        // and HLS.js doesn't fire SUBTITLE_TRACKS_UPDATED for them.
+        function scrapeTextTracks() {
+            var tracks = Array.from(video.textTracks || []);
+            console.log('[Subtitle] textTracks scrape:', tracks.length,
+                tracks.map(function(t){ return t.kind+'/'+t.label+'/cues:'+(t.cues?t.cues.length:0); }));
+            tracks.forEach(function (track) {
+                if (track.kind === 'metadata') return; // skip ID3
+                track.mode = 'hidden'; // load cues without browser rendering
+                var harvest = function () {
+                    if (!track.cues || !track.cues.length) return;
+                    var added = 0;
+                    Array.from(track.cues).forEach(function (cue) {
+                        var text = '';
+                        try { text = cue.getCueAsHTML ? cue.getCueAsHTML().textContent : (cue.text||''); }
+                        catch(e) { text = cue.text || ''; }
+                        text = text.replace(/<[^>]+>/g,'').trim();
+                        if (!text) return;
+                        var exists = false;
+                        for (var i=0;i<cues.length;i++) {
+                            if (Math.abs(cues[i].start-cue.startTime)<0.05&&cues[i].text===text){exists=true;break;}
+                        }
+                        if (!exists){cues.push({start:cue.startTime,end:cue.endTime,text:text});added++;}
+                    });
+                    if (added > 0) {
+                        cues.sort(function(a,b){return a.start-b.start;});
+                        console.log('[Subtitle] Scraped +'+added+' from textTrack, total:', cues.length);
+                        startPoll();
+                    }
+                };
+                track.addEventListener('cuechange', harvest);
+                var n = 0;
+                var p = setInterval(function(){ harvest(); if(++n>30||cues.length>0) clearInterval(p); }, 500);
             });
         }
+        // Try immediately and after HLS settles
+        setTimeout(scrapeTextTracks, 500);
+        setTimeout(scrapeTextTracks, 2500);
+        setTimeout(scrapeTextTracks, 6000);
 
-        // Try immediately; retry after HLS has loaded tracks
-        if (!tryHookNative()) {
-            setTimeout(function() { if (!activeTrack) tryHookNative(); }, 1500);
-            setTimeout(function() { if (!activeTrack) tryHookNative(); }, 4000);
-        }
-
-        // Settings
+        // ── Settings panel ────────────────────────────────────────────────────
         art.setting.add({
             html: 'Subtitles',
             icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-8 11H5v-2h7v2zm7 0h-5v-2h5v2zm-7-4H5V9h7v2zm7 0h-5V9h5v2z"/></svg>',
@@ -341,34 +393,25 @@ $(document).ready(function() {
                 {html:'Off',     value:'off'},
                 {html:'Track 1', value:'on', default:true}
             ],
-            onSelect: function(item) {
-                if (item.value === 'off') {
-                    enabled = false;
-                    renderText('');
-                    if (activeTrack) activeTrack.mode = 'hidden';
-                    return 'Off';
-                }
+            onSelect: function (item) {
+                if (item.value === 'off') { enabled = false; show(''); stopPoll(); return 'Off'; }
                 enabled = true;
-                if (activeTrack) {
-                    activeTrack.mode = 'showing';
-                } else {
-                    tryHookNative();
-                }
+                if (cues.length) startPoll();
                 return 'Track 1';
             }
         });
 
         art.setting.add({
-            html: 'Sub Font Size',
+            html: 'Sub Size',
             icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M9 4v3h5v12h3V7h5V4H9zm-6 8h3v7h3v-7h3V9H3v3z"/></svg>',
             width: 180, tooltip: 'Font Size',
             selector: [
-                {html:'Small (14px)',  value:'14px'},
-                {html:'Medium (18px)', value:'18px', default:true},
-                {html:'Large (22px)',  value:'22px'},
-                {html:'XLarge (28px)', value:'28px'}
+                {html:'Small',  value:'14px'},
+                {html:'Medium', value:'20px', default:true},
+                {html:'Large',  value:'26px'},
+                {html:'XLarge', value:'32px'}
             ],
-            onSelect: function(item) { fontSize = item.value; lastText = ''; return item.html; }
+            onSelect: function (item) { fontSize = item.value; lastText = ''; return item.html; }
         });
 
         art.setting.add({
@@ -381,29 +424,26 @@ $(document).ready(function() {
                 {html:'Outline',     value:'outline'},
                 {html:'Raised',      value:'raised'}
             ],
-            onSelect: function(item) { edgeStyle = item.value; lastText = ''; return item.html; }
+            onSelect: function (item) { edgeStyle = item.value; lastText = ''; return item.html; }
         });
 
         art.setting.add({
-            html: 'Sub Background',
+            html: 'Sub BG',
             icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9c0-.46-.04-.92-.1-1.36-.98 1.37-2.58 2.26-4.4 2.26-2.98 0-5.4-2.42-5.4-5.4 0-1.81.89-3.42 2.26-4.4-.44-.06-.9-.1-1.36-.1z"/></svg>',
             width: 180, tooltip: 'Background',
             selector: [
-                {html:'None (0%)',  value:0},
-                {html:'Low (35%)',  value:0.35},
-                {html:'Med (65%)',  value:0.65, default:true},
-                {html:'High (90%)', value:0.90}
+                {html:'None',   value:0},
+                {html:'Low',    value:0.4},
+                {html:'Medium', value:0.65, default:true},
+                {html:'High',   value:0.9}
             ],
-            onSelect: function(item) { bgOpacity = item.value; lastText = ''; return item.html; }
+            onSelect: function (item) { bgOpacity = item.value; lastText = ''; return item.html; }
         });
 
-        art.on('destroy', function() {
-            video.removeEventListener('timeupdate', onTimeUpdate);
-            if (subBox.parentNode) subBox.parentNode.removeChild(subBox);
-        });
-        art.on('seek', function() { lastText = ''; });
+        art.on('destroy', stopPoll);
+        art.on('seek',    function () { lastText = ''; });
 
-        console.log('[Subtitle] Init. enabled=true, waiting for tracks.');
+        console.log('[Subtitle] System ready. HLS subtitleDisplay=false. Waiting for CUES_PARSED or textTrack scrape.');
     }
 
     // ── Quality setting injector (called once) ────────────────────────────────
