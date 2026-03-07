@@ -230,9 +230,9 @@ $(document).ready(function() {
         var enabled  = true;
         var fontSize = '18px';
         var edgeStyle= 'none';
-        var bgOpacity= 0.65;
-        var bgColor  = '0,0,0';
-        var subColor = '#ffffff';
+        var bgOpacity= 0;
+        var bgColor  = '0,0,0'; // fixed black
+        var subColor = '#ffffff'; // fixed white
         var cues     = [];   // [{start,end,text}]
         var pollTimer= null;
         var lastText = '';
@@ -354,7 +354,7 @@ $(document).ready(function() {
 
         // ── sub.wyzie.ru: single request → direct URL → fetch & parse ─────────────
         async function loadSubtitles() {
-            setStatus('Searching subtitles…', '#2af598');
+            // silent loading
             try {
                 // Build search URL — wyzie accepts TMDB id directly
                 var url = 'https://sub.wyzie.ru/search?id=' + state.mediaId
@@ -381,7 +381,7 @@ $(document).ready(function() {
                 console.log('[Subtitle] Using:', pick.display, pick.format, pick.source, pick.release||'');
 
                 // Fetch subtitle file through proxy (CORS bypass)
-                setStatus('Loading subtitles…', '#2af598');
+                // silent
                 var subText = await fetchVTT(pick.url);
                 var parsed  = parseSubtitle(subText);
                 if (!parsed.length) throw new Error('0 cues parsed');
@@ -453,50 +453,11 @@ $(document).ready(function() {
             onSelect: function(item) { edgeStyle=item.value; lastText=''; return item.html; }
         });
 
-        // Sub Font Color
-        art.setting.add({
-            html: 'Sub Color',
-            icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.86 0-7-3.14-7-7 0-1.9.76-3.63 2-4.9V17h2v-2h2v2h2v-2h2v2h1.89c.07-.32.11-.66.11-1 0-3.86-3.14-7-7-7z"/></svg>',
-            width: 180, tooltip: 'White',
-            selector: [
-                {html:'White',       value:'#ffffff', default:true},
-                {html:'Yellow',      value:'#ffff00'},
-                {html:'Cyan',        value:'#00ffff'},
-                {html:'Green',       value:'#00ff7f'},
-                {html:'Light Grey',  value:'#cccccc'}
-            ],
-            onSelect: function(item) { subColor=item.value; lastText=''; return item.html; }
-        });
+;
 
-        // Sub BG Color
-        art.setting.add({
-            html: 'Sub BG Color',
-            icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M16.56 8.94L7.62 0 6.21 1.41l2.38 2.38-5.15 5.15a1.49 1.49 0 000 2.12l5.5 5.5c.29.29.68.44 1.06.44s.77-.15 1.06-.44l5.5-5.5c.59-.58.59-1.53 0-2.12zM5.21 10L10 5.21 14.79 10H5.21zM19 11.5s-2 2.17-2 3.5c0 1.1.9 2 2 2s2-.9 2-2c0-1.33-2-3.5-2-3.5z"/></svg>',
-            width: 180, tooltip: 'Black',
-            selector: [
-                {html:'Black',       value:'0,0,0',       default:true},
-                {html:'Dark Grey',   value:'30,30,30'},
-                {html:'Dark Blue',   value:'0,0,80'},
-                {html:'Dark Red',    value:'80,0,0'},
-                {html:'None',        value:'none'}
-            ],
-            onSelect: function(item) { bgColor=item.value; lastText=''; return item.html; }
-        });
+;
 
-        // Sub BG Opacity
-        art.setting.add({
-            html: 'Sub BG Opacity',
-            icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9c0-.46-.04-.92-.1-1.36-.98 1.37-2.58 2.26-4.4 2.26-2.98 0-5.4-2.42-5.4-5.4 0-1.81.89-3.42 2.26-4.4-.44-.06-.9-.1-1.36-.1z"/></svg>',
-            width: 180, tooltip: 'Medium',
-            selector: [
-                {html:'None (0%)',   value:0},
-                {html:'Low (30%)',   value:0.3},
-                {html:'Medium (65%)',value:0.65, default:true},
-                {html:'High (85%)',  value:0.85},
-                {html:'Solid (100%)',value:1}
-            ],
-            onSelect: function(item) { bgOpacity=item.value; lastText=''; return item.html.split(' ')[0]; }
-        });
+;
 
         // Sub Elevation (bottom position)
         art.setting.add({
@@ -650,52 +611,87 @@ $(document).ready(function() {
                 load(context, cfg, callbacks) {
                     var origUrl = context.url, self = this;
                     self.stats.loading.start = performance.now();
-                    var attempt = 0;
-                    function tryFetch() {
-                        attempt++;
+
+                    var urlNoQ = origUrl.split('?')[0].toLowerCase();
+                    // Binary segment types that can hit the 6MB Lambda limit
+                    var isBinarySegment = context.responseType==='arraybuffer'
+                        || context.type==='initSegment'
+                        || urlNoQ.endsWith('.ts')  || urlNoQ.endsWith('.m4s')
+                        || urlNoQ.endsWith('.mp4') || urlNoQ.endsWith('.m4a')
+                        || urlNoQ.endsWith('.aac') || urlNoQ.endsWith('.mp3');
+                    // Keys/manifests must always go through proxy (need Referer/Origin headers)
+                    var mustProxy = context.type==='key' || urlNoQ.endsWith('.key')
+                        || urlNoQ.endsWith('.m3u8') || urlNoQ.endsWith('.txt');
+
+                    function succeed(data) {
+                        if (self._aborted) return;
+                        var now = performance.now();
+                        var len = data ? (data.byteLength !== undefined ? data.byteLength : data.length) : 0;
+                        self.stats.loaded=len; self.stats.total=len;
+                        self.stats.loading.first=now; self.stats.loading.end=now;
+                        callbacks.onSuccess({data:data, url:origUrl}, self.stats, context, null);
+                    }
+                    function fail(msg) {
+                        if (self._aborted) return;
+                        callbacks.onError({code:0, text:msg}, context, null, {});
+                    }
+
+                    // ── Direct fetch for binary segments (avoids 6MB Lambda limit) ──────
+                    // CDN segments generally don't enforce Referer on the bytes themselves.
+                    // If CORS fails we fall back to proxy automatically.
+                    if (isBinarySegment && !mustProxy) {
+                        fetch(origUrl, {
+                            method: 'GET',
+                            headers: streamHdrs,
+                            mode: 'cors'
+                        })
+                        .then(function(r) {
+                            if (!r.ok) throw new Error('direct ' + r.status);
+                            return r.arrayBuffer();
+                        })
+                        .then(function(buf) {
+                            succeed(buf);
+                        })
+                        .catch(function() {
+                            // CORS blocked or failed — fall through to proxy
+                            if (!self._aborted) proxyFetch(0);
+                        });
+                        return;
+                    }
+
+                    // ── Proxy fetch (manifests, keys, text, fallback) ─────────────────
+                    function proxyFetch(attempt) {
+                        if (self._aborted) return;
                         fetch(NETLIFY_PROXY, {
-                            method:'POST',
-                            headers:{'Content-Type':'application/json'},
+                            method: 'POST',
+                            headers: {'Content-Type':'application/json'},
                             body: JSON.stringify({url:origUrl, method:'GET', headers:streamHdrs})
                         })
                         .then(function(r) {
-                            if ((r.status===502||r.status===503) && attempt < 3) {
-                                return new Promise(function(res){setTimeout(res,400*attempt);}).then(tryFetch);
+                            if ((r.status===502||r.status===503) && attempt < 2) {
+                                return new Promise(function(res){setTimeout(res,400*(attempt+1));})
+                                    .then(function(){ proxyFetch(attempt+1); });
                             }
-                            if (!r.ok) throw new Error('Proxy '+r.status);
+                            if (!r.ok) throw new Error('proxy '+r.status);
                             return r.json();
                         })
                         .then(function(env) {
                             if (self._aborted) return;
-                            if (!env) throw new Error('Proxy returned null response');
-                            var now = performance.now();
-                            var urlNoQ = origUrl.split('?')[0].toLowerCase();
-                            var isBinary = context.responseType==='arraybuffer'
-                                || context.type==='key' || context.type==='initSegment'
-                                || urlNoQ.endsWith('.ts')  || urlNoQ.endsWith('.m4s')
-                                || urlNoQ.endsWith('.mp4') || urlNoQ.endsWith('.m4a')
-                                || urlNoQ.endsWith('.aac') || urlNoQ.endsWith('.mp3')
-                                || urlNoQ.endsWith('.key');
+                            if (!env) throw new Error('null proxy response');
+                            var isB = isBinarySegment || context.type==='key' || urlNoQ.endsWith('.key');
                             var data;
-                            if (isBinary && env.base64) {
+                            if (isB && env.base64) {
                                 try {
                                     var bin=atob(env.base64), bytes=new Uint8Array(bin.length);
                                     for(var i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
                                     data=bytes.buffer;
                                 } catch(e){ data=env.text||''; }
                             } else { data=env.text||''; }
-                            var len=(data&&data.byteLength!==undefined)?data.byteLength:(data?data.length:0);
-                            self.stats.loaded=len; self.stats.total=len;
-                            self.stats.loading.first=now; self.stats.loading.end=now;
-                            callbacks.onSuccess({data:data,url:origUrl},self.stats,context,null);
+                            succeed(data);
                         })
-                        .catch(function(err){
-                            if(self._aborted) return;
-                            console.error('[ProxyLoader]',err.message);
-                            callbacks.onError({code:0,text:err.message},context,null,{});
-                        });
+                        .catch(function(err){ fail(err.message); });
                     }
-                    tryFetch();
+                    proxyFetch(0);
                 }
             }
 
