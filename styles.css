@@ -199,15 +199,6 @@ body {
     align-items: center;
 }
 
-.preview-meta .rating {
-    margin-left: 10px;
-    color: #ccc;
-}
-
-.preview-meta .rating i {
-    margin-right: 5px;
-}
-
 .preview-description {
     font-size: 0.8rem;
     color: #ccc;
@@ -674,38 +665,21 @@ iframe {
     -ms-overflow-style: none;
 }
 
-.rating-badge, .episode-info {
+.episode-info {
     position: absolute;
-    background: rgba(0, 0, 0, 0.7);
     color: #ffffff;
     border-radius: 8px;
-    font-size: 15px;
     font-weight: bold;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 4px;
     z-index: 10;
-}
-
-.rating-badge {
-    top: 8px;
-    right: 8px;
-    width: 45px;
-    height: 26px;
-}
-
-.episode-info {
     bottom: 8px;
     left: 8px;
     font-size: 13px;
     padding: 3px 8px;
     background: rgba(0, 0, 0, 0.8);
-}
-
-.rating-badge i {
-    color: #ffd700;
-    font-size: 13px;
 }
 
 .watchlist-section, .history-section {
@@ -971,18 +945,8 @@ iframe {
         height: 157.5px;
     }
 
-    .rating-badge, .delete-badge, .episode-info {
+    .delete-badge, .episode-info {
         border-radius: 6px;
-    }
-
-    .rating-badge {
-        width: 32px !important;
-        height: 18px !important;
-        font-size: 10px !important;
-        gap: 2px !important;
-        top: 4px !important;
-        right: 4px !important;
-        padding: 2px !important;
     }
 
     .delete-badge {
@@ -996,10 +960,6 @@ iframe {
     .episode-info {
         font-size: 10px;
         padding: 2px 4px;
-    }
-
-    .rating-badge i {
-        font-size: 9px !important;
     }
 
     .delete-badge i {
