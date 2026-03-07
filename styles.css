@@ -732,6 +732,7 @@ iframe {
     transform: translateX(-50%) translateY(0);
 }
 
+
 @media (max-width: 767px) {
     .app-container {
         flex-direction: column;
@@ -797,20 +798,16 @@ iframe {
     }
 
     .main-title {
-        max-width: 180px;
+        max-width: 170px;
     }
-
+    
+    .slider-title {
+      font-size: 1.2rem;
+    }
+    
     .preview-section {
         height: 205px;
         border-radius: 20px;
-    }
-
-    .preview-background-overlay {
-        background: rgba(0, 0, 0, 0.5);
-    }
-    
-    .preview-overlay {
-        background: linear-gradient(to top, rgba(0, 0, 0, 1.0) 0%, transparent 75%);
     }
 
     .preview-content {
@@ -885,25 +882,32 @@ iframe {
     }
 
     .selector-container {
-        padding: 20px;
+        padding: 5px 10px;
         max-width: 100%;
+    }
+
+    .selector-title {
+        font-size: 0.9rem;
+        margin-bottom: 8px;
     }
 
     .server-buttons {
-        gap: 10px;
-        margin-bottom: 20px;
+        gap: 6px;
+        margin-bottom: 15px;
     }
 
     .watchlist-btn-container {
-        margin-bottom: 20px;
-        gap: 15px;
-        max-width: 100%;
+        margin: 0 auto;
+        margin-bottom: 15px;
+        gap: 10px;
+        max-width: 300px;
     }
 
     .watchlist-btn, .download-btn {
-        padding: 8px 20px;
-        font-size: 0.9rem;
-        max-width: 200px;
+        padding: 4px 16px;
+        font-size: 0.85rem;
+        flex: 1;
+        max-width: 160px;
     }
 
     .season-episode-selector {
@@ -929,75 +933,113 @@ iframe {
         font-size: 0.75rem;
     }
 
-    .poster-item {
-        width: 90px;
-        height: 135px;
-    }
-
-    .rating-badge, .delete-badge, .episode-info {
-        border-radius: 8px;
-    }
-
-    .rating-badge {
-        width: 45px;
-        height: 26px;
-        font-size: 15px;
-        top: 8px;
-        right: 8px;
-    }
-
-    .delete-badge {
-        width: 32px;
-        height: 32px;
-        font-size: 15px;
-        top: 8px;
-        left: 8px;
-    }
-
-    .episode-info {
-        font-size: 13px;
-        padding: 3px 8px;
-    }
-
-    .rating-badge i {
-        font-size: 13px;
-    }
-
-    .delete-badge i {
-        font-size: 15px;
-    }
-
-    .search-container {
+    .media-details {
         max-width: 100%;
-        gap: 15px;
+        padding: 15px;
     }
 
-    .search-input {
-        font-size: 1rem;
-        padding: 10px 40px 10px 15px;
+    .media-details-poster {
+        margin-right: 20px;
+        width: 105px;
+        height: 157.5px;
     }
 
-    .search-icon {
+    .media-details-container {
+        flex-wrap: wrap;
+        justify-content: flex-start;
+        max-width: 100%;
+    }
+
+    .media-details-content {
+        max-height: 166.5px;
+        width: 100%;
+    }
+
+    .media-details-content .title {
         font-size: 1.2rem;
     }
 
-    .search-filter {
+    .media-details-content .year-genre, .media-details-content .plot {
+        font-size: 0.75rem;
+    }
+
+    .poster-item {
+        width: 105px;
+        height: 157.5px;
+    }
+
+    .rating-badge, .delete-badge, .episode-info {
+        border-radius: 6px;
+    }
+
+    .rating-badge {
+        width: 38px;
+        height: 20px;
+        font-size: 11px;
+        gap: 2px;
+        top: 5px;
+        right: 5px;
+    }
+
+    .delete-badge {
+        width: 24px;
+        height: 24px;
+        font-size: 12px;
+        top: 5px;
+        left: 5px;
+    }
+
+    .episode-info {
+        font-size: 10px;
+        padding: 2px 4px;
+    }
+
+    .rating-badge i {
+        font-size: 10px;
+    }
+
+    .delete-badge i {
+        font-size: 12px;
+    }
+
+    .search-container {
+        max-width: 600px;
+        margin: 0 auto 20px;
+        gap: 10px;
+    }
+
+    .search-input {
+        font-size: 0.8rem;
+        padding: 8px 35px 8px 12px;
+        width: 100%;
+    }
+
+    .search-icon {
         font-size: 1rem;
-        padding: 10px;
-        max-width: 100px;
+        right: 15px;
+    }
+
+    .search-filter {
+        font-size: 0.9rem;
+        padding: 8px;
+        width: 100%;
+        max-width: 80px;
     }
 
     .search-results, .search-trending {
-        justify-content: center;
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-start;
+        max-width: 100%;
     }
 
     .search-results .poster-item, .search-trending .poster-item {
-        width: 90px;
-        height: 135px;
+        width: calc((100% - 20px) / 3);
+        height: calc((100% - 20px) / 3 * 1.5);
     }
 
     .watchlist-section, .history-section {
-        margin-bottom: 40px;
+        margin-bottom: 30px;
     }
 }
 
