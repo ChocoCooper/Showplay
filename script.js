@@ -222,25 +222,19 @@ $(document).ready(function() {
     }
 
     // ── Subtitle system ──────────────────────────────────────────────────────────
-    // Approach: HLS.js SUBTITLE_TRACKS_UPDATED activates download,
-    // CUES_PARSED gives us VTTCue objects → stored in our own array.
-    // setInterval polls video.currentTime → renders in overlay div.
-    // Zero dependency on browser TextTrack API for display.
+    // Stream has NO embedded subtitle tracks. Auto-fetch from OpenSubtitles API.
+    // Parse VTT ourselves. Render with setInterval + video.currentTime overlay.
     function injectSubtitleSetting(art, hls) {
-        if (!art || !art.video || !hls) return;
-        var video = art.video;
-
-        // ── Settings state ────────────────────────────────────────────────────
-        var enabled   = true;
-        var fontSize  = '20px';
-        var edgeStyle = 'none';
-        var bgOpacity = 0.65;
-        var lastText  = '';
-
-        // ── Our own cue store (filled by CUES_PARSED) ─────────────────────────
-        // Array of {start:Number, end:Number, text:String}
-        var cues = [];
-        var pollTimer = null;
+        if (!art || !art.video) return;
+        var video    = art.video;
+        var enabled  = true;
+        var fontSize = '20px';
+        var edgeStyle= 'none';
+        var bgOpacity= 0.65;
+        var cues     = [];   // [{start,end,text}]
+        var pollTimer= null;
+        var lastText = '';
+        var loaded   = false;
 
         // ── Overlay ───────────────────────────────────────────────────────────
         var box = document.createElement('div');
@@ -248,7 +242,6 @@ $(document).ready(function() {
             + 'text-align:center;z-index:9999;pointer-events:none;padding:0 10px;';
         art.template.$player.appendChild(box);
 
-        // Hide every competing subtitle renderer
         if (!document.getElementById('sp-sub-css')) {
             var st = document.createElement('style');
             st.id  = 'sp-sub-css';
@@ -257,132 +250,152 @@ $(document).ready(function() {
             document.head.appendChild(st);
         }
 
-        // ── Render ────────────────────────────────────────────────────────────
+        // ── Render one cue ────────────────────────────────────────────────────
         function show(text) {
-            text = (text || '').replace(/<[^>]+>/g, '').trim();
+            text = (text||'').replace(/<[^>]+>/g,'').replace(/&amp;/g,'&')
+                .replace(/&lt;/g,'<').replace(/&gt;/g,'>').trim();
             if (text === lastText) return;
             lastText = text;
             box.innerHTML = '';
             if (!text || !enabled) return;
             var shadow =
-                edgeStyle === 'dropshadow' ? '2px 2px 4px #000' :
-                edgeStyle === 'outline'    ? '-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000,1px 1px 0 #000' :
-                edgeStyle === 'raised'     ? '1px 1px 2px rgba(0,0,0,.9)' : 'none';
+                edgeStyle==='dropshadow' ? '2px 2px 4px #000' :
+                edgeStyle==='outline'    ? '-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000,1px 1px 0 #000' :
+                edgeStyle==='raised'     ? '1px 1px 2px rgba(0,0,0,.9)' : 'none';
             var sp = document.createElement('span');
             sp.textContent = text;
-            sp.style.cssText = 'display:inline-block;'
-                + 'background:rgba(0,0,0,' + bgOpacity + ');'
-                + 'color:#fff;font-size:' + fontSize + ';'
-                + 'font-family:Arial,sans-serif;font-weight:700;'
+            sp.style.cssText = 'display:inline-block;background:rgba(0,0,0,'+bgOpacity+');'
+                + 'color:#fff;font-size:'+fontSize+';font-family:Arial,sans-serif;font-weight:700;'
                 + 'line-height:1.6;padding:2px 10px;border-radius:3px;'
                 + 'white-space:pre-line;max-width:98%;word-break:break-word;'
-                + 'text-shadow:' + shadow + ';';
+                + 'text-shadow:'+shadow+';';
             box.appendChild(sp);
         }
 
-        // ── Poll loop: find active cue by currentTime ─────────────────────────
+        // ── Poll loop ─────────────────────────────────────────────────────────
         function startPoll() {
             if (pollTimer) return;
-            pollTimer = setInterval(function () {
-                if (!enabled || !cues.length) { show(''); return; }
+            pollTimer = setInterval(function() {
+                if (!enabled||!cues.length) { show(''); return; }
                 var t = video.currentTime;
-                var found = '';
-                // Linear scan (cues are sorted by start time)
-                for (var i = 0; i < cues.length; i++) {
-                    if (cues[i].start <= t && cues[i].end > t) {
-                        found = cues[i].text; break;
-                    }
-                    if (cues[i].start > t + 1) break; // past current position
+                var txt = '';
+                for (var i=0; i<cues.length; i++) {
+                    if (cues[i].start <= t && cues[i].end > t) { txt = cues[i].text; break; }
+                    if (cues[i].start > t+1) break;
                 }
-                show(found);
+                show(txt);
             }, 150);
         }
         function stopPoll() {
-            if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-            show('');
+            clearInterval(pollTimer); pollTimer = null; show('');
         }
 
-        // ── HLS.js events ─────────────────────────────────────────────────────
-        hls.subtitleDisplay = false; // prevent HLS.js adding its own <track>
+        // ── Time string → seconds (handles both VTT 00:00:00.000 and SRT 00:00:00,000) ─
+        function toSec(ts) {
+            ts = ts.trim().replace(',','.');
+            var p = ts.split(':');
+            if (p.length===3) return +p[0]*3600 + +p[1]*60 + +p[2];
+            if (p.length===2) return +p[0]*60 + +p[1];
+            return +p[0];
+        }
 
-        hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, function (ev, data) {
-            var tracks = data.subtitleTracks || [];
-            console.log('[Subtitle] HLS subtitle tracks:', tracks.length,
-                JSON.stringify(tracks.map(function(t){ return {name:t.name,lang:t.lang}; })));
-            if (tracks.length > 0) {
-                hls.subtitleTrack = 0; // activate → triggers fragment download → CUES_PARSED
-                console.log('[Subtitle] Activated subtitleTrack=0');
-            }
-        });
-
-        hls.on(Hls.Events.CUES_PARSED, function (ev, data) {
-            if (!data || !data.cues) return;
-            console.log('[Subtitle] CUES_PARSED type=' + data.type + ' count=' + data.cues.length);
-            var added = 0;
-            data.cues.forEach(function (cue) {
-                var text = '';
-                try {
-                    text = typeof cue.text === 'string' ? cue.text
-                         : (cue.getCueAsHTML ? cue.getCueAsHTML().textContent : '');
-                } catch(e) { text = cue.text || ''; }
-                text = text.replace(/<[^>]+>/g, '').trim();
-                if (!text) return;
-                // Dedup
-                var exists = false;
-                for (var i = 0; i < cues.length; i++) {
-                    if (Math.abs(cues[i].start - cue.startTime) < 0.05 && cues[i].text === text) {
-                        exists = true; break;
-                    }
+        // ── Parse VTT or SRT text into [{start,end,text}] ─────────────────────
+        function parseSubtitle(txt) {
+            var result = [];
+            var lines  = txt.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n');
+            for (var i=0; i<lines.length; i++) {
+                var line = lines[i].trim();
+                if (line.indexOf(' --> ') === -1) continue;
+                var arrow = line.split(' --> ');
+                var start = toSec(arrow[0]);
+                var end   = toSec(arrow[1].split(' ')[0]);
+                var textLines = [];
+                while (++i < lines.length) {
+                    var l = lines[i].trim();
+                    if (!l) break;
+                    // Strip SRT/VTT tags and markup
+                    l = l.replace(/<[^>]+>/g,'').replace(/\{[^}]+\}/g,'').trim();
+                    if (l) textLines.push(l);
                 }
-                if (!exists) { cues.push({start: cue.startTime, end: cue.endTime, text: text}); added++; }
-            });
-            if (added > 0) {
-                cues.sort(function (a, b) { return a.start - b.start; });
-                console.log('[Subtitle] Total cues stored:', cues.length, '| sample:', cues[0] ? JSON.stringify(cues[0]) : 'none');
-                startPoll();
+                var text = textLines.join('\n');
+                if (text && end > start) result.push({start:start, end:end, text:text});
             }
-        });
-
-        // ── Fallback: scrape all textTracks of every kind ─────────────────────
-        // Some streams embed VTT directly in the HLS stream as a subtitle/captions track
-        // and HLS.js doesn't fire SUBTITLE_TRACKS_UPDATED for them.
-        function scrapeTextTracks() {
-            var tracks = Array.from(video.textTracks || []);
-            console.log('[Subtitle] textTracks scrape:', tracks.length,
-                tracks.map(function(t){ return t.kind+'/'+t.label+'/cues:'+(t.cues?t.cues.length:0); }));
-            tracks.forEach(function (track) {
-                if (track.kind === 'metadata') return; // skip ID3
-                track.mode = 'hidden'; // load cues without browser rendering
-                var harvest = function () {
-                    if (!track.cues || !track.cues.length) return;
-                    var added = 0;
-                    Array.from(track.cues).forEach(function (cue) {
-                        var text = '';
-                        try { text = cue.getCueAsHTML ? cue.getCueAsHTML().textContent : (cue.text||''); }
-                        catch(e) { text = cue.text || ''; }
-                        text = text.replace(/<[^>]+>/g,'').trim();
-                        if (!text) return;
-                        var exists = false;
-                        for (var i=0;i<cues.length;i++) {
-                            if (Math.abs(cues[i].start-cue.startTime)<0.05&&cues[i].text===text){exists=true;break;}
-                        }
-                        if (!exists){cues.push({start:cue.startTime,end:cue.endTime,text:text});added++;}
-                    });
-                    if (added > 0) {
-                        cues.sort(function(a,b){return a.start-b.start;});
-                        console.log('[Subtitle] Scraped +'+added+' from textTrack, total:', cues.length);
-                        startPoll();
-                    }
-                };
-                track.addEventListener('cuechange', harvest);
-                var n = 0;
-                var p = setInterval(function(){ harvest(); if(++n>30||cues.length>0) clearInterval(p); }, 500);
-            });
+            result.sort(function(a,b){return a.start-b.start;});
+            return result;
         }
-        // Try immediately and after HLS settles
-        setTimeout(scrapeTextTracks, 500);
-        setTimeout(scrapeTextTracks, 2500);
-        setTimeout(scrapeTextTracks, 6000);
+
+        // ── Status bubble shown inside video player ───────────────────────────
+        function setStatus(msg, color) {
+            box.innerHTML = '';
+            if (!msg) return;
+            var sp = document.createElement('span');
+            sp.textContent = msg;
+            sp.style.cssText = 'display:inline-block;background:rgba(0,0,0,.75);'
+                + 'color:'+(color||'#aaa')+';font-size:13px;font-family:Arial,sans-serif;'
+                + 'padding:3px 10px;border-radius:3px;';
+            box.appendChild(sp);
+        }
+
+        // ── Fetch subtitle file through proxy (CORS bypass) ───────────────────
+        async function fetchVTT(url) {
+            var res = await fetch(NETLIFY_PROXY, {
+                method:'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({url:url, method:'GET', headers:{}})
+            });
+            if (!res.ok) throw new Error('proxy '+res.status);
+            var env = await res.json();
+            if (!env || !env.text) throw new Error('empty proxy response');
+            return env.text;
+        }
+
+        // ── sub.wyzie.ru: single request → direct URL → fetch & parse ─────────────
+        async function loadSubtitles() {
+            setStatus('Searching subtitles…', '#2af598');
+            try {
+                // Build search URL — wyzie accepts TMDB id directly
+                var url = 'https://sub.wyzie.ru/search?id=' + state.mediaId
+                        + '&language=en&source=all';
+                if (state.mediaType === 'tv' && state.season && state.episode)
+                    url += '&season=' + state.season + '&episode=' + state.episode;
+
+                console.log('[Subtitle] Wyzie search:', url);
+                var r = await fetch(url);
+                if (!r.ok) throw new Error('wyzie HTTP ' + r.status);
+                var results = await r.json();
+
+                if (!Array.isArray(results) || !results.length)
+                    throw new Error('no results from wyzie');
+
+                console.log('[Subtitle] Wyzie results:', results.length,
+                    results.slice(0,3).map(function(x){ return x.display+'/'+x.format+'/'+x.source; }));
+
+                // Pick best: non-HI first, prefer srt/vtt, then first result
+                var pick = results.find(function(x){ return !x.isHearingImpaired; }) || results[0];
+                console.log('[Subtitle] Using:', pick.display, pick.format, pick.source, pick.release||'');
+
+                // Fetch subtitle file through proxy (CORS bypass)
+                setStatus('Loading subtitles…', '#2af598');
+                var subText = await fetchVTT(pick.url);
+                var parsed  = parseSubtitle(subText);
+                if (!parsed.length) throw new Error('0 cues parsed');
+
+                cues   = parsed;
+                loaded = true;
+                setStatus('');
+                startPoll();
+                console.log('[Subtitle] Loaded', cues.length, 'cues. Sample:', JSON.stringify(cues[0]));
+
+            } catch(err) {
+                console.warn('[Subtitle] Failed:', err.message);
+                setStatus('No subtitles found', '#f66');
+                setTimeout(function(){ setStatus(''); }, 3000);
+            }
+        }
+
+                // Auto-load subtitles when player is fully ready
+        if (state.mediaId) {
+            setTimeout(loadSubtitles, 500);
+        }
 
         // ── Settings panel ────────────────────────────────────────────────────
         art.setting.add({
@@ -390,14 +403,16 @@ $(document).ready(function() {
             icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-8 11H5v-2h7v2zm7 0h-5v-2h5v2zm-7-4H5V9h7v2zm7 0h-5V9h5v2z"/></svg>',
             width: 160, tooltip: 'Subtitles',
             selector: [
-                {html:'Off',     value:'off'},
-                {html:'Track 1', value:'on', default:true}
+                {html:'Off',      value:'off'},
+                {html:'English',  value:'on', default:true},
+                {html:'Reload',   value:'reload'}
             ],
-            onSelect: function (item) {
-                if (item.value === 'off') { enabled = false; show(''); stopPoll(); return 'Off'; }
+            onSelect: function(item) {
+                if (item.value === 'off')    { enabled=false; stopPoll(); show(''); return 'Off'; }
+                if (item.value === 'reload') { cues=[]; loaded=false; loadSubtitles(); return 'English'; }
                 enabled = true;
-                if (cues.length) startPoll();
-                return 'Track 1';
+                if (loaded) startPoll(); else loadSubtitles();
+                return 'English';
             }
         });
 
@@ -411,7 +426,7 @@ $(document).ready(function() {
                 {html:'Large',  value:'26px'},
                 {html:'XLarge', value:'32px'}
             ],
-            onSelect: function (item) { fontSize = item.value; lastText = ''; return item.html; }
+            onSelect: function(item) { fontSize=item.value; lastText=''; return item.html; }
         });
 
         art.setting.add({
@@ -424,7 +439,7 @@ $(document).ready(function() {
                 {html:'Outline',     value:'outline'},
                 {html:'Raised',      value:'raised'}
             ],
-            onSelect: function (item) { edgeStyle = item.value; lastText = ''; return item.html; }
+            onSelect: function(item) { edgeStyle=item.value; lastText=''; return item.html; }
         });
 
         art.setting.add({
@@ -437,13 +452,12 @@ $(document).ready(function() {
                 {html:'Medium', value:0.65, default:true},
                 {html:'High',   value:0.9}
             ],
-            onSelect: function (item) { bgOpacity = item.value; lastText = ''; return item.html; }
+            onSelect: function(item) { bgOpacity=item.value; lastText=''; return item.html; }
         });
 
         art.on('destroy', stopPoll);
-        art.on('seek',    function () { lastText = ''; });
-
-        console.log('[Subtitle] System ready. HLS subtitleDisplay=false. Waiting for CUES_PARSED or textTrack scrape.');
+        art.on('seek',    function() { lastText=''; });
+        console.log('[Subtitle] Auto-fetching from OpenSubtitles…');
     }
 
     // ── Quality setting injector (called once) ────────────────────────────────
