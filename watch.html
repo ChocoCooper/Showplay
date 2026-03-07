@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
-    <base href="/" />
+
     <title>ShowPlay - Watch</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" integrity="sha512-z3gLpd7yknf1YoNbCzqRKc4qyor8gaKU1qmn+CShxbuBusANI9QpRohGBreCFkKxLhei6S9CQXFEbbKuqLg0DA==" crossorigin="anonymous">
@@ -56,15 +56,15 @@
                         <div class="selector-title">Seasons & Episodes</div>
                         <div class="season-episode-accordion" id="seasonEpisodeAccordion"></div>
                     </div>
-                    <div class="media-details bg-[#1a1a1a] rounded-xl p-5 md:p-6 mt-6 shadow-xl border border-white/5" id="mediaDetails" style="display: none;">
-                        <div class="media-details-container flex flex-col md:flex-row gap-6">
-                            <div class="media-details-poster flex-shrink-0 w-[140px] md:w-[180px] relative rounded-xl overflow-hidden shadow-lg">
+                    <div class="media-details bg-[#1a1a1a] rounded-xl p-4 md:p-6 mt-6 shadow-xl border border-white/5" id="mediaDetails" style="display: none;">
+                        <div class="media-details-container flex flex-row gap-4 md:gap-6">
+                            <div class="media-details-poster flex-shrink-0 w-[110px] sm:w-[140px] md:w-[180px] relative rounded-xl overflow-hidden shadow-lg h-fit">
                                 <img src="" alt="Media Poster" id="mediaPoster" class="w-full h-auto object-cover transition-opacity duration-500 opacity-0">
                             </div>
-                            <div class="media-details-content flex-1">
-                                <h3 id="mediaDetailsTitle" class="title text-2xl md:text-3xl font-bold text-white mb-2"></h3>
-                                <p id="mediaYearGenre" class="year-genre text-gray-300 font-medium mb-4 text-base"></p>
-                                <p id="mediaPlot" class="plot text-gray-300 leading-relaxed text-sm md:text-base"></p>
+                            <div class="media-details-content flex-1 flex flex-col justify-start">
+                                <h3 id="mediaDetailsTitle" class="title text-lg sm:text-2xl md:text-3xl font-bold text-white mb-2 leading-tight"></h3>
+                                <p id="mediaYearGenre" class="year-genre text-gray-400 font-medium mb-2 text-xs sm:text-sm md:text-base"></p>
+                                <p id="mediaPlot" class="plot text-gray-300 leading-relaxed text-xs sm:text-sm md:text-base"></p>
                             </div>
                         </div>
                     </div>
