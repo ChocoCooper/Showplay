@@ -209,22 +209,46 @@ $(document).ready(function() {
 
     function loadScript(src) {
         return new Promise(function(res, rej) {
-            if (document.querySelector('script[src="'+src+'"]') && window.Artplayer) { res(); return; }
+            if (window.Artplayer) { res(); return; }
             var s = document.createElement('script');
-            s.src = src;
-            s.onload = res;
-            s.onerror = rej;
+            s.src = src; s.onload = res; s.onerror = rej;
             document.head.appendChild(s);
         });
     }
-
     async function loadArtplayer() {
         if (window.Artplayer) return;
-        try {
-            await loadScript('https://cdnjs.cloudflare.com/ajax/libs/artplayer/5.2.1/artplayer.js');
-        } catch(e) {
-            await loadScript('https://cdn.jsdelivr.net/npm/artplayer@5.2.1/dist/artplayer.js');
-        }
+        try { await loadScript('https://cdnjs.cloudflare.com/ajax/libs/artplayer/5.2.1/artplayer.js'); }
+        catch(e) { await loadScript('https://cdn.jsdelivr.net/npm/artplayer@5.2.1/dist/artplayer.js'); }
+    }
+
+    // ── Quality setting injector (called once) ────────────────────────────────
+    function injectQualitySetting(art, hls, levels) {
+        var sorted = levels.map(function(lv,i){ return {idx:i, h:lv.height||0, bw:lv.bitrate||0}; })
+            .sort(function(a,b){ return b.h - a.h; });
+        var options = [{default:true, html:'Auto', value:-1}]
+            .concat(sorted.map(function(lv){
+                return { html: lv.h ? lv.h+'p' : Math.round(lv.bw/1000)+'k', value: lv.idx };
+            }));
+        art.setting.add({
+            html: 'Quality',
+            icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14H8v-2h4v2zm4-4H8v-2h8v2zm0-4H8V7h8v2z"/></svg>',
+            width: 150,
+            tooltip: 'Quality',
+            selector: options,
+            onSelect: function(item) {
+                var idx = item.value;
+                hls.currentLevel = idx;
+                hls.nextLevel    = idx;
+                hls.loadLevel    = idx;
+                console.log('[Quality] ->', item.html, 'HLS level', idx);
+                return item.html;
+            }
+        });
+        hls.on(Hls.Events.LEVEL_SWITCHED, function(ev, data) {
+            var lv = levels[data.level];
+            if (lv) console.log('[HLS] Level switched to', data.level, lv.height+'p');
+        });
+        console.log('[Quality] Injected', options.length, 'options:', options.map(function(o){return o.html;}));
     }
 
     // ── Embed Video ───────────────────────────────────────────────────────────
@@ -234,23 +258,39 @@ $(document).ready(function() {
 
         var wrapper = selectors.videoFrame.parent();
 
-        // Destroy old player
-        if (currentArt) { try { currentArt.destroy(true); } catch(e) {} currentArt = null; }
+        // Destroy previous Artplayer instance cleanly
+        if (currentArt) {
+            try { currentArt.destroy(true); } catch(e) {}
+            currentArt = null;
+        }
+        // Clear wrapper but keep the hidden videoFrame iframe
         wrapper.find('*').not(selectors.videoFrame).remove();
         selectors.videoFrame.hide();
 
-        // Spinner
-        var spinHtml = '<div id="sp-loading" style="display:flex;flex-direction:column;align-items:center;justify-content:center;'
-            + 'background:#000;border-radius:10px;aspect-ratio:16/9;min-height:220px;gap:14px;color:#aaa;font-size:14px;">'
-            + '<div style="width:46px;height:46px;border:4px solid rgba(255,255,255,.1);border-top-color:#2af598;'
-            + 'border-radius:50%;animation:sp-spin .8s linear infinite;"></div><p>Loading stream\u2026</p></div>';
-        if (!document.getElementById('sp-spin-css')) {
-            var ss = document.createElement('style');
-            ss.id = 'sp-spin-css';
-            ss.textContent = '@keyframes sp-spin{to{transform:rotate(360deg)}}';
-            document.head.appendChild(ss);
+        // Inject global styles once
+        if (!document.getElementById('sp-art-css')) {
+            var css = document.createElement('style');
+            css.id = 'sp-art-css';
+            css.textContent = [
+                '@keyframes sp-spin{to{transform:rotate(360deg)}}',
+                /* Force Artplayer to fill its container */
+                '.sp-art-wrap{width:100%;aspect-ratio:16/9;min-height:200px;background:#000;border-radius:12px;overflow:hidden;display:block;}',
+                '.sp-art-wrap .art-video-player{width:100%!important;height:100%!important;}',
+                '.sp-art-wrap .art-video{width:100%!important;height:100%!important;object-fit:contain!important;}',
+                '.sp-art-wrap .art-subtitle p{background:rgba(0,0,0,.65);padding:2px 10px;border-radius:3px;font-size:18px!important;}',
+            ].join('');
+            document.head.appendChild(css);
         }
-        wrapper.css('position','relative').append(spinHtml);
+
+        // Spinner while resolving stream
+        var spinDiv = document.createElement('div');
+        spinDiv.id = 'sp-loading';
+        spinDiv.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;'
+            + 'background:#000;border-radius:12px;aspect-ratio:16/9;min-height:200px;gap:14px;color:#aaa;font-size:14px;';
+        spinDiv.innerHTML = '<div style="width:46px;height:46px;border:4px solid rgba(255,255,255,.1);'
+            + 'border-top-color:#2af598;border-radius:50%;animation:sp-spin .8s linear infinite;"></div>'
+            + '<p>Loading stream\u2026</p>';
+        wrapper.css('position','relative').append(spinDiv);
 
         var params = {
             tmdbId: state.mediaId, mediaType: state.mediaType,
@@ -265,13 +305,12 @@ $(document).ready(function() {
             console.log('[embedVideo] stream:', stream.url);
             console.log('[embedVideo] headers:', JSON.stringify(stream.headers || {}));
 
-            // Remove spinner
             wrapper.find('#sp-loading').remove();
 
-            // Mount div for Artplayer
-            var artDiv = document.createElement('div');
-            artDiv.style.cssText = 'width:100%;aspect-ratio:16/9;min-height:220px;background:#000;border-radius:10px;overflow:hidden;';
-            wrapper.append(artDiv);
+            // Artplayer mount container
+            var artWrap = document.createElement('div');
+            artWrap.className = 'sp-art-wrap';
+            wrapper.append(artWrap);
 
             var streamHdrs = stream.headers || {};
 
@@ -292,132 +331,145 @@ $(document).ready(function() {
                 load(context, cfg, callbacks) {
                     var origUrl = context.url, self = this;
                     self.stats.loading.start = performance.now();
-                    fetch(NETLIFY_PROXY, {
-                        method:'POST',
-                        headers:{'Content-Type':'application/json'},
-                        body: JSON.stringify({url:origUrl, method:'GET', headers:streamHdrs})
-                    })
-                    .then(function(r){ if(!r.ok) throw new Error('Proxy HTTP '+r.status); return r.json(); })
-                    .then(function(env) {
-                        if (self._aborted) return;
-                        var now = performance.now();
-                        var urlNoQ = origUrl.split('?')[0].toLowerCase();
-                        var isBinary = context.responseType==='arraybuffer'
-                            || context.type==='key' || context.type==='initSegment'
-                            || urlNoQ.endsWith('.ts')  || urlNoQ.endsWith('.m4s')
-                            || urlNoQ.endsWith('.mp4') || urlNoQ.endsWith('.m4a')
-                            || urlNoQ.endsWith('.aac') || urlNoQ.endsWith('.mp3')
-                            || urlNoQ.endsWith('.key');
-                        var data;
-                        if (isBinary && env.base64) {
-                            try {
-                                var bin = atob(env.base64), bytes = new Uint8Array(bin.length);
-                                for (var i=0; i<bin.length; i++) bytes[i] = bin.charCodeAt(i);
-                                data = bytes.buffer;
-                            } catch(e){ data = env.text||''; }
-                        } else { data = env.text||''; }
-                        var len = (data && data.byteLength!==undefined) ? data.byteLength : (data ? data.length : 0);
-                        self.stats.loaded=len; self.stats.total=len;
-                        self.stats.loading.first=now; self.stats.loading.end=now;
-                        callbacks.onSuccess({data:data, url:origUrl}, self.stats, context, null);
-                    })
-                    .catch(function(err){
-                        if(self._aborted) return;
-                        console.error('[ProxyLoader]', err.message);
-                        callbacks.onError({code:0, text:err.message}, context, null, {});
-                    });
+                    var attempt = 0;
+                    function tryFetch() {
+                        attempt++;
+                        fetch(NETLIFY_PROXY, {
+                            method:'POST',
+                            headers:{'Content-Type':'application/json'},
+                            body: JSON.stringify({url:origUrl, method:'GET', headers:streamHdrs})
+                        })
+                        .then(function(r) {
+                            if ((r.status===502||r.status===503) && attempt < 3) {
+                                return new Promise(function(res){setTimeout(res,400*attempt);}).then(tryFetch);
+                            }
+                            if (!r.ok) throw new Error('Proxy '+r.status);
+                            return r.json();
+                        })
+                        .then(function(env) {
+                            if (self._aborted) return;
+                            var now = performance.now();
+                            var urlNoQ = origUrl.split('?')[0].toLowerCase();
+                            var isBinary = context.responseType==='arraybuffer'
+                                || context.type==='key' || context.type==='initSegment'
+                                || urlNoQ.endsWith('.ts')  || urlNoQ.endsWith('.m4s')
+                                || urlNoQ.endsWith('.mp4') || urlNoQ.endsWith('.m4a')
+                                || urlNoQ.endsWith('.aac') || urlNoQ.endsWith('.mp3')
+                                || urlNoQ.endsWith('.key');
+                            var data;
+                            if (isBinary && env.base64) {
+                                try {
+                                    var bin=atob(env.base64), bytes=new Uint8Array(bin.length);
+                                    for(var i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+                                    data=bytes.buffer;
+                                } catch(e){ data=env.text||''; }
+                            } else { data=env.text||''; }
+                            var len=(data&&data.byteLength!==undefined)?data.byteLength:(data?data.length:0);
+                            self.stats.loaded=len; self.stats.total=len;
+                            self.stats.loading.first=now; self.stats.loading.end=now;
+                            callbacks.onSuccess({data:data,url:origUrl},self.stats,context,null);
+                        })
+                        .catch(function(err){
+                            if(self._aborted) return;
+                            console.error('[ProxyLoader]',err.message);
+                            callbacks.onError({code:0,text:err.message},context,null,{});
+                        });
+                    }
+                    tryFetch();
                 }
             }
 
-            // ── HLS instance (created once, attached inside customType) ────────
+            // ── HLS instance ──────────────────────────────────────────────────
             var hls = new Hls({
-                maxBufferLength: 60,
-                maxMaxBufferLength: 120,
-                startLevel: -1,
-                abrEwmaDefaultEstimate: 4000000,
-                loader: ProxyLoader
+                maxBufferLength:60, maxMaxBufferLength:120,
+                startLevel:-1, abrEwmaDefaultEstimate:4000000,
+                loader:ProxyLoader
             });
 
-            // Track levels after manifest parsed for quality menu
+            // Guard: inject quality only once
+            var qualityInjected = false;
             var hlsLevels = [];
 
             hls.on(Hls.Events.MANIFEST_PARSED, function(ev, data) {
                 hlsLevels = data.levels;
-                console.log('[HLS] levels:', hlsLevels.length, hlsLevels.map(function(l){ return l.height+'p'; }));
-
-                // Inject quality options into Artplayer setting after player is ready
-                if (currentArt && hlsLevels.length > 1) {
+                console.log('[HLS] levels:', hlsLevels.length);
+                if (currentArt && !qualityInjected && hlsLevels.length > 1) {
+                    qualityInjected = true;
                     injectQualitySetting(currentArt, hls, hlsLevels);
                 }
             });
 
             hls.on(Hls.Events.ERROR, function(ev, d) {
                 if (d.fatal) {
-                    console.error('[HLS fatal]', d.type, d.details);
-                    wrapper.find(artDiv).remove();
-                    wrapper.append('<div style="aspect-ratio:16/9;display:flex;align-items:center;justify-content:center;'
-                        +'background:#0a0a0a;border-radius:10px;color:#ff6b6b;font-size:14px;gap:10px;flex-direction:column;">'
-                        +'<i class="fas fa-exclamation-triangle" style="font-size:28px"></i><p>'+d.details+'</p></div>');
+                    console.error('[HLS fatal]', d.details);
+                    wrapper.find('.sp-art-wrap').html(
+                        '<div style="height:100%;display:flex;align-items:center;justify-content:center;'
+                        +'flex-direction:column;gap:12px;color:#ff6b6b;">'
+                        +'<i class="fas fa-exclamation-triangle" style="font-size:28px"></i>'
+                        +'<p>'+d.details+'</p></div>'
+                    );
                 }
             });
 
-            // ── Artplayer instance ────────────────────────────────────────────
-            // CRITICAL: customType receives the video element AFTER Artplayer mounts it.
-            // We attach HLS here — this is the only correct place.
+            // ── Artplayer ─────────────────────────────────────────────────────
+            // IMPORTANT: customType is the ONLY place to call hls.loadSource/attachMedia
+            // because artplayer creates the <video> element asynchronously.
             var art = new Artplayer({
-                container: artDiv,
-                url: stream.url,
-                type: 'm3u8',
-                volume: 1,
-                autoplay: true,
-                pip: true,
-                autoSize: false,
-                autoMini: false,
-                screenshot: false,
-                setting: true,
-                playbackRate: true,
-                aspectRatio: true,
-                fullscreen: true,
-                fullscreenWeb: true,
+                container:      artWrap,
+                url:            stream.url,
+                type:           'm3u8',
+                volume:         1,
+                autoplay:       true,
+                pip:            true,
+                autoSize:       false,
+                screenshot:     false,
+                setting:        true,
+                playbackRate:   true,
+                aspectRatio:    true,
+                fullscreen:     true,
+                fullscreenWeb:  true,
                 subtitleOffset: true,
-                miniProgressBar: true,
-                mutex: true,
-                backdrop: true,
-                playsInline: true,
-                autoPlayback: true,
-                theme: '#2af598',
-                lang: 'en',
-                hotkey: true,
-                moreVideoAttr: { crossOrigin: 'anonymous' },
+                miniProgressBar:true,
+                mutex:          true,
+                playsInline:    true,
+                autoPlayback:   true,
+                theme:          '#2af598',
+                lang:           'en',
+                hotkey:         true,
+                moreVideoAttr: { crossOrigin:'anonymous', playsInline:true },
                 subtitle: {
                     style: {
-                        color: '#fff',
-                        fontSize: '20px',
-                        fontFamily: 'Arial, sans-serif',
-                        textShadow: '1px 1px 3px rgba(0,0,0,0.9)',
-                        backgroundColor: 'rgba(0,0,0,0.6)',
-                        padding: '2px 8px',
-                        borderRadius: '3px'
+                        color:      '#fff',
+                        fontSize:   '20px',
+                        textShadow: '1px 1px 3px rgba(0,0,0,.9)'
                     }
                 },
-                // customType: attach HLS AFTER video element exists
+                // customType MUST contain hls.loadSource + attachMedia
                 customType: {
                     m3u8: function(videoEl, url) {
                         hls.loadSource(url);
                         hls.attachMedia(videoEl);
-                        console.log('[Artplayer] HLS attached to video element');
+                        console.log('[Artplayer] HLS attached');
                     }
                 }
             });
 
             art.on('ready', function() {
                 console.log('[Artplayer] Ready');
-                // If manifest already parsed by now, inject quality
-                if (hlsLevels.length > 1) injectQualitySetting(art, hls, hlsLevels);
+                // Inject quality only if MANIFEST_PARSED hasn't done it yet
+                if (!qualityInjected && hlsLevels.length > 1) {
+                    qualityInjected = true;
+                    injectQualitySetting(art, hls, hlsLevels);
+                }
+                // Subtitles: hook native text tracks if any
+                var tracks = art.video ? Array.from(art.video.textTracks||[]) : [];
+                if (tracks.length > 0) {
+                    console.log('[Artplayer] Text tracks found:', tracks.length);
+                }
             });
 
-            art.on('error', function(e) {
-                console.error('[Artplayer error]', e);
+            art.on('error', function(e, msg) {
+                console.error('[Artplayer error]', msg);
             });
 
             currentArt = art;
@@ -426,51 +478,11 @@ $(document).ready(function() {
             console.error('[embedVideo]', err);
             wrapper.find('#sp-loading').remove();
             wrapper.append('<div style="aspect-ratio:16/9;display:flex;align-items:center;justify-content:center;'
-                +'background:#0a0a0a;border-radius:10px;color:#ff6b6b;font-size:14px;gap:10px;flex-direction:column;">'
-                +'<i class="fas fa-exclamation-triangle" style="font-size:28px"></i><p>'+err.message+'</p></div>');
+                +'background:#0a0a0a;border-radius:12px;color:#ff6b6b;font-size:14px;gap:10px;flex-direction:column;">'
+                +'<i class="fas fa-exclamation-triangle" style="font-size:28px"></i>'
+                +'<p>'+err.message+'</p></div>');
         }
     };
-
-    // ── Inject quality into Artplayer settings ────────────────────────────────
-    function injectQualitySetting(art, hls, levels) {
-        // Sort highest first
-        var sorted = levels.map(function(lv,i){ return {idx:i, h:lv.height||0, bw:lv.bitrate||0}; })
-            .sort(function(a,b){ return b.h - a.h; });
-
-        var options = [{
-            default: true,
-            html: 'Auto',
-            value: -1
-        }].concat(sorted.map(function(lv){
-            return { html: lv.h ? lv.h+'p' : Math.round(lv.bw/1000)+'k', value: lv.idx };
-        }));
-
-        art.setting.add({
-            html: 'Quality',
-            icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14H8v-2h4v2zm4-4H8v-2h8v2zm0-4H8V7h8v2z"/></svg>',
-            width: 150,
-            tooltip: 'Quality',
-            selector: options,
-            onSelect: function(item) {
-                var idx = item.value;
-                hls.currentLevel = idx;
-                hls.nextLevel    = idx;
-                hls.loadLevel    = idx;
-                console.log('[Quality] switched to', item.html, '-> HLS level', idx);
-                return item.html;
-            }
-        });
-
-        // Also update label when HLS auto-switches level
-        hls.on(Hls.Events.LEVEL_SWITCHED, function(ev, data) {
-            if (hls.currentLevel === -1 || hls.autoLevelEnabled) {
-                var lv = levels[data.level];
-                if (lv) console.log('[HLS] Auto switched to level', data.level, lv.height+'p');
-            }
-        });
-
-        console.log('[Quality] Setting injected with', options.length, 'options');
-    }
 
 
     // ── Media Fetching ────────────────────────────────────────────────────────
