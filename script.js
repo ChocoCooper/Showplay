@@ -10,7 +10,7 @@ $(document).ready(function() {
         seasonEpisodeAccordion: $('#seasonEpisodeAccordion'),
         serverGrid: $('#serverGrid'), mediaDetails: $('#mediaDetails'),
         mediaPoster: $('#mediaPoster'), mediaDetailsPoster: $('.media-details-poster'),
-        mediaRatingBadge: $('#mediaRatingBadge'), mediaDetailsTitle: $('#mediaDetailsTitle'),
+        mediaDetailsTitle: $('#mediaDetailsTitle'),
         mediaYearGenre: $('#mediaYearGenre'), mediaPlot: $('#mediaPlot'),
         homepage: $('#homepage'), previewSection: $('#previewSection'),
         previewItemsContainer: $('#previewItemsContainer'),
@@ -157,8 +157,6 @@ $(document).ready(function() {
     }
 
     // ── Subtitle system ──────────────────────────────────────────────────────────
-    // Stream has NO embedded subtitle tracks. Auto-fetch from OpenSubtitles API.
-    // Parse VTT ourselves. Render with setInterval + video.currentTime overlay.
     function injectSubtitleSetting(art, hls) {
         if (!art || !art.video) return;
         var video    = art.video;
@@ -279,11 +277,9 @@ $(document).ready(function() {
             return env.text;
         }
 
-        // ── sub.wyzie.ru: single request → direct URL → fetch & parse ─────────────
+        // ── loadSubtitles ─────────────
         async function loadSubtitles() {
-            // silent loading
             try {
-                // Build search URL — wyzie accepts TMDB id directly
                 var url = 'https://sub.wyzie.ru/search?id=' + state.mediaId
                         + '&language=en&source=all&format=srt';
                 if (state.mediaType === 'tv' && state.season && state.episode)
@@ -300,15 +296,11 @@ $(document).ready(function() {
                 console.log('[Subtitle] Wyzie results:', results.length,
                     results.slice(0,3).map(function(x){ return x.display+'/'+x.format+'/'+x.source; }));
 
-                // Pick best: non-HI first, prefer srt/vtt, then first result
-                // Filter to English only, then prefer non-HI
                 var enResults = results.filter(function(x){ return x.language && x.language.toLowerCase().startsWith('en'); });
                 var pool = enResults.length ? enResults : results;
                 var pick = pool.find(function(x){ return !x.isHearingImpaired; }) || pool[0];
                 console.log('[Subtitle] Using:', pick.display, pick.format, pick.source, pick.release||'');
 
-                // Fetch subtitle file through proxy (CORS bypass)
-                // silent
                 var subText = await fetchVTT(pick.url);
                 var parsed  = parseSubtitle(subText);
                 if (!parsed.length) throw new Error('0 cues parsed');
@@ -407,15 +399,13 @@ $(document).ready(function() {
     function injectQualitySetting(art, hls, levels, defaultLevelIdx) {
         var sorted = levels.map(function(lv,i){ return {idx:i, h:lv.height||0, bw:lv.bitrate||0}; })
             .sort(function(a,b){ return b.h - a.h; });
-        // Find 360p level index, fallback to lowest
-        var default360 = sorted[sorted.length-1]; // lowest after sort
+        var default360 = sorted[sorted.length-1];
         var defaultIdx = (defaultLevelIdx !== undefined && defaultLevelIdx >= 0) ? defaultLevelIdx : default360.idx;
         var options = [{default:false, html:'Auto', value:-1}]
             .concat(sorted.map(function(lv){
                 var isDefault = lv.idx === defaultIdx;
                 return { html: lv.h ? lv.h+'p' : Math.round(lv.bw/1000)+'k', value: lv.idx, default: isDefault };
             }));
-        // Find the default option label for initial tooltip
         var defaultQLabel = (options.find(function(o){ return o.default; }) || options[0] || {html:'Quality'}).html;
         art.setting.add({
             html: 'Quality',
@@ -427,15 +417,12 @@ $(document).ready(function() {
                 var idx = item.value;
                 var video = art.video;
                 if (idx === -1) {
-                    // Auto: re-enable ABR
                     hls.currentLevel = -1;
                     hls.loadLevel    = -1;
                     console.log('[Quality] -> Auto ABR');
                 } else {
-                    // Pin level — currentLevel = immediate force, loadLevel = pin loader
                     hls.loadLevel    = idx;
                     hls.currentLevel = idx;
-                    // Micro-seek to flush buffer and start loading new level immediately
                     if (video && !video.paused && video.currentTime > 0.5) {
                         var t = video.currentTime;
                         video.currentTime = t + 0.05;
@@ -459,16 +446,13 @@ $(document).ready(function() {
 
         var wrapper = selectors.videoFrame.parent();
 
-        // Destroy previous Artplayer instance cleanly
         if (currentArt) {
             try { currentArt.destroy(true); } catch(e) {}
             currentArt = null;
         }
-        // Clear wrapper but keep the hidden videoFrame iframe
         wrapper.find('*').not(selectors.videoFrame).remove();
         selectors.videoFrame.hide();
 
-        // Spinner while resolving stream
         var spinDiv = document.createElement('div');
         spinDiv.id = 'sp-loading';
         spinDiv.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;'
@@ -493,7 +477,6 @@ $(document).ready(function() {
 
             wrapper.find('#sp-loading').remove();
 
-            // Artplayer mount container
             var artWrap = document.createElement('div');
             artWrap.className = 'sp-art-wrap';
             wrapper.append(artWrap);
@@ -519,13 +502,11 @@ $(document).ready(function() {
                     self.stats.loading.start = performance.now();
 
                     var urlNoQ = origUrl.split('?')[0].toLowerCase();
-                    // Binary segment types that can hit the 6MB Lambda limit
                     var isBinarySegment = context.responseType==='arraybuffer'
                         || context.type==='initSegment'
                         || urlNoQ.endsWith('.ts')  || urlNoQ.endsWith('.m4s')
                         || urlNoQ.endsWith('.mp4') || urlNoQ.endsWith('.m4a')
                         || urlNoQ.endsWith('.aac') || urlNoQ.endsWith('.mp3');
-                    // Keys/manifests must always go through proxy (need Referer/Origin headers)
                     var mustProxy = context.type==='key' || urlNoQ.endsWith('.key')
                         || urlNoQ.endsWith('.m3u8') || urlNoQ.endsWith('.txt');
 
@@ -542,9 +523,6 @@ $(document).ready(function() {
                         callbacks.onError({code:0, text:msg}, context, null, {});
                     }
 
-                    // ── Direct fetch for binary segments (avoids 6MB Lambda limit) ──────
-                    // CDN segments generally don't enforce Referer on the bytes themselves.
-                    // If CORS fails we fall back to proxy automatically.
                     if (isBinarySegment && !mustProxy) {
                         fetch(origUrl, {
                             method: 'GET',
@@ -559,13 +537,11 @@ $(document).ready(function() {
                             succeed(buf);
                         })
                         .catch(function() {
-                            // CORS blocked or failed — fall through to proxy
                             if (!self._aborted) proxyFetch(0);
                         });
                         return;
                     }
 
-                    // ── Proxy fetch (manifests, keys, text, fallback) ─────────────────
                     function proxyFetch(attempt) {
                         if (self._aborted) return;
                         fetch(NETLIFY_PROXY, {
@@ -603,21 +579,20 @@ $(document).ready(function() {
 
             // ── HLS instance ──────────────────────────────────────────────────
             var hls = new Hls({
-                // Aggressive pre-buffering for smooth playback
-                maxBufferLength:          90,   // keep 90s buffered ahead
-                maxMaxBufferLength:       180,  // absolute ceiling
-                maxBufferSize:            120 * 1000 * 1000, // 120MB buffer
+                maxBufferLength:          90,
+                maxMaxBufferLength:       180,
+                maxBufferSize:            120 * 1000 * 1000,
                 maxBufferHole:            0.5,
                 highBufferWatchdogPeriod: 3,
                 nudgeOffset:              0.2,
                 nudgeMaxRetry:            5,
-                startFragPrefetch:        true,  // pre-fetch first frag before play
+                startFragPrefetch:        true,
                 testBandwidth:            true,
                 progressive:              true,
                 lowLatencyMode:           false,
-                backBufferLength:         30,    // keep 30s behind for seek
-                startLevel:              -1,     // overridden to 360p after manifest
-                abrEwmaDefaultEstimate:   8000000, // assume 8Mbps on first load
+                backBufferLength:         30,
+                startLevel:              -1,
+                abrEwmaDefaultEstimate:   8000000,
                 abrEwmaFastLive:          3,
                 abrEwmaSlowLive:          9,
                 abrBandWidthFactor:       0.85,
@@ -625,7 +600,6 @@ $(document).ready(function() {
                 loader:                   ProxyLoader
             });
 
-            // Guard: inject quality only once
             var qualityInjected = false;
             var hlsLevels = [];
 
@@ -633,7 +607,6 @@ $(document).ready(function() {
                 hlsLevels = data.levels;
                 console.log('[HLS] levels:', hlsLevels.length);
 
-                // Default to lowest quality (360p) to save bandwidth on start
                 var lowestIdx = hlsLevels.reduce(function(best, lv, i) {
                     return (lv.height || 99999) < (hlsLevels[best].height || 99999) ? i : best;
                 }, 0);
@@ -660,8 +633,6 @@ $(document).ready(function() {
             });
 
             // ── Artplayer ─────────────────────────────────────────────────────
-            // IMPORTANT: customType is the ONLY place to call hls.loadSource/attachMedia
-            // because artplayer creates the <video> element asynchronously.
             var art = new Artplayer({
                 container:      artWrap,
                 url:            stream.url,
@@ -689,7 +660,6 @@ $(document).ready(function() {
                         textShadow: '1px 1px 3px rgba(0,0,0,.9)'
                     }
                 },
-                // customType MUST contain hls.loadSource + attachMedia
                 customType: {
                     m3u8: function(videoEl, url) {
                         hls.loadSource(url);
@@ -701,12 +671,10 @@ $(document).ready(function() {
 
             art.on('ready', function() {
                 console.log('[Artplayer] Ready');
-                // Inject quality only once
                 if (!qualityInjected && hlsLevels.length > 1) {
                     qualityInjected = true;
                     injectQualitySetting(art, hls, hlsLevels, hls.currentLevel);
                 }
-                // Inject subtitle settings (always — either from stream tracks or external)
                 injectSubtitleSetting(art, hls);
             });
 
@@ -771,7 +739,6 @@ $(document).ready(function() {
         renderType = renderType || 'slider'; isLibrary = isLibrary || false;
         const title = item.title || item.name || 'Unknown';
         const posterPath = item.poster_path || item.poster || '';
-        const rating = ((item.vote_average || item.rating || 0)).toFixed(1) || 'N/A';
         const imageUrl = getImageUrl(posterPath, 'poster');
         if (!imageUrl) return;
 
@@ -787,7 +754,7 @@ $(document).ready(function() {
                 + '<div class="preview-overlay"></div>'
                 + '<div class="preview-content">'
                 + '<img class="preview-title" src="' + item.logo_path + '" alt="' + title + '">'
-                + '<div class="preview-meta"><span class="media-type">' + mtype + ' \u2022 ' + genres.join(', ') + '</span><span class="rating"><i class="fas fa-star"></i>' + rating + '</span></div>'
+                + '<div class="preview-meta"><span class="media-type">' + mtype + ' \u2022 ' + genres.join(', ') + '</span></div>'
                 + '<p class="preview-description">' + (item.overview || 'No description available.') + '</p>'
                 + '<div class="preview-buttons">'
                 + '<button class="preview-btn play-btn"><i class="fa-solid fa-play"></i>  Watch</button>'
@@ -797,11 +764,11 @@ $(document).ready(function() {
             el.find('.play-btn').on('click', function(e) {
                 e.preventDefault();
                 const year = (item.release_date || item.first_air_date || '').split('-')[0];
-                navigateToMedia(item.id, item.media_type, title, imageUrl, year, null, null, 'home', item.vote_average);
-                if (item.media_type === 'movie') addToHistory({ id: item.id, type: 'movie', title: title, poster: posterPath, year: year, season: null, episode: null, rating: item.vote_average });
+                navigateToMedia(item.id, item.media_type, title, imageUrl, year, null, null, 'home');
+                if (item.media_type === 'movie') addToHistory({ id: item.id, type: 'movie', title: title, poster: posterPath, year: year, season: null, episode: null });
             });
             el.find('.add-btn').on('click', function() {
-                toggleWatchlist({ id: item.id, type: item.media_type, title: title, poster: posterPath, rating: item.vote_average });
+                toggleWatchlist({ id: item.id, type: item.media_type, title: title, poster: posterPath });
                 const inWL2 = state.watchlist.some(function(w){ return w.id === item.id; });
                 el.find('.add-btn i').attr('class', inWL2 ? 'fa-solid fa-check' : 'fas fa-plus');
             });
@@ -811,7 +778,6 @@ $(document).ready(function() {
             const delBadge = isLibrary ? '<span class="delete-badge absolute top-2 left-2 !bg-[#2af598] hover:bg-green-400 !text-black w-7 h-7 flex items-center justify-center rounded-full z-30 transition-colors backdrop-blur-sm" aria-label="Delete"><i class="fas fa-trash text-xs"></i></span>' : '';
             const year2 = (item.year || item.release_date || item.first_air_date || '').split('-')[0] || 'N/A';
             const poster = $('<div class="poster-item group relative flex-shrink-0 w-[90px] md:w-[160px] h-[135px] md:h-[240px] rounded-xl overflow-hidden cursor-pointer transition-all duration-300 hover:scale-105 hover:z-20 hover:shadow-[0_10px_20px_rgba(0,0,0,0.5)] bg-[#1a1a1a]">'
-                + '<span class="absolute top-2 right-2 bg-black/60 backdrop-blur-md text-white text-[10px] font-bold px-2 py-1 rounded-md flex items-center gap-1 z-20"><i class="fas fa-star text-yellow-400"></i>' + rating + '</span>'
                 + seLabel + delBadge
                 + '<img class="poster-img w-full h-full object-cover transition-all duration-500 opacity-0 group-hover:brightness-75" src="' + imageUrl + '" alt="' + title + '" role="button" aria-label="Play ' + title + '">'
                 + '<div class="absolute inset-0 flex flex-col justify-end p-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-gradient-to-t from-black via-black/50 to-transparent z-10">'
@@ -824,8 +790,8 @@ $(document).ready(function() {
                 const yr = (item.year || item.release_date || item.first_air_date || '').split('-')[0] || 'N/A';
                 const sec = container.closest('.search-section').length ? 'search' : container.closest('.library-section').length ? 'library' : 'home';
                 const mt = item.media_type || item.type || (container.closest('#animeSliderContainer, #kdramaSliderContainer, #cdramaSliderContainer').length ? 'tv' : 'movie');
-                navigateToMedia(item.id, mt, title, imageUrl, yr, item.season, item.episode, sec, item.rating);
-                if (!isLibrary && mt === 'movie') addToHistory({ id: item.id, type: mt, title: title, poster: posterPath, year: yr, season: item.season || null, episode: item.episode || null, rating: item.vote_average });
+                navigateToMedia(item.id, mt, title, imageUrl, yr, item.season, item.episode, sec);
+                if (!isLibrary && mt === 'movie') addToHistory({ id: item.id, type: mt, title: title, poster: posterPath, year: yr, season: item.season || null, episode: item.episode || null });
             });
             if (isLibrary) {
                 poster.find('.delete-badge').on('click', function() {
@@ -844,7 +810,7 @@ $(document).ready(function() {
     const addToHistory = function(item) {
         const key = item.id + '_' + item.type + '_' + (item.season || '') + '_' + (item.episode || '');
         state.history = state.history.filter(function(h){ return h.id + '_' + h.type + '_' + (h.season || '') + '_' + (h.episode || '') !== key; });
-        state.history.unshift(Object.assign({}, item, { rating: item.rating || 'N/A', timestamp: Date.now() }));
+        state.history.unshift(Object.assign({}, item, { timestamp: Date.now() }));
         state.history = state.history.slice(0, 20);
         localStorage.setItem('history', JSON.stringify(state.history));
     };
@@ -922,7 +888,7 @@ $(document).ready(function() {
                         state.episode = ep.episode_number;
                         embedVideo().catch(function(e){ console.error('embedVideo error:', e); });
                         selectors.downloadBtn.attr('href', 'https://dl.vidsrc.vip/tv/' + state.mediaId + '/' + state.season + '/' + state.episode);
-                        addToHistory({ id: state.mediaId, type: state.mediaType, title: selectors.videoPage.data('title'), poster: selectors.videoPage.data('poster'), year: selectors.videoPage.data('year'), season: state.season, episode: state.episode, rating: data.vote_average });
+                        addToHistory({ id: state.mediaId, type: state.mediaType, title: selectors.videoPage.data('title'), poster: selectors.videoPage.data('poster'), year: selectors.videoPage.data('year'), season: state.season, episode: state.episode });
                     });
                     epList.append(btn);
                 });
@@ -941,7 +907,6 @@ $(document).ready(function() {
         selectors.videoFrame.attr('src', '').hide();
         selectors.videoMediaTitle.text('');
         selectors.mediaPoster.attr('src', '').attr('alt', '').removeClass('loaded');
-        selectors.mediaRatingBadge.find('.rating-value').text('');
         selectors.mediaDetailsTitle.text('');
         selectors.mediaYearGenre.text('');
         selectors.mediaPlot.text('');
@@ -1007,15 +972,15 @@ $(document).ready(function() {
         } else { selectors.searchResults.show(); selectors.searchTrending.show(); }
     };
 
-    const navigateToMedia = async function(id, type, title, poster, year, season, episode, section, rating) {
-        season = season || null; episode = episode || null; section = section || null; rating = rating || 'N/A';
-        const params = new URLSearchParams({ id: id, type: type, title: title, poster: poster, year: year, rating: rating, section: section || 'home' });
+    const navigateToMedia = async function(id, type, title, poster, year, season, episode, section) {
+        season = season || null; episode = episode || null; section = section || null;
+        const params = new URLSearchParams({ id: id, type: type, title: title, poster: poster, year: year, section: section || 'home' });
         if (season) params.set('season', season);
         if (episode) params.set('episode', episode);
         window.location.href = 'watch.html?' + params.toString();
     };
 
-    const renderVideoPage = async function(id, type, title, poster, year, season, episode, section, rating) {
+    const renderVideoPage = async function(id, type, title, poster, year, season, episode, section) {
         stopPreviewSlideshow();
         resetVideoPlayerState();
         state.mediaId = id; state.mediaType = type; state.season = season; state.episode = episode;
@@ -1034,7 +999,6 @@ $(document).ready(function() {
             const posterUrl = getImageUrl(data.poster_path) || poster;
             selectors.mediaPoster.attr('src', posterUrl).attr('alt', title + ' Poster').addClass('opacity-0');
             loadImage(posterUrl).then(function(){ selectors.mediaPoster.removeClass('opacity-0'); }).catch(function(){ selectors.mediaPoster.attr('src', ''); });
-            selectors.mediaRatingBadge.find('.rating-value').text(data.vote_average ? data.vote_average.toFixed(1) : rating || 'N/A');
             selectors.mediaDetailsTitle.text(title);
             selectors.mediaYearGenre.text(type.toUpperCase() + ' \u2022 ' + (year || 'N/A') + ' \u2022 ' + genres.join(', '));
             selectors.mediaPlot.text(data.overview || 'No description available.');
@@ -1045,7 +1009,6 @@ $(document).ready(function() {
         else {
             selectors.mediaPoster.attr('src', poster || '').addClass('opacity-0');
             loadImage(poster).then(function(){ selectors.mediaPoster.removeClass('opacity-0'); }).catch(function(){});
-            selectors.mediaRatingBadge.find('.rating-value').text(rating || 'N/A');
             selectors.mediaDetailsTitle.text(title);
             selectors.mediaYearGenre.text(type.toUpperCase() + ' \u2022 ' + (year || 'N/A') + ' \u2022 N/A');
             selectors.mediaPlot.text('No description available.');
@@ -1138,8 +1101,7 @@ $(document).ready(function() {
     // ── Event Handlers ────────────────────────────────────────────────────────
     selectors.watchlistBtn.on('click', function() {
         const d = selectors.videoPage.data();
-        const rating = selectors.mediaRatingBadge.find('.rating-value').text() || '0';
-        toggleWatchlist({ id: d.id, type: d.type, title: d.title, poster: d.poster, rating: parseFloat(rating), year: d.year });
+        toggleWatchlist({ id: d.id, type: d.type, title: d.title, poster: d.poster, year: d.year });
         const inWL = state.watchlist.some(function(w){ return w.id === d.id; });
         selectors.watchlistBtn.html(inWL ? '<i class="fa-solid fa-check"></i> <span>Watchlist</span>' : '<i class="fas fa-plus"></i> <span>Watchlist</span>').toggleClass('active', inWL);
     });
@@ -1167,7 +1129,7 @@ $(document).ready(function() {
 
     $(window).on('popstate', function(e) {
         const s = e.originalEvent.state;
-        if (s && s.id && s.type) navigateToMedia(s.id, s.type, s.title || 'Unknown', s.poster || '', s.year, s.season, s.episode, s.section, s.rating || 'N/A');
+        if (s && s.id && s.type) navigateToMedia(s.id, s.type, s.title || 'Unknown', s.poster || '', s.year, s.season, s.episode, s.section);
         else if (s && s.section) navigateToSection(s.section);
         else loadHomepage();
     });
@@ -1205,8 +1167,7 @@ $(document).ready(function() {
                     params.get('year') || 'N/A',
                     params.get('season') ? parseInt(params.get('season')) : null,
                     params.get('episode') ? parseInt(params.get('episode')) : null,
-                    params.get('section') || 'home',
-                    params.get('rating') || 'N/A'
+                    params.get('section') || 'home'
                 );
             }
         } else if (path.includes('search.html')) {
