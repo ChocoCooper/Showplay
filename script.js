@@ -221,7 +221,7 @@ $(document).ready(function() {
         catch(e) { await loadScript('https://cdn.jsdelivr.net/npm/artplayer@5.2.1/dist/artplayer.js'); }
     }
 
-    // ── Subtitle setting + IMDB/OpenSubtitles fallback ─────────────────────────
+    // ── Subtitle setting + OpenSubtitles fallback ──────────────────────────────
     function injectSubtitleSetting(art) {
         var video = art.video;
         if (!video) return;
@@ -229,270 +229,248 @@ $(document).ready(function() {
         // ── Subtitle state ────────────────────────────────────────────────────
         var subState = {
             enabled:   false,
-            trackIdx:  0,
             fontSize:  '20px',
             edgeStyle: 'none',
-            bgColor:   '#000000',
             bgOpacity: 0.65,
             color:     '#ffffff',
-            activeTrackEl: null
+            poll:      null,
+            activeTrack: null
         };
 
-        // Collect embedded HLS text tracks
+        // Collect embedded text tracks from HLS
         var nativeTracks = Array.from(video.textTracks || []);
         console.log('[Subtitle] Native tracks:', nativeTracks.length,
-            nativeTracks.map(function(t){ return (t.label||t.language||'?')+' '+t.kind; }));
+            nativeTracks.map(function(t){ return (t.label||t.language||'?')+'/'+t.kind; }));
 
-        // Hide all native tracks initially (we render them ourselves via cue events)
-        nativeTracks.forEach(function(t){ t.mode = 'hidden'; });
+        // Set ALL tracks to 'showing' so cues load into memory,
+        // but we render them ourselves. On mobile, 'hidden' tracks
+        // never fire cuechange — 'showing' reliably populates activeCues.
+        nativeTracks.forEach(function(t){ t.mode = 'showing'; });
 
-        // External subtitle container (absolute, above Artplayer bottom bar)
+        // Inject CSS to hide native browser subtitle rendering
+        if (!document.getElementById('sp-hide-native-cue')) {
+            var style = document.createElement('style');
+            style.id = 'sp-hide-native-cue';
+            // Hide native ::cue rendering so only our subBox shows
+            style.textContent = 'video::cue { color: transparent !important; background: transparent !important; text-shadow: none !important; font-size: 0px !important; opacity: 0 !important; }';
+            document.head.appendChild(style);
+        }
+
+        // Subtitle overlay above controls bar
         var subBox = document.createElement('div');
-        subBox.id = 'sp-subbox';
-        subBox.style.cssText = 'position:absolute;bottom:52px;left:0;right:0;text-align:center;'
-            + 'z-index:200;pointer-events:none;padding:0 12px;display:none;';
+        subBox.id  = 'sp-subbox';
+        subBox.style.cssText = 'position:absolute;bottom:56px;left:0;right:0;'
+            + 'text-align:center;z-index:200;pointer-events:none;padding:0 16px;'
+            + 'min-height:32px;';
         art.template.$player.appendChild(subBox);
 
+        // ── Render a cue text with current style settings ─────────────────────
+        var lastText = '';
         function renderCue(text) {
+            text = (text || '').trim().replace(/<[^>]+>/g, '').trim();
+            if (text === lastText && subBox.children.length > 0) return; // avoid flicker
+            lastText = text;
             subBox.innerHTML = '';
             if (!text || !subState.enabled) return;
-            var r=parseInt(subState.bgColor.slice(1,3),16),
-                g=parseInt(subState.bgColor.slice(3,5),16),
-                b=parseInt(subState.bgColor.slice(5,7),16);
+            var r = parseInt((subState.bgColor||'#000000').slice(1,3),16)||0,
+                g = parseInt((subState.bgColor||'#000000').slice(3,5),16)||0,
+                b = parseInt((subState.bgColor||'#000000').slice(5,7),16)||0;
+            var isOutline    = subState.edgeStyle === 'outline';
+            var isDropShadow = subState.edgeStyle === 'dropshadow';
+            var isRaised     = subState.edgeStyle === 'raised';
             var span = document.createElement('span');
             span.textContent = text;
-            var isOutline = subState.edgeStyle === 'outline';
-            var isDropShadow = subState.edgeStyle === 'dropshadow';
-            var isRaised = subState.edgeStyle === 'raised';
             span.style.cssText = 'display:inline-block;'
                 + 'background:rgba('+r+','+g+','+b+','+subState.bgOpacity+');'
                 + 'color:'+subState.color+';'
                 + 'font-size:'+subState.fontSize+';'
-                + 'font-family:Arial,sans-serif;font-weight:600;line-height:1.5;'
-                + 'padding:2px 10px;border-radius:4px;'
-                + (isDropShadow ? 'text-shadow:2px 2px 4px rgba(0,0,0,.9);' :
-                   isOutline    ? 'text-shadow:-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000,1px 1px 0 #000;' :
-                   isRaised     ? 'text-shadow:1px 1px 0 rgba(0,0,0,.8),2px 2px 0 rgba(0,0,0,.4);' : '');
+                + 'font-family:Arial,sans-serif;font-weight:600;line-height:1.6;'
+                + 'padding:3px 12px;border-radius:4px;white-space:pre-wrap;'
+                + (isDropShadow ? 'text-shadow:2px 2px 5px rgba(0,0,0,1);' :
+                   isOutline    ? 'text-shadow:-2px -2px 0 #000,2px -2px 0 #000,-2px 2px 0 #000,2px 2px 0 #000;' :
+                   isRaised     ? 'text-shadow:1px 1px 0 rgba(0,0,0,.8),2px 2px 0 rgba(0,0,0,.5);' : '');
             subBox.appendChild(span);
-            subBox.style.display = 'block';
         }
 
-        function hookTrack(track) {
-            if (subState.activeTrackEl) {
-                subState.activeTrackEl.removeEventListener('cuechange', onCue);
-            }
-            subState.activeTrackEl = track;
-            track.mode = 'hidden';
-            track.addEventListener('cuechange', onCue);
+        // ── Poll activeCues every 250ms (reliable on all mobile browsers) ─────
+        function startPoll(track) {
+            stopPoll();
+            if (!track) return;
+            subState.activeTrack = track;
+            track.mode = 'showing';
+            subState.poll = setInterval(function() {
+                if (!subState.enabled) { renderCue(''); return; }
+                var cues = track.activeCues ? Array.from(track.activeCues) : [];
+                var text = cues.map(function(c) {
+                    if (c.getCueAsHTML) return c.getCueAsHTML().textContent;
+                    return (c.text || '').replace(/<[^>]+>/g, '');
+                }).filter(Boolean).join('\n');
+                renderCue(text);
+            }, 250);
+        }
+        function stopPoll() {
+            if (subState.poll) { clearInterval(subState.poll); subState.poll = null; }
+            subBox.innerHTML = '';
+            lastText = '';
         }
 
-        function onCue() {
-            var track = subState.activeTrackEl;
-            if (!track || !subState.enabled) { subBox.innerHTML=''; return; }
-            var cues = track.activeCues ? Array.from(track.activeCues) : [];
-            var text = cues.map(function(c){
-                if (c.getCueAsHTML) return c.getCueAsHTML().textContent;
-                return (c.text||'').replace(/<[^>]+>/g,'');
-            }).filter(Boolean).join('\n');
-            renderCue(text);
+        // ── Auto-enable Track 1 by default ───────────────────────────────────
+        if (nativeTracks.length > 0) {
+            subState.enabled = true;
+            startPoll(nativeTracks[0]);
+            console.log('[Subtitle] Auto-enabled track 0:', nativeTracks[0].label || nativeTracks[0].language || 'Track 1');
         }
 
-        if (nativeTracks.length > 0) hookTrack(nativeTracks[0]);
-
-        // ── Load external subtitle (OpenSubtitles / VTT url) ─────────────────
+        // ── Load external subtitle via proxy ──────────────────────────────────
         async function loadExternalSubtitle(url) {
             try {
-                // Fetch via proxy to bypass CORS
                 var res = await fetch(NETLIFY_PROXY, {
-                    method:'POST',
-                    headers:{'Content-Type':'application/json'},
+                    method:'POST', headers:{'Content-Type':'application/json'},
                     body: JSON.stringify({url:url, method:'GET', headers:{}})
                 });
                 var env = await res.json();
-                var blob = new Blob([env.text||''], {type:'text/vtt'});
+                if (!env || !env.text) throw new Error('Empty subtitle response');
+                var blob = new Blob([env.text], {type:'text/vtt'});
                 var blobUrl = URL.createObjectURL(blob);
-                // Create a <track> element on the video
                 var existing = video.querySelector('track[data-sp-ext]');
                 if (existing) existing.remove();
                 var el = document.createElement('track');
-                el.kind = 'subtitles'; el.label = 'External';
-                el.srclang = 'en'; el.src = blobUrl;
-                el.setAttribute('data-sp-ext','1');
+                el.kind='subtitles'; el.label='Online EN'; el.srclang='en';
+                el.src=blobUrl; el.setAttribute('data-sp-ext','1');
                 video.appendChild(el);
-                video.textTracks[video.textTracks.length-1].mode = 'hidden';
-                hookTrack(video.textTracks[video.textTracks.length-1]);
-                console.log('[Subtitle] External track loaded from', url);
-                return true;
-            } catch(e) {
-                console.warn('[Subtitle] Failed to load external sub:', e.message);
+                await new Promise(function(res){ el.onload=res; el.onerror=res; setTimeout(res,2000); });
+                var extTrack = null;
+                Array.from(video.textTracks).forEach(function(t){ if(t.label==='Online EN') extTrack=t; });
+                if (extTrack) { startPoll(extTrack); return true; }
                 return false;
-            }
+            } catch(e) { console.warn('[Subtitle] External load failed:', e.message); return false; }
         }
 
-        // ── OpenSubtitles API search ──────────────────────────────────────────
+        // ── OpenSubtitles search ──────────────────────────────────────────────
         async function searchOpenSubtitles() {
-            var tmdbId = state.mediaId;
-            var mtype  = state.mediaType;
+            var tmdbId = state.mediaId, mtype = state.mediaType;
             if (!tmdbId) return null;
             try {
                 var params = 'tmdb_id='+tmdbId+'&type='+(mtype==='tv'?'episode':'movie')+'&languages=en';
-                if (mtype==='tv' && state.season && state.episode) {
+                if (mtype==='tv' && state.season && state.episode)
                     params += '&season_number='+state.season+'&episode_number='+state.episode;
-                }
                 var r = await fetch('https://api.opensubtitles.com/api/v1/subtitles?'+params, {
-                    headers: {
-                        'Api-Key': 'srt9wCJJkKxRMHSgUUCY9nrSNjmpMNXV',
-                        'Content-Type': 'application/json',
-                        'User-Agent': 'ShowPlay v1.0'
-                    }
+                    headers:{'Api-Key':'srt9wCJJkKxRMHSgUUCY9nrSNjmpMNXV','Content-Type':'application/json','User-Agent':'ShowPlay v1.0'}
                 });
-                if (!r.ok) throw new Error('OpenSubs HTTP '+r.status);
+                if (!r.ok) throw new Error('HTTP '+r.status);
                 var data = await r.json();
-                var files = data.data || [];
-                // Prefer VTT, fallback SRT
-                var vtt = files.find(function(f){ return f.attributes && f.attributes.files && f.attributes.files[0] && (f.attributes.release||'').toLowerCase().includes('vtt'); });
-                var best = vtt || files[0];
-                if (!best || !best.attributes || !best.attributes.files || !best.attributes.files[0]) return null;
-                var fileId = best.attributes.files[0].file_id;
-                // Get download link
+                var files = data.data||[];
+                if (!files.length) return null;
+                var fileId = files[0].attributes.files[0].file_id;
                 var dl = await fetch('https://api.opensubtitles.com/api/v1/download', {
                     method:'POST',
                     headers:{'Api-Key':'srt9wCJJkKxRMHSgUUCY9nrSNjmpMNXV','Content-Type':'application/json','User-Agent':'ShowPlay v1.0'},
                     body: JSON.stringify({file_id:fileId, sub_format:'webvtt'})
                 });
-                if (!dl.ok) throw new Error('OpenSubs DL HTTP '+dl.status);
+                if (!dl.ok) throw new Error('DL HTTP '+dl.status);
                 var dlData = await dl.json();
                 return dlData.link || null;
-            } catch(e) {
-                console.warn('[Subtitle] OpenSubtitles search failed:', e.message);
-                return null;
-            }
+            } catch(e) { console.warn('[Subtitle] OpenSubtitles:', e.message); return null; }
         }
 
-        // ── Build Artplayer settings panel ────────────────────────────────────
-        var allTracks = nativeTracks.slice();
-        var trackOptions = allTracks.map(function(t,i){
-            var lbl = t.label || (t.language && t.language.toUpperCase()) || ('Track '+(i+1));
-            return { html:lbl, value:i };
-        });
+        // ── Settings panel ────────────────────────────────────────────────────
+        // Track selector options
+        var trackOpts = [{html:'Off', value:'off'}]
+            .concat(nativeTracks.map(function(t,i){
+                var lbl = t.label || (t.language&&t.language.toUpperCase()) || ('Track '+(i+1));
+                return {html:lbl, value:'track_'+i, default: i===0};
+            }))
+            .concat([{html:'🔍 Search Online (EN)', value:'search'}]);
 
-        // Subtitle enable toggle
         art.setting.add({
             html: 'Subtitles',
             icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-8 11H5v-2h7v2zm7 0h-5v-2h5v2zm-7-4H5V9h7v2zm7 0h-5V9h5v2z"/></svg>',
-            width: 220,
-            tooltip: 'Subtitles',
-            // Use a selector for on/off + source
-            selector: (function(){
-                var opts = [{html:'Off', default:true, value:'off'}];
-                allTracks.forEach(function(t,i){
-                    opts.push({html:(t.label||(t.language&&t.language.toUpperCase())||'Track '+(i+1)), value:'track_'+i});
-                });
-                opts.push({html:'Search Online (EN)', value:'search'});
-                return opts;
-            })(),
-            onSelect: async function(item, el) {
+            width: 200, tooltip: 'Subtitles',
+            selector: trackOpts,
+            onSelect: async function(item, $dom) {
                 var val = item.value;
                 if (val === 'off') {
-                    subState.enabled = false;
-                    subBox.innerHTML = ''; subBox.style.display = 'none';
-                    allTracks.forEach(function(t){ t.mode='hidden'; });
+                    subState.enabled = false; stopPoll();
+                    nativeTracks.forEach(function(t){ t.mode='showing'; }); // keep loaded but our box hidden
                     return 'Off';
                 }
                 if (val === 'search') {
-                    el.innerHTML = '<span style="color:#2af598">Searching\u2026</span>';
+                    if ($dom) $dom.innerHTML = '<span style="color:#2af598">Searching\u2026</span>';
                     var link = await searchOpenSubtitles();
                     if (link) {
+                        subState.enabled = true;
                         var ok = await loadExternalSubtitle(link);
-                        if (ok) {
-                            subState.enabled = true;
-                            allTracks.forEach(function(t){ t.mode='hidden'; });
-                            return 'Online EN';
-                        }
+                        return ok ? 'Online EN' : 'Not found';
                     }
                     return 'Not found';
                 }
                 if (val.startsWith('track_')) {
                     var idx = parseInt(val.replace('track_',''));
                     subState.enabled = true;
-                    subState.trackIdx = idx;
-                    allTracks.forEach(function(t,i){ t.mode='hidden'; });
-                    if (allTracks[idx]) hookTrack(allTracks[idx]);
-                    subBox.style.display = 'block';
+                    startPoll(nativeTracks[idx]);
                     return item.html;
                 }
                 return item.html;
             }
         });
 
-        // ── Font size setting ─────────────────────────────────────────────────
         art.setting.add({
             html: 'Sub Font Size',
             icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M9 4v3h5v12h3V7h5V4H9zm-6 8h3v7h3v-7h3V9H3v3z"/></svg>',
-            width: 180,
-            tooltip: 'Font Size',
+            width: 180, tooltip: 'Font Size',
             selector: [
                 {html:'Small (14px)',  value:'14px'},
                 {html:'Medium (18px)', value:'18px', default:true},
                 {html:'Large (22px)',  value:'22px'},
                 {html:'XLarge (28px)', value:'28px'}
             ],
-            onSelect: function(item) {
-                subState.fontSize = item.value;
-                // Re-render current cue with new size
-                if (subState.activeTrackEl) onCue();
-                return item.html;
-            }
+            onSelect: function(item) { subState.fontSize=item.value; lastText=''; return item.html; }
         });
 
-        // ── Edge style setting ────────────────────────────────────────────────
         art.setting.add({
             html: 'Sub Edge Style',
             icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M2.53 19.65l1.34.56v-9.03l-2.43 5.86c-.41 1.02.08 2.19 1.09 2.61zm19.5-3.7L17.07 3.98c-.31-.75-1.04-1.21-1.81-1.23-.26 0-.53.04-.79.15L7.1 6.11c-.75.31-1.21 1.03-1.23 1.8-.01.27.04.54.15.8l4.96 11.97c.31.76 1.05 1.22 1.83 1.23.26 0 .52-.05.77-.15l7.36-3.05c1.02-.42 1.51-1.59 1.09-2.61z"/></svg>',
-            width: 180,
-            tooltip: 'Edge Style',
+            width: 180, tooltip: 'Edge Style',
             selector: [
-                {html:'None',        value:'none', default:true},
+                {html:'None',        value:'none',       default:true},
                 {html:'Drop Shadow', value:'dropshadow'},
                 {html:'Outline',     value:'outline'},
                 {html:'Raised',      value:'raised'}
             ],
-            onSelect: function(item) {
-                subState.edgeStyle = item.value;
-                if (subState.activeTrackEl) onCue();
-                return item.html;
-            }
+            onSelect: function(item) { subState.edgeStyle=item.value; lastText=''; return item.html; }
         });
 
-        // ── Background opacity setting ────────────────────────────────────────
         art.setting.add({
             html: 'Sub Background',
             icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9c0-.46-.04-.92-.1-1.36-.98 1.37-2.58 2.26-4.4 2.26-2.98 0-5.4-2.42-5.4-5.4 0-1.81.89-3.42 2.26-4.4-.44-.06-.9-.1-1.36-.1z"/></svg>',
-            width: 180,
-            tooltip: 'Background',
+            width: 180, tooltip: 'Background Opacity',
             selector: [
-                {html:'None (0%)',    value:'0'},
-                {html:'Low (35%)',    value:'0.35'},
-                {html:'Medium (65%)', value:'0.65', default:true},
-                {html:'High (90%)',   value:'0.90'}
+                {html:'None (0%)',   value:'0'},
+                {html:'Low (35%)',   value:'0.35'},
+                {html:'Medium (65%)',value:'0.65', default:true},
+                {html:'High (90%)',  value:'0.90'}
             ],
-            onSelect: function(item) {
-                subState.bgOpacity = parseFloat(item.value);
-                if (subState.activeTrackEl) onCue();
-                return item.html;
-            }
+            onSelect: function(item) { subState.bgOpacity=parseFloat(item.value); lastText=''; return item.html; }
         });
 
-        console.log('[Subtitle] Settings injected. Native tracks:', nativeTracks.length);
+        // Clean up poll when player destroyed
+        art.on('destroy', stopPoll);
+
+        console.log('[Subtitle] Ready. Tracks:', nativeTracks.length, '| Auto-enabled:', subState.enabled);
     }
 
+
     // ── Quality setting injector (called once) ────────────────────────────────
-    function injectQualitySetting(art, hls, levels) {
+    function injectQualitySetting(art, hls, levels, defaultLevelIdx) {
         var sorted = levels.map(function(lv,i){ return {idx:i, h:lv.height||0, bw:lv.bitrate||0}; })
             .sort(function(a,b){ return b.h - a.h; });
-        var options = [{default:true, html:'Auto', value:-1}]
+        // Find 360p level index, fallback to lowest
+        var default360 = sorted[sorted.length-1]; // lowest after sort
+        var defaultIdx = (defaultLevelIdx !== undefined && defaultLevelIdx >= 0) ? defaultLevelIdx : default360.idx;
+        var options = [{default:false, html:'Auto', value:-1}]
             .concat(sorted.map(function(lv){
-                return { html: lv.h ? lv.h+'p' : Math.round(lv.bw/1000)+'k', value: lv.idx };
+                var isDefault = lv.idx === defaultIdx;
+                return { html: lv.h ? lv.h+'p' : Math.round(lv.bw/1000)+'k', value: lv.idx, default: isDefault };
             }));
         art.setting.add({
             html: 'Quality',
@@ -502,10 +480,23 @@ $(document).ready(function() {
             selector: options,
             onSelect: function(item) {
                 var idx = item.value;
-                hls.currentLevel = idx;
-                hls.nextLevel    = idx;
-                hls.loadLevel    = idx;
-                console.log('[Quality] ->', item.html, 'HLS level', idx);
+                var video = art.video;
+                if (idx === -1) {
+                    // Auto: re-enable ABR
+                    hls.currentLevel = -1;
+                    hls.loadLevel    = -1;
+                    console.log('[Quality] -> Auto ABR');
+                } else {
+                    // Pin level — currentLevel = immediate force, loadLevel = pin loader
+                    hls.loadLevel    = idx;
+                    hls.currentLevel = idx;
+                    // Micro-seek to flush buffer and start loading new level immediately
+                    if (video && !video.paused && video.currentTime > 0.5) {
+                        var t = video.currentTime;
+                        video.currentTime = t + 0.05;
+                    }
+                    console.log('[Quality] -> level', idx, item.html, '| currentLevel:', hls.currentLevel);
+                }
                 return item.html;
             }
         });
@@ -648,7 +639,8 @@ $(document).ready(function() {
             // ── HLS instance ──────────────────────────────────────────────────
             var hls = new Hls({
                 maxBufferLength:60, maxMaxBufferLength:120,
-                startLevel:-1, abrEwmaDefaultEstimate:4000000,
+                startLevel: -1,  // will be overridden to 360p after manifest
+                abrEwmaDefaultEstimate:4000000,
                 loader:ProxyLoader
             });
 
@@ -659,9 +651,18 @@ $(document).ready(function() {
             hls.on(Hls.Events.MANIFEST_PARSED, function(ev, data) {
                 hlsLevels = data.levels;
                 console.log('[HLS] levels:', hlsLevels.length);
+
+                // Default to lowest quality (360p) to save bandwidth on start
+                var lowestIdx = hlsLevels.reduce(function(best, lv, i) {
+                    return (lv.height || 99999) < (hlsLevels[best].height || 99999) ? i : best;
+                }, 0);
+                hls.currentLevel = lowestIdx;
+                hls.loadLevel    = lowestIdx;
+                console.log('[HLS] Default level set to', lowestIdx, hlsLevels[lowestIdx].height+'p');
+
                 if (currentArt && !qualityInjected && hlsLevels.length > 1) {
                     qualityInjected = true;
-                    injectQualitySetting(currentArt, hls, hlsLevels);
+                    injectQualitySetting(currentArt, hls, hlsLevels, lowestIdx);
                 }
             });
 
@@ -725,7 +726,7 @@ $(document).ready(function() {
                 // Inject quality only once
                 if (!qualityInjected && hlsLevels.length > 1) {
                     qualityInjected = true;
-                    injectQualitySetting(art, hls, hlsLevels);
+                    injectQualitySetting(art, hls, hlsLevels, hls.currentLevel);
                 }
                 // Inject subtitle settings (always — either from stream tracks or external)
                 injectSubtitleSetting(art);
