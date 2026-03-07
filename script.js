@@ -205,56 +205,52 @@ $(document).ready(function() {
 
 
     // ── Artplayer + HLS.js ─────────────────────────────────────────────────────
-    // Dynamically load Artplayer from CDN if not already loaded
-    function loadArtplayer() {
-        return new Promise(function(resolve, reject) {
-            if (window.Artplayer) { resolve(); return; }
+    var currentArt = null;
+
+    function loadScript(src) {
+        return new Promise(function(res, rej) {
+            if (document.querySelector('script[src="'+src+'"]') && window.Artplayer) { res(); return; }
             var s = document.createElement('script');
-            s.src = 'https://cdnjs.cloudflare.com/ajax/libs/artplayer/5.2.1/artplayer.js';
-            s.onload = resolve;
-            s.onerror = function() {
-                // Fallback CDN
-                var s2 = document.createElement('script');
-                s2.src = 'https://cdn.jsdelivr.net/npm/artplayer/dist/artplayer.js';
-                s2.onload = resolve;
-                s2.onerror = reject;
-                document.head.appendChild(s2);
-            };
+            s.src = src;
+            s.onload = res;
+            s.onerror = rej;
             document.head.appendChild(s);
         });
     }
 
-    // Track current Artplayer instance so we can destroy it on next load
-    var currentArt = null;
+    async function loadArtplayer() {
+        if (window.Artplayer) return;
+        try {
+            await loadScript('https://cdnjs.cloudflare.com/ajax/libs/artplayer/5.2.1/artplayer.js');
+        } catch(e) {
+            await loadScript('https://cdn.jsdelivr.net/npm/artplayer@5.2.1/dist/artplayer.js');
+        }
+    }
 
     // ── Embed Video ───────────────────────────────────────────────────────────
     const embedVideo = async function() {
-        if (!state.mediaId) { console.error('[embedVideo] mediaId not set'); return; }
-        if (state.mediaType === 'tv' && (!state.season || !state.episode)) { console.error('[embedVideo] season/episode not set'); return; }
+        if (!state.mediaId) return;
+        if (state.mediaType === 'tv' && (!state.season || !state.episode)) return;
 
-        var server  = config.servers[0];
         var wrapper = selectors.videoFrame.parent();
 
-        // Destroy previous player
-        if (currentArt) {
-            try { currentArt.destroy(true); } catch(e) {}
-            currentArt = null;
-        }
-        wrapper.find('.art-container, .sp-overlay-loading, .sp-overlay-error, video').remove();
+        // Destroy old player
+        if (currentArt) { try { currentArt.destroy(true); } catch(e) {} currentArt = null; }
+        wrapper.find('*').not(selectors.videoFrame).remove();
         selectors.videoFrame.hide();
 
-        // Loading overlay
-        wrapper.css('position','relative').html(
-            '<div class="sp-overlay-loading" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,.85);z-index:20;gap:14px;color:#fff;font-size:14px;border-radius:10px;">'
-            + '<div style="width:44px;height:44px;border:4px solid rgba(255,255,255,.15);border-top-color:#2af598;border-radius:50%;animation:sp-spin .8s linear infinite;"></div>'
-            + '<p>Loading stream\u2026</p></div>'
-        );
-        if (!document.getElementById('sp-spin-style')) {
+        // Spinner
+        var spinHtml = '<div id="sp-loading" style="display:flex;flex-direction:column;align-items:center;justify-content:center;'
+            + 'background:#000;border-radius:10px;aspect-ratio:16/9;min-height:220px;gap:14px;color:#aaa;font-size:14px;">'
+            + '<div style="width:46px;height:46px;border:4px solid rgba(255,255,255,.1);border-top-color:#2af598;'
+            + 'border-radius:50%;animation:sp-spin .8s linear infinite;"></div><p>Loading stream\u2026</p></div>';
+        if (!document.getElementById('sp-spin-css')) {
             var ss = document.createElement('style');
-            ss.id = 'sp-spin-style';
-            ss.textContent = '@keyframes sp-spin{to{transform:rotate(360deg)}} .art-container{border-radius:10px;overflow:hidden;} .art-video-player{background:#000;}';
+            ss.id = 'sp-spin-css';
+            ss.textContent = '@keyframes sp-spin{to{transform:rotate(360deg)}}';
             document.head.appendChild(ss);
         }
+        wrapper.css('position','relative').append(spinHtml);
 
         var params = {
             tmdbId: state.mediaId, mediaType: state.mediaType,
@@ -264,23 +260,22 @@ $(document).ready(function() {
         };
 
         try {
-            // Load stream + Artplayer in parallel
-            var results = await Promise.all([
-                resolveStream(server.resolver, params),
-                loadArtplayer()
-            ]);
-            var stream = results[0];
+            var results = await Promise.all([ resolveStream('hexa', params), loadArtplayer() ]);
+            var stream  = results[0];
             console.log('[embedVideo] stream:', stream.url);
             console.log('[embedVideo] headers:', JSON.stringify(stream.headers || {}));
 
-            wrapper.empty();
-            // Create mount div for Artplayer
-            var artDiv = $('<div class="art-container" style="width:100%;aspect-ratio:16/9;min-height:220px;background:#000;border-radius:10px;overflow:hidden;"></div>');
+            // Remove spinner
+            wrapper.find('#sp-loading').remove();
+
+            // Mount div for Artplayer
+            var artDiv = document.createElement('div');
+            artDiv.style.cssText = 'width:100%;aspect-ratio:16/9;min-height:220px;background:#000;border-radius:10px;overflow:hidden;';
             wrapper.append(artDiv);
 
             var streamHdrs = stream.headers || {};
 
-            // ── ProxyLoader (same as before) ──────────────────────────────────
+            // ── ProxyLoader ───────────────────────────────────────────────────
             class ProxyLoader {
                 constructor(cfg) {
                     this.config = cfg; this._aborted = false;
@@ -298,9 +293,9 @@ $(document).ready(function() {
                     var origUrl = context.url, self = this;
                     self.stats.loading.start = performance.now();
                     fetch(NETLIFY_PROXY, {
-                        method: 'POST',
-                        headers: {'Content-Type':'application/json'},
-                        body: JSON.stringify({url: origUrl, method:'GET', headers: streamHdrs})
+                        method:'POST',
+                        headers:{'Content-Type':'application/json'},
+                        body: JSON.stringify({url:origUrl, method:'GET', headers:streamHdrs})
                     })
                     .then(function(r){ if(!r.ok) throw new Error('Proxy HTTP '+r.status); return r.json(); })
                     .then(function(env) {
@@ -319,22 +314,22 @@ $(document).ready(function() {
                                 var bin = atob(env.base64), bytes = new Uint8Array(bin.length);
                                 for (var i=0; i<bin.length; i++) bytes[i] = bin.charCodeAt(i);
                                 data = bytes.buffer;
-                            } catch(e){ data = env.text || ''; }
-                        } else { data = env.text || ''; }
-                        var len = (data && data.byteLength !== undefined) ? data.byteLength : (data ? data.length : 0);
-                        self.stats.loaded = len; self.stats.total = len;
-                        self.stats.loading.first = now; self.stats.loading.end = now;
+                            } catch(e){ data = env.text||''; }
+                        } else { data = env.text||''; }
+                        var len = (data && data.byteLength!==undefined) ? data.byteLength : (data ? data.length : 0);
+                        self.stats.loaded=len; self.stats.total=len;
+                        self.stats.loading.first=now; self.stats.loading.end=now;
                         callbacks.onSuccess({data:data, url:origUrl}, self.stats, context, null);
                     })
                     .catch(function(err){
-                        if (self._aborted) return;
+                        if(self._aborted) return;
                         console.error('[ProxyLoader]', err.message);
                         callbacks.onError({code:0, text:err.message}, context, null, {});
                     });
                 }
             }
 
-            // ── Create HLS instance ───────────────────────────────────────────
+            // ── HLS instance (created once, attached inside customType) ────────
             var hls = new Hls({
                 maxBufferLength: 60,
                 maxMaxBufferLength: 120,
@@ -343,114 +338,139 @@ $(document).ready(function() {
                 loader: ProxyLoader
             });
 
-            // ── Build quality levels after manifest parsed ─────────────────────
-            var qualityLevels = [];
-            var artInstance   = null;
+            // Track levels after manifest parsed for quality menu
+            var hlsLevels = [];
 
             hls.on(Hls.Events.MANIFEST_PARSED, function(ev, data) {
-                qualityLevels = data.levels.map(function(lv, i) {
-                    return { html: lv.height ? lv.height+'p' : Math.round((lv.bitrate||0)/1000)+'kbps', default: i===0, url: i };
-                });
-                console.log('[embedVideo] quality levels:', qualityLevels.length, qualityLevels.map(function(q){return q.html;}));
+                hlsLevels = data.levels;
+                console.log('[HLS] levels:', hlsLevels.length, hlsLevels.map(function(l){ return l.height+'p'; }));
 
-                // ── Init Artplayer ────────────────────────────────────────────
-                artInstance = new Artplayer({
-                    container: artDiv[0],
-                    url: stream.url,
-                    type: 'm3u8',
-                    volume: 1,
-                    autoplay: true,
-                    playbackRate: true,
-                    aspectRatio: true,
-                    fullscreen: true,
-                    fullscreenWeb: true,
-                    hotkey: true,
-                    pip: true,
-                    mutex: true,
-                    theme: '#2af598',
-                    lang: navigator.language.slice(0,2),
-                    moreVideoAttr: { crossOrigin: 'anonymous' },
-
-                    // Quality selector via Artplayer
-                    quality: qualityLevels.length > 1 ? qualityLevels : [],
-
-                    // Subtitle settings panel built-in
-                    subtitle: { style: { color: '#fff', fontSize: '20px', textShadow: '0 1px 4px rgba(0,0,0,.9)' } },
-
-                    // Settings menu: playback speed + more
-                    setting: true,
-
-                    // Attach HLS.js to Artplayer
-                    customType: {
-                        m3u8: function(video, url) {
-                            hls.loadSource(url);
-                            hls.attachMedia(video);
-                        }
-                    },
-
-                    // Layers, controls, settings customizations
-                    controls: [{
-                        position: 'right',
-                        html: '<i class="fas fa-closed-captioning" style="font-size:18px;cursor:pointer;" title="Subtitles"></i>',
-                        tooltip: 'Subtitles',
-                        click: function(art) {
-                            art.setting.show = !art.setting.show;
-                        }
-                    }]
-                });
-
-                // ── Quality switching via Artplayer's quality event ────────────
-                artInstance.on('quality', function(newQuality) {
-                    // Find the level index matching the selected quality label
-                    var idx = -1;
-                    if (newQuality === 'Auto') {
-                        idx = -1;
-                    } else {
-                        data.levels.forEach(function(lv, i) {
-                            var label = lv.height ? lv.height+'p' : Math.round((lv.bitrate||0)/1000)+'kbps';
-                            if (label === newQuality) idx = i;
-                        });
-                    }
-                    // Apply to HLS.js
-                    hls.currentLevel = idx;
-                    hls.nextLevel    = idx;
-                    hls.loadLevel    = idx;
-                    console.log('[Quality] switched to', newQuality, '-> HLS level', idx, '| actual currentLevel:', hls.currentLevel);
-                });
-
-                // ── HLS errors ────────────────────────────────────────────────
-                hls.on(Hls.Events.ERROR, function(ev, errData) {
-                    console.error('[HLS.js]', errData.type, errData.details, 'fatal:', errData.fatal);
-                    if (errData.fatal) {
-                        wrapper.empty().html(
-                            '<div style="position:relative;aspect-ratio:16/9;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0a0a0a;border-radius:10px;color:#ff6b6b;gap:12px;padding:20px;text-align:center;">'
-                            + '<i class="fas fa-exclamation-triangle" style="font-size:32px;"></i>'
-                            + '<p>' + errData.details + '</p></div>'
-                        );
-                    }
-                });
-
-                // ── Auto-add quality option "Auto" to Artplayer quality list ──
-                if (qualityLevels.length > 1) {
-                    artInstance.on('ready', function() {
-                        console.log('[Artplayer] Ready. Levels:', qualityLevels.length);
-                    });
+                // Inject quality options into Artplayer setting after player is ready
+                if (currentArt && hlsLevels.length > 1) {
+                    injectQualitySetting(currentArt, hls, hlsLevels);
                 }
-
-                currentArt = artInstance;
             });
 
-            hls.loadSource(stream.url);
+            hls.on(Hls.Events.ERROR, function(ev, d) {
+                if (d.fatal) {
+                    console.error('[HLS fatal]', d.type, d.details);
+                    wrapper.find(artDiv).remove();
+                    wrapper.append('<div style="aspect-ratio:16/9;display:flex;align-items:center;justify-content:center;'
+                        +'background:#0a0a0a;border-radius:10px;color:#ff6b6b;font-size:14px;gap:10px;flex-direction:column;">'
+                        +'<i class="fas fa-exclamation-triangle" style="font-size:28px"></i><p>'+d.details+'</p></div>');
+                }
+            });
+
+            // ── Artplayer instance ────────────────────────────────────────────
+            // CRITICAL: customType receives the video element AFTER Artplayer mounts it.
+            // We attach HLS here — this is the only correct place.
+            var art = new Artplayer({
+                container: artDiv,
+                url: stream.url,
+                type: 'm3u8',
+                volume: 1,
+                autoplay: true,
+                pip: true,
+                autoSize: false,
+                autoMini: false,
+                screenshot: false,
+                setting: true,
+                playbackRate: true,
+                aspectRatio: true,
+                fullscreen: true,
+                fullscreenWeb: true,
+                subtitleOffset: true,
+                miniProgressBar: true,
+                mutex: true,
+                backdrop: true,
+                playsInline: true,
+                autoPlayback: true,
+                theme: '#2af598',
+                lang: 'en',
+                hotkey: true,
+                moreVideoAttr: { crossOrigin: 'anonymous' },
+                subtitle: {
+                    style: {
+                        color: '#fff',
+                        fontSize: '20px',
+                        fontFamily: 'Arial, sans-serif',
+                        textShadow: '1px 1px 3px rgba(0,0,0,0.9)',
+                        backgroundColor: 'rgba(0,0,0,0.6)',
+                        padding: '2px 8px',
+                        borderRadius: '3px'
+                    }
+                },
+                // customType: attach HLS AFTER video element exists
+                customType: {
+                    m3u8: function(videoEl, url) {
+                        hls.loadSource(url);
+                        hls.attachMedia(videoEl);
+                        console.log('[Artplayer] HLS attached to video element');
+                    }
+                }
+            });
+
+            art.on('ready', function() {
+                console.log('[Artplayer] Ready');
+                // If manifest already parsed by now, inject quality
+                if (hlsLevels.length > 1) injectQualitySetting(art, hls, hlsLevels);
+            });
+
+            art.on('error', function(e) {
+                console.error('[Artplayer error]', e);
+            });
+
+            currentArt = art;
 
         } catch(err) {
-            console.error('[embedVideo]', err.message);
-            wrapper.empty().html(
-                '<div style="position:relative;aspect-ratio:16/9;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0a0a0a;border-radius:10px;color:#ff6b6b;gap:12px;padding:20px;text-align:center;">'
-                + '<i class="fas fa-exclamation-triangle" style="font-size:32px;"></i>'
-                + '<p>' + err.message + '</p></div>'
-            );
+            console.error('[embedVideo]', err);
+            wrapper.find('#sp-loading').remove();
+            wrapper.append('<div style="aspect-ratio:16/9;display:flex;align-items:center;justify-content:center;'
+                +'background:#0a0a0a;border-radius:10px;color:#ff6b6b;font-size:14px;gap:10px;flex-direction:column;">'
+                +'<i class="fas fa-exclamation-triangle" style="font-size:28px"></i><p>'+err.message+'</p></div>');
         }
     };
+
+    // ── Inject quality into Artplayer settings ────────────────────────────────
+    function injectQualitySetting(art, hls, levels) {
+        // Sort highest first
+        var sorted = levels.map(function(lv,i){ return {idx:i, h:lv.height||0, bw:lv.bitrate||0}; })
+            .sort(function(a,b){ return b.h - a.h; });
+
+        var options = [{
+            default: true,
+            html: 'Auto',
+            value: -1
+        }].concat(sorted.map(function(lv){
+            return { html: lv.h ? lv.h+'p' : Math.round(lv.bw/1000)+'k', value: lv.idx };
+        }));
+
+        art.setting.add({
+            html: 'Quality',
+            icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14H8v-2h4v2zm4-4H8v-2h8v2zm0-4H8V7h8v2z"/></svg>',
+            width: 150,
+            tooltip: 'Quality',
+            selector: options,
+            onSelect: function(item) {
+                var idx = item.value;
+                hls.currentLevel = idx;
+                hls.nextLevel    = idx;
+                hls.loadLevel    = idx;
+                console.log('[Quality] switched to', item.html, '-> HLS level', idx);
+                return item.html;
+            }
+        });
+
+        // Also update label when HLS auto-switches level
+        hls.on(Hls.Events.LEVEL_SWITCHED, function(ev, data) {
+            if (hls.currentLevel === -1 || hls.autoLevelEnabled) {
+                var lv = levels[data.level];
+                if (lv) console.log('[HLS] Auto switched to level', data.level, lv.height+'p');
+            }
+        });
+
+        console.log('[Quality] Setting injected with', options.length, 'options');
+    }
 
 
     // ── Media Fetching ────────────────────────────────────────────────────────
