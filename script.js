@@ -158,11 +158,12 @@ $(document).ready(function() {
         var video    = art.video;
         var enabled  = true;
         var fontSize = '22px';
+        var fontWeight= '700';
         var edgeStyle= 'dropshadow';
         var bgOpacity= 0;
-        var bgColor  = '0,0,0'; // fixed black
-        var subColor = '#ffffff'; // fixed white
-        var cues     = [];   // [{start,end,text}]
+        var bgColor  = '0,0,0';
+        var subColor = '#ffffff';
+        var cues     = [];
         var pollTimer= null;
         var lastText = '';
         var loaded   = false;
@@ -193,7 +194,7 @@ $(document).ready(function() {
             var sp = document.createElement('span');
             sp.textContent = text;
             sp.style.cssText = 'display:inline-block;background:'+bg+';'
-                + 'color:'+subColor+';font-size:'+fontSize+';font-family:Arial,sans-serif;font-weight:700;'
+                + 'color:'+subColor+';font-size:'+fontSize+';font-family:Arial,sans-serif;font-weight:'+fontWeight+';'
                 + 'line-height:1.65;padding:3px 12px;border-radius:3px;'
                 + 'white-space:pre-line;max-width:98%;word-break:break-word;'
                 + 'text-shadow:'+shadow+';';
@@ -285,17 +286,13 @@ $(document).ready(function() {
                 if (!Array.isArray(results) || !results.length)
                     throw new Error('no results from wyzie');
 
-                // Filter for English and keep up to 5
                 var enResults = results.filter(function(x){ return x.language && x.language.toLowerCase().startsWith('en'); });
                 availableSubs = enResults.length ? enResults : results;
                 availableSubs = availableSubs.slice(0, 5); 
 
                 if (availableSubs.length === 0) throw new Error('no valid english results');
 
-                // Load the first one by default
                 await fetchAndSetSub(0);
-                
-                // Re-render menu with dynamic options
                 updateSubtitleMenu();
 
             } catch(err) {
@@ -338,12 +335,7 @@ $(document).ready(function() {
                 tooltipLabel = 'English ' + (currentSubIdx + 1);
             }
 
-            // Safely remove old menu, preventing crash on initial load
-            try {
-                art.setting.remove('subs');
-            } catch (e) {
-                // Ignore if it doesn't exist yet
-            }
+            try { art.setting.remove('subs'); } catch (e) {}
 
             art.setting.add({
                 name: 'subs',
@@ -373,7 +365,6 @@ $(document).ready(function() {
             });
         }
 
-        // Initialize the empty menu immediately
         updateSubtitleMenu();
 
         if (state.mediaId) {
@@ -395,9 +386,22 @@ $(document).ready(function() {
         });
 
         art.setting.add({
+            html: 'Font Weight',
+            icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M15.6 10.79c.97-.67 1.65-1.77 1.65-2.79 0-2.26-1.75-4-4-4H7v14h7.04c2.09 0 3.71-1.7 3.71-3.79 0-1.52-.86-2.82-2.15-3.42zM10 6.5h3c.83 0 1.5.67 1.5 1.5s-.67 1.5-1.5 1.5h-3v-3zm3.5 9H10v-3h3.5c.83 0 1.5.67 1.5 1.5s-.67 1.5-1.5 1.5z"/></svg>',
+            width: 180, tooltip: 'Bold',
+            selector: [
+                {html: 'Normal', value: '400'},
+                {html: 'Medium', value: '500'},
+                {html: 'Bold',   value: '700', default: true},
+                {html: 'Heavy',  value: '900'}
+            ],
+            onSelect: function(item) { fontWeight = item.value; lastText = ''; return item.html; }
+        });
+
+        art.setting.add({
             html: 'Char Edge',
             icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M2.53 19.65l1.34.56v-9.03l-2.43 5.86c-.41 1.02.08 2.19 1.09 2.61zm19.5-3.7L17.07 3.98c-.31-.75-1.04-1.21-1.81-1.23-.26 0-.53.04-.79.15L7.1 6.11c-.75.31-1.21 1.03-1.23 1.8-.01.27.04.54.15.8l4.96 11.97c.31.76 1.05 1.22 1.83 1.23.26 0 .52-.05.77-.15l7.36-3.05c1.02-.42 1.51-1.59 1.09-2.61z"/></svg>',
-            width: 180, tooltip: 'None',
+            width: 180, tooltip: 'Drop Shadow',
             selector: [
                 {html:'None',        value:'none'},
                 {html:'Drop Shadow', value:'dropshadow', default:true},
@@ -442,7 +446,6 @@ $(document).ready(function() {
             }));
         var defaultQLabel = (options.find(function(o){ return o.default; }) || options[0] || {html:'Quality'}).html;
         
-        // Explicitly force HLS to lock onto the correct default index
         hls.currentLevel = defaultIdx;
         hls.loadLevel = defaultIdx;
 
@@ -541,7 +544,6 @@ $(document).ready(function() {
                         || urlNoQ.endsWith('.mp4') || urlNoQ.endsWith('.m4a')
                         || urlNoQ.endsWith('.aac') || urlNoQ.endsWith('.mp3');
 
-                    // Check if the stream requires headers the browser can't send directly
                     var hasRestrictedHeaders = streamHdrs.Referer || streamHdrs.referer || streamHdrs.Origin || streamHdrs.origin;
 
                     var mustProxy = context.type==='key' || urlNoQ.endsWith('.key')
@@ -656,12 +658,12 @@ $(document).ready(function() {
 
             hls.on(Hls.Events.ERROR, function(ev, d) {
                 if (d.fatal) {
-                    console.error('[HLS fatal]', d.details);
+                    var errorMsg = d.details === 'manifestParsingError' ? 'MediaNotFound' : d.details;
                     wrapper.find('.sp-art-wrap').html(
                         '<div style="height:100%;display:flex;align-items:center;justify-content:center;'
                         +'flex-direction:column;gap:12px;color:#ff6b6b;">'
                         +'<i class="fas fa-exclamation-triangle" style="font-size:28px"></i>'
-                        +'<p>'+d.details+'</p></div>'
+                        +'<p>'+errorMsg+'</p></div>'
                     );
                 }
             });
@@ -710,14 +712,9 @@ $(document).ready(function() {
                 injectSubtitleSetting(art, hls);
             });
 
-            art.on('error', function(e, msg) {
-                console.error('[Artplayer error]', msg);
-            });
-
             currentArt = art;
 
         } catch(err) {
-            console.error('[embedVideo]', err);
             wrapper.find('#sp-loading').remove();
             wrapper.append('<div style="aspect-ratio:16/9;display:flex;align-items:center;justify-content:center;'
                 +'background:#0a0a0a;border-radius:12px;color:#ff6b6b;font-size:14px;gap:10px;flex-direction:column;">'
@@ -744,7 +741,7 @@ $(document).ready(function() {
             let items = [], page = 1, maxPages = isPreview ? 5 : 2, desiredCount = isPreview ? 10 : 12;
             while (items.length < desiredCount && page <= maxPages) {
                 const data = await fetchWithRetry(url + '&page=' + page);
-                if (!data || !data.results) { console.error('No results for', type); return items; }
+                if (!data || !data.results) return items;
                 let valid = data.results.filter(function(i){ return i.id && (i.title || i.name) && i.poster_path && i.vote_average; })
                     .map(function(i){ return Object.assign({}, i, { type: isPreview ? i.media_type : mediaType }); });
                 if (isPreview) {
@@ -763,7 +760,7 @@ $(document).ready(function() {
                 page++;
             }
             return items.slice(0, desiredCount);
-        } catch(e) { console.error('Failed to load', type, e); return []; }
+        } catch(e) { return []; }
     };
 
     // ── Render Item ───────────────────────────────────────────────────────────
@@ -918,7 +915,7 @@ $(document).ready(function() {
                         btn.addClass('active');
                         state.season = season.season_number;
                         state.episode = ep.episode_number;
-                        embedVideo().catch(function(e){ console.error('embedVideo error:', e); });
+                        embedVideo().catch(function(e){});
                         selectors.downloadBtn.attr('href', 'https://dl.vidsrc.vip/tv/' + state.mediaId + '/' + state.season + '/' + state.episode);
                         addToHistory({ id: state.mediaId, type: state.mediaType, title: selectors.videoPage.data('title'), poster: selectors.videoPage.data('poster'), year: selectors.videoPage.data('year'), season: state.season, episode: state.episode });
                     });
@@ -928,7 +925,7 @@ $(document).ready(function() {
             selectors.seasonEpisodeAccordion.find('summary').on('click', function() {
                 selectors.seasonEpisodeAccordion.find('details').not($(this).parent()).removeAttr('open');
             });
-        } catch(e) { console.error('Failed to load seasons/episodes', e); selectors.seasonEpisodeAccordion.html('<p class="empty-message">Failed to load seasons/episodes.</p>'); }
+        } catch(e) { selectors.seasonEpisodeAccordion.html('<p class="empty-message">Failed to load seasons/episodes.</p>'); }
     };
 
     const resetVideoPlayerState = function() {
@@ -1049,15 +1046,15 @@ $(document).ready(function() {
         try {
             const data = await fetchWithRetry('https://api.themoviedb.org/3/' + type + '/' + id + '?api_key=' + config.apiKey);
             mediaCache.set(id, type, data); updateUI(data);
-        } catch(e) { console.error('Failed to fetch media details', e); }
+        } catch(e) {}
 
         if (type === 'movie') {
-            embedVideo().catch(function(e){ console.error('embedVideo error:', e); });
+            embedVideo().catch(function(e){});
         } else {
             await loadSeasonEpisodeAccordion();
             if (season && episode) {
                 $('.episode-btn[data-season="' + season + '"][data-episode="' + episode + '"]').addClass('active');
-                   embedVideo().catch(function(e){ console.error('embedVideo error:', e); });
+                   embedVideo().catch(function(e){});
                 selectors.downloadBtn.attr('href', 'https://dl.vidsrc.vip/tv/' + id + '/' + season + '/' + episode);
             }
         }
@@ -1153,7 +1150,7 @@ $(document).ready(function() {
             selectors.searchResults.empty();
             if (!results.length) selectors.searchResults.html('<p class="text-center" style="color:#ccc;">No results found.</p>');
             else results.forEach(function(i){ renderItem(i, selectors.searchResults); });
-        } catch(e) { console.error('Search failed', e); selectors.searchResults.html('<p class="text-center" style="color:#ccc;">Failed to load results.</p>'); }
+        } catch(e) { selectors.searchResults.html('<p class="text-center" style="color:#ccc;">Failed to load results.</p>'); }
     };
 
     selectors.searchInput.on('input', function() { clearTimeout(searchTimeout); searchTimeout = setTimeout(performSearch, 500); });
