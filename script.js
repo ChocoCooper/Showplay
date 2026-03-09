@@ -85,7 +85,7 @@ $(document).ready(function() {
         var d = typeof dec === 'string' ? JSON.parse(dec) : dec;
         var sources = (d && (d.result && d.result.sources || d.sources || (d.data && d.data.sources))) || [];
         var url = sources[0] && (sources[0].url || sources[0].file);
-        if (!url) throw new Error('Hexa: no stream URL. Got: ' + JSON.stringify(d).slice(0,200));
+        if (!url) throw new Error('Hexa: no stream URL.');
         return { url: url, type: 'hls', headers: { Referer: 'https://hexa.watch/', Origin: 'https://hexa.watch' } };
     }
 
@@ -134,9 +134,6 @@ $(document).ready(function() {
         var obs = new IntersectionObserver(function(entries, obs){ entries.forEach(function(e){ if(e.isIntersecting){callback();obs.unobserve(e.target);} }); }, {root:null,rootMargin:'100px',threshold:0.1});
         obs.observe(element[0]);
     };
-
-    const initializeServers = function() { selectors.serverGrid.empty().hide(); };
-
 
     // ── Artplayer + HLS.js ─────────────────────────────────────────────────────
     var currentArt = null;
@@ -341,7 +338,13 @@ $(document).ready(function() {
                 tooltipLabel = 'English ' + (currentSubIdx + 1);
             }
 
-            art.setting.remove('subs');
+            // Safely remove old menu, preventing crash on initial load
+            try {
+                art.setting.remove('subs');
+            } catch (e) {
+                // Ignore if it doesn't exist yet
+            }
+
             art.setting.add({
                 name: 'subs',
                 html: 'Subtitles',
