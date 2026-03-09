@@ -507,8 +507,12 @@ $(document).ready(function() {
                         || urlNoQ.endsWith('.ts')  || urlNoQ.endsWith('.m4s')
                         || urlNoQ.endsWith('.mp4') || urlNoQ.endsWith('.m4a')
                         || urlNoQ.endsWith('.aac') || urlNoQ.endsWith('.mp3');
+
+                    // Check if the stream requires headers the browser can't send directly
+                    var hasRestrictedHeaders = streamHdrs.Referer || streamHdrs.referer || streamHdrs.Origin || streamHdrs.origin;
+
                     var mustProxy = context.type==='key' || urlNoQ.endsWith('.key')
-                        || urlNoQ.endsWith('.m3u8') || urlNoQ.endsWith('.txt');
+                        || urlNoQ.endsWith('.m3u8') || urlNoQ.endsWith('.txt') || hasRestrictedHeaders;
 
                     function succeed(data) {
                         if (self._aborted) return;
