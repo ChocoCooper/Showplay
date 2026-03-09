@@ -55,7 +55,6 @@ $(document).ready(function() {
                 if (r.status === 404) continue;
                 if (r.ok) {
                     var env = await r.json();
-                    console.log('[pFetch] OK ' + proxyUrl + ' -> ' + env.status + ' ' + url);
                     if (responseType === 'text') return env.text;
                     if (env.json !== null && env.json !== undefined) return env.json;
                     try { return JSON.parse(env.text); } catch(e) { return env.text; }
@@ -171,6 +170,9 @@ $(document).ready(function() {
         var lastText = '';
         var loaded   = false;
 
+        var availableSubs = [];
+        var currentSubIdx = 0;
+
         // ── Overlay ───────────────────────────────────────────────────────────
         var box = document.createElement('div');
         box.style.cssText = 'position:absolute;left:0;right:0;bottom:62px;'
@@ -219,7 +221,6 @@ $(document).ready(function() {
             clearInterval(pollTimer); pollTimer = null; show('');
         }
 
-        // ── Time string → seconds (handles both VTT 00:00:00.000 and SRT 00:00:00,000) ─
         function toSec(ts) {
             ts = ts.trim().replace(',','.');
             var p = ts.split(':');
@@ -228,7 +229,6 @@ $(document).ready(function() {
             return +p[0];
         }
 
-        // ── Parse VTT or SRT text into [{start,end,text}] ─────────────────────
         function parseSubtitle(txt) {
             var result = [];
             var lines  = txt.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n');
@@ -242,7 +242,6 @@ $(document).ready(function() {
                 while (++i < lines.length) {
                     var l = lines[i].trim();
                     if (!l) break;
-                    // Strip SRT/VTT tags and markup
                     l = l.replace(/<[^>]+>/g,'').replace(/\{[^}]+\}/g,'').trim();
                     if (l) textLines.push(l);
                 }
@@ -253,7 +252,6 @@ $(document).ready(function() {
             return result;
         }
 
-        // ── Status bubble shown inside video player ───────────────────────────
         function setStatus(msg, color) {
             box.innerHTML = '';
             if (!msg) return;
@@ -265,7 +263,6 @@ $(document).ready(function() {
             box.appendChild(sp);
         }
 
-        // ── Fetch subtitle file through proxy (CORS bypass) ───────────────────
         async function fetchVTT(url) {
             var res = await fetch(NETLIFY_PROXY, {
                 method:'POST', headers:{'Content-Type':'application/json'},
@@ -277,7 +274,6 @@ $(document).ready(function() {
             return env.text;
         }
 
-        // ── loadSubtitles ─────────────
         async function loadSubtitles() {
             try {
                 var url = 'https://sub.wyzie.ru/search?id=' + state.mediaId
@@ -285,7 +281,6 @@ $(document).ready(function() {
                 if (state.mediaType === 'tv' && state.season && state.episode)
                     url += '&season=' + state.season + '&episode=' + state.episode;
 
-                console.log('[Subtitle] Wyzie search:', url);
                 var r = await fetch(url);
                 if (!r.ok) throw new Error('wyzie HTTP ' + r.status);
                 var results = await r.json();
@@ -293,23 +288,18 @@ $(document).ready(function() {
                 if (!Array.isArray(results) || !results.length)
                     throw new Error('no results from wyzie');
 
-                console.log('[Subtitle] Wyzie results:', results.length,
-                    results.slice(0,3).map(function(x){ return x.display+'/'+x.format+'/'+x.source; }));
-
+                // Filter for English and keep up to 5
                 var enResults = results.filter(function(x){ return x.language && x.language.toLowerCase().startsWith('en'); });
-                var pool = enResults.length ? enResults : results;
-                var pick = pool.find(function(x){ return !x.isHearingImpaired; }) || pool[0];
-                console.log('[Subtitle] Using:', pick.display, pick.format, pick.source, pick.release||'');
+                availableSubs = enResults.length ? enResults : results;
+                availableSubs = availableSubs.slice(0, 5); 
 
-                var subText = await fetchVTT(pick.url);
-                var parsed  = parseSubtitle(subText);
-                if (!parsed.length) throw new Error('0 cues parsed');
+                if (availableSubs.length === 0) throw new Error('no valid english results');
 
-                cues   = parsed;
-                loaded = true;
-                setStatus('');
-                startPoll();
-                console.log('[Subtitle] Loaded', cues.length, 'cues. Sample:', JSON.stringify(cues[0]));
+                // Load the first one by default
+                await fetchAndSetSub(0);
+                
+                // Re-render menu with dynamic options
+                updateSubtitleMenu();
 
             } catch(err) {
                 console.warn('[Subtitle] Failed:', err.message);
@@ -318,31 +308,75 @@ $(document).ready(function() {
             }
         }
 
-        // Auto-load subtitles when player is fully ready
+        async function fetchAndSetSub(index) {
+            var pick = availableSubs[index];
+            var subText = await fetchVTT(pick.url);
+            var parsed  = parseSubtitle(subText);
+            if (!parsed.length) throw new Error('0 cues parsed');
+
+            cues = parsed;
+            loaded = true;
+            currentSubIdx = index;
+            setStatus('');
+            startPoll();
+        }
+
+        function updateSubtitleMenu() {
+            var newSelector = [{html:'Off', value:'off'}];
+            var tooltipLabel = 'Loading...';
+
+            if (availableSubs.length === 0) {
+                newSelector.push({html:'English', value:'on', default:true});
+                newSelector.push({html:'↺ Reload', value:'reload'});
+                tooltipLabel = 'English';
+            } else {
+                for (var i = 0; i < availableSubs.length; i++) {
+                    newSelector.push({
+                        html: 'English ' + (i + 1),
+                        value: String(i),
+                        default: i === currentSubIdx
+                    });
+                }
+                newSelector.push({html:'↺ Reload', value:'reload'});
+                tooltipLabel = 'English ' + (currentSubIdx + 1);
+            }
+
+            art.setting.remove('subs');
+            art.setting.add({
+                name: 'subs',
+                html: 'Subtitles',
+                icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-8 11H5v-2h7v2zm7 0h-5v-2h5v2zm-7-4H5V9h7v2zm7 0h-5V9h5v2z"/></svg>',
+                width: 180, tooltip: tooltipLabel,
+                selector: newSelector,
+                onSelect: function(item) {
+                    if (item.value === 'off') { enabled=false; stopPoll(); show(''); return 'Off'; }
+                    if (item.value === 'reload') { cues=[]; loaded=false; loadSubtitles(); return tooltipLabel; }
+                    if (item.value === 'on') { enabled=true; if(loaded) startPoll(); else loadSubtitles(); return 'English'; }
+
+                    enabled = true;
+                    var idx = parseInt(item.value);
+                    if (!isNaN(idx)) {
+                        setStatus('Loading...', '#aaa');
+                        fetchAndSetSub(idx).then(function() {
+                            art.setting.update({name: 'subs', tooltip: 'English ' + (idx + 1)});
+                        }).catch(function(e){ 
+                            setStatus('Failed to load', '#f66'); 
+                            setTimeout(function(){ setStatus(''); }, 2000); 
+                        });
+                        return item.html;
+                    }
+                    return item.html;
+                }
+            });
+        }
+
+        // Initialize the empty menu immediately
+        updateSubtitleMenu();
+
         if (state.mediaId) {
             setTimeout(loadSubtitles, 500);
         }
 
-        // ── Settings panel ────────────────────────────────────────────────────
-        art.setting.add({
-            html: 'Subtitles',
-            icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-8 11H5v-2h7v2zm7 0h-5v-2h5v2zm-7-4H5V9h7v2zm7 0h-5V9h5v2z"/></svg>',
-            width: 180, tooltip: 'English',
-            selector: [
-                {html:'Off',             value:'off'},
-                {html:'English',         value:'on',     default:true},
-                {html:'↺ Reload',   value:'reload'}
-            ],
-            onSelect: function(item) {
-                if (item.value === 'off')    { enabled=false; stopPoll(); show(''); return 'Off'; }
-                if (item.value === 'reload') { cues=[]; loaded=false; loadSubtitles(); return 'English'; }
-                enabled = true;
-                if (loaded) startPoll(); else loadSubtitles();
-                return 'English';
-            }
-        });
-
-        // Sub Font Size
         art.setting.add({
             html: 'Sub Font Size',
             icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M9 4v3h5v12h3V7h5V4H9zm-6 8h3v7h3v-7h3V9H3v3z"/></svg>',
@@ -357,7 +391,6 @@ $(document).ready(function() {
             onSelect: function(item) { fontSize=item.value; lastText=''; return item.html.split(' ')[0]; }
         });
 
-        // Sub Edge / Character Style
         art.setting.add({
             html: 'Char Edge',
             icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M2.53 19.65l1.34.56v-9.03l-2.43 5.86c-.41 1.02.08 2.19 1.09 2.61zm19.5-3.7L17.07 3.98c-.31-.75-1.04-1.21-1.81-1.23-.26 0-.53.04-.79.15L7.1 6.11c-.75.31-1.21 1.03-1.23 1.8-.01.27.04.54.15.8l4.96 11.97c.31.76 1.05 1.22 1.83 1.23.26 0 .52-.05.77-.15l7.36-3.05c1.02-.42 1.51-1.59 1.09-2.61z"/></svg>',
@@ -372,7 +405,6 @@ $(document).ready(function() {
             onSelect: function(item) { edgeStyle=item.value; lastText=''; return item.html; }
         });
 
-        // Sub Elevation (bottom position)
         art.setting.add({
             html: 'Sub Position',
             icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M4 15h16v-2H4v2zm0 4h16v-2H4v2zm0-8h16V9H4v2zm0-6v2h16V5H4z"/></svg>',
@@ -392,10 +424,9 @@ $(document).ready(function() {
 
         art.on('destroy', stopPoll);
         art.on('seek',    function() { lastText=''; });
-        console.log('[Subtitle] Auto-fetching from OpenSubtitles…');
     }
 
-    // ── Quality setting injector (called once) ────────────────────────────────
+    // ── Quality setting injector ────────────────────────────────
     function injectQualitySetting(art, hls, levels, defaultLevelIdx) {
         var sorted = levels.map(function(lv,i){ return {idx:i, h:lv.height||0, bw:lv.bitrate||0}; })
             .sort(function(a,b){ return b.h - a.h; });
@@ -407,6 +438,11 @@ $(document).ready(function() {
                 return { html: lv.h ? lv.h+'p' : Math.round(lv.bw/1000)+'k', value: lv.idx, default: isDefault };
             }));
         var defaultQLabel = (options.find(function(o){ return o.default; }) || options[0] || {html:'Quality'}).html;
+        
+        // Explicitly force HLS to lock onto the correct default index
+        hls.currentLevel = defaultIdx;
+        hls.loadLevel = defaultIdx;
+
         art.setting.add({
             html: 'Quality',
             icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14H8v-2h4v2zm4-4H8v-2h8v2zm0-4H8V7h8v2z"/></svg>',
@@ -419,7 +455,6 @@ $(document).ready(function() {
                 if (idx === -1) {
                     hls.currentLevel = -1;
                     hls.loadLevel    = -1;
-                    console.log('[Quality] -> Auto ABR');
                 } else {
                     hls.loadLevel    = idx;
                     hls.currentLevel = idx;
@@ -427,16 +462,13 @@ $(document).ready(function() {
                         var t = video.currentTime;
                         video.currentTime = t + 0.05;
                     }
-                    console.log('[Quality] -> level', idx, item.html, '| currentLevel:', hls.currentLevel);
                 }
                 return item.html;
             }
         });
         hls.on(Hls.Events.LEVEL_SWITCHED, function(ev, data) {
             var lv = levels[data.level];
-            if (lv) console.log('[HLS] Level switched to', data.level, lv.height+'p');
         });
-        console.log('[Quality] Injected', options.length, 'options:', options.map(function(o){return o.html;}));
     }
 
     // ── Embed Video ───────────────────────────────────────────────────────────
@@ -472,8 +504,6 @@ $(document).ready(function() {
         try {
             var results = await Promise.all([ resolveStream('hexa', params), loadArtplayer() ]);
             var stream  = results[0];
-            console.log('[embedVideo] stream:', stream.url);
-            console.log('[embedVideo] headers:', JSON.stringify(stream.headers || {}));
 
             wrapper.find('#sp-loading').remove();
 
@@ -609,14 +639,11 @@ $(document).ready(function() {
 
             hls.on(Hls.Events.MANIFEST_PARSED, function(ev, data) {
                 hlsLevels = data.levels;
-                console.log('[HLS] levels:', hlsLevels.length);
-
                 var lowestIdx = hlsLevels.reduce(function(best, lv, i) {
                     return (lv.height || 99999) < (hlsLevels[best].height || 99999) ? i : best;
                 }, 0);
                 hls.currentLevel = lowestIdx;
                 hls.loadLevel    = lowestIdx;
-                console.log('[HLS] Default level set to', lowestIdx, hlsLevels[lowestIdx].height+'p');
 
                 if (currentArt && !qualityInjected && hlsLevels.length > 1) {
                     qualityInjected = true;
@@ -668,13 +695,11 @@ $(document).ready(function() {
                     m3u8: function(videoEl, url) {
                         hls.loadSource(url);
                         hls.attachMedia(videoEl);
-                        console.log('[Artplayer] HLS attached');
                     }
                 }
             });
 
             art.on('ready', function() {
-                console.log('[Artplayer] Ready');
                 if (!qualityInjected && hlsLevels.length > 1) {
                     qualityInjected = true;
                     injectQualitySetting(art, hls, hlsLevels, hls.currentLevel);
