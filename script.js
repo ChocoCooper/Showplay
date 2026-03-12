@@ -718,7 +718,7 @@ $(document).ready(function() {
             movie:    ['https://api.themoviedb.org/3/trending/movie/week?api_key=' + config.apiKey, 'movie'],
             tv:       ['https://api.themoviedb.org/3/trending/tv/week?api_key=' + config.apiKey, 'tv'],
             anime:    ['https://api.themoviedb.org/3/discover/tv?api_key=' + config.apiKey + '&with_genres=16&sort_by=first_air_date.desc&with_original_language=ja&vote_average.gte=6&vote_count.gte=25&without_keywords=10121,9706,264386,280003,158718,281741', 'tv'],
-            kdrama:   ['https://api.themoviedb.org/3/discover/tv?api_key=' + config.apiKey + '&with_original_language=ko&sort_by=first_air_date.desc&vote_average.gte=6&vote_count.gte=25', 'tv'],
+            kdrama:   ['https://api.themoviedb.org/3/discover/tv?api_key=' + config.apiKey + '&with_original_language=ko&sort_by=first_air_date.desc', 'tv'],
             cdrama:   ['https://api.themoviedb.org/3/discover/tv?api_key=' + config.apiKey + '&with_original_language=zh&sort_by=first_air_date.desc&vote_average.gte=5&vote_count.gte=10&without_genres=16,10759,10765,10768&without_keywords=15060,248451,289844,12995,195013,184656,234890,293198', 'tv'],
             trending: ['https://api.themoviedb.org/3/trending/all/day?api_key=' + config.apiKey, 'multi'],
         };
