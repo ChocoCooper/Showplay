@@ -711,17 +711,15 @@ $(document).ready(function() {
     };
 
 
-// ── Media Fetching ────────────────────────────────────────────────────────
+    // ── Media Fetching ────────────────────────────────────────────────────────
     const fetchMedia = async function(type, isPreview) {
         isPreview = isPreview || false;
-        
-        // Step 1: All TV-based categories now use the exact same trending endpoint
         const map = {
             movie:    ['https://api.themoviedb.org/3/trending/movie/week?api_key=' + config.apiKey, 'movie'],
             tv:       ['https://api.themoviedb.org/3/trending/tv/week?api_key=' + config.apiKey, 'tv'],
-            anime:    ['https://api.themoviedb.org/3/trending/tv/week?api_key=' + config.apiKey, 'tv'],
-            kdrama:   ['https://api.themoviedb.org/3/trending/tv/week?api_key=' + config.apiKey, 'tv'],
-            cdrama:   ['https://api.themoviedb.org/3/trending/tv/week?api_key=' + config.apiKey, 'tv'],
+            anime:    ['https://api.themoviedb.org/3/discover/tv?api_key=' + config.apiKey + '&with_genres=16&sort_by=first_air_date.desc&with_original_language=ja&vote_average.gte=6&vote_count.gte=5&without_keywords=10121,9706,264386,280003,158718,281741', 'tv'],
+            kdrama:   ['https://api.themoviedb.org/3/discover/tv?api_key=' + config.apiKey + '&with_original_language=ko&sort_by=first_air_date.desc&vote_average.gte=5&vote_count.gte=6&without_genres=289844,291807', 'tv'],
+            cdrama:   ['https://api.themoviedb.org/3/discover/tv?api_key=' + config.apiKey + '&with_original_language=zh&sort_by=first_air_date.desc&vote_average.gte=5&vote_count.gte=6&without_genres=16,10759,10765,10768&without_keywords=15060,248451,289844,184656,234890,293198,192772', 'tv'],
             trending: ['https://api.themoviedb.org/3/trending/all/day?api_key=' + config.apiKey, 'multi'],
         };
         
@@ -729,30 +727,19 @@ $(document).ready(function() {
         const url = map[type][0], mediaType = map[type][1];
         
         try {
-            // NOTE: You might need to increase maxPages (e.g., to 5 or 10) because we are 
-            // throwing away a lot of results on the client side now.
-            let items = [], page = 1, maxPages = isPreview ? 5 : 5, desiredCount = isPreview ? 10 : 12; 
+            let items = [], page = 1, maxPages = isPreview ? 5 : 2, desiredCount = isPreview ? 10 : 12;
             
             while (items.length < desiredCount && page <= maxPages) {
                 const data = await fetchWithRetry(url + '&page=' + page);
                 if (!data || !data.results) return items;
 
+                // --- THE FILTER IS APPLIED HERE ---
                 let resultsToProcess = data.results;
-
-                // Step 2: Filter based on the specific category requested
                 if (type === 'tv') {
-                    // Standard TV: Exclude Korean and Chinese
                     const excludedLanguages = ['ko', 'zh', 'ja'];
-                    resultsToProcess = resultsToProcess.filter(show => !excludedLanguages.includes(show.original_language));
-                } else if (type === 'anime') {
-                    // Anime: Keep ONLY Japanese
-                    resultsToProcess = resultsToProcess.filter(show => show.original_language === 'ja');
-                } else if (type === 'kdrama') {
-                    // KDrama: Keep ONLY Korean
-                    resultsToProcess = resultsToProcess.filter(show => show.original_language === 'ko');
-                } else if (type === 'cdrama') {
-                    // CDrama: Keep ONLY Chinese
-                    resultsToProcess = resultsToProcess.filter(show => show.original_language === 'zh');
+                    resultsToProcess = resultsToProcess.filter(show => {
+                        return !excludedLanguages.includes(show.original_language);
+                    });
                 }
 
                 let valid = resultsToProcess.filter(function(i){ return i.id && (i.title || i.name) && i.poster_path && i.vote_average; })
